@@ -1261,8 +1261,8 @@ function renderRankLists(rows){
   const sdPreview = expandState.sdResumo ? bySameDayAll : bySameDayAll.slice(0, RESUMO_PREVIEW_COUNT);
   setHtml("rank-sameday-resumo", sdPreview.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow());
   renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDayAll.length>RESUMO_PREVIEW_COUNT);
-  // Losses — ranqueia pelo valor perdido (R$); só agências com perda.
-  const byLossesAll = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).sort((a,b)=>b.perdasValor-a.perdasValor);
+  // Losses — ranqueia pela QUANTIDADE de pacotes perdidos (empate: maior valor); só agências com perda.
+  const byLossesAll = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).sort((a,b)=>(b.perdasQtd-a.perdasQtd) || (b.perdasValor-a.perdasValor));
   const byLosses = expandState.losses ? byLossesAll : byLossesAll.slice(0, 8);
   // Total de Losses do filtro atual (Estação, Sub-Regional, Responsável...). Sem filtro = total geral.
   const lossesTotalEl = document.getElementById("losses-total");
@@ -1277,9 +1277,9 @@ function renderRankLists(rows){
   }
   setHtml("rank-losses", byLosses.map((d,i)=>rankRow(
     i, d,
-    d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
-    d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
-    d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
+    d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes"),
+    d.perdasQtd>=10?"critical":d.perdasQtd>0?"warning":"good",
+    d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})
   )).join("") || emptyRow());
   // Recebidos pós-coleta por DOP (último dia fechado da base de Same Day)
   const posAll = rows.filter(d=>(d.sdPosColDia||0)>0).sort((a,b)=>b.sdPosColDia-a.sdPosColDia);
