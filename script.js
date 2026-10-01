@@ -29,7 +29,7 @@ let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risc
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
 let CURRENT_ROWS = [];
-const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false, semColeta:false };
+const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false, semColeta:false, posColeta:false };
 function wireExpandToggle(topId, bottomId, stateKey, onToggle){
   const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
   const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
@@ -1072,7 +1072,8 @@ function kpiCardsPrimary(rows){
     const inb = rows.reduce((s,d)=>s+(d.sdInbDia||0),0);
     const dops = rows.filter(d=>(d.sdPosColDia||0)>0).length;
     return [{label:"Recebidos pós-coleta ("+fmtDiaBR(SD_INFO.refDia)+")", value: pos.toLocaleString("pt-BR"), icon:"📥",
-      cls: pos>0?"warn":"", sub: (inb? (pos/inb*100).toFixed(1).replace(".",",")+"% do inbound · " : "") + dops + " DOPs"}];
+      cls: pos>0?"warn":"", sub: (inb? (pos/inb*100).toFixed(1).replace(".",",")+"% do inbound · " : "") + dops + " DOPs" + (dops ? " · ver por DOP ↓" : ""),
+      goto: "card-poscoleta"}];
   })() : []);
 }
 // Cards extras — indicadores próprios deste painel operacional (risco,
@@ -1096,6 +1097,11 @@ function renderKpis(targetId, cards){
     const div = document.createElement("div");
     div.className = "kpi"+(k.cls?" "+k.cls:"");
     div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>` + (k.sub ? `<div class="kpi-delta">${k.sub}</div>` : "");
+    if(k.goto){
+      div.style.cursor = "pointer";
+      div.title = "Clique para ver por DOP";
+      div.onclick = ()=>{ const alvo = document.getElementById(k.goto); if(alvo) alvo.scrollIntoView({behavior:"smooth", block:"start"}); };
+    }
     el.appendChild(div);
   });
 }
@@ -1135,6 +1141,7 @@ function renderAlerts(rows){
 function donut(svgId, legendId, groups, colorFn){
   const svg = document.getElementById(svgId);
   const legend = document.getElementById(legendId);
+  if(!svg || !legend) return;
   const total = groups.reduce((s,g)=>s+g.value,0) || 1;
   const cx=75, cy=75, r=58, rInner=34;
   let angle = -90;
@@ -1211,6 +1218,27 @@ function renderRankLists(rows){
     d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
     d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
   )).join("") || emptyRow());
+  // Recebidos pós-coleta por DOP (último dia fechado da base de Same Day)
+  const posAll = rows.filter(d=>(d.sdPosColDia||0)>0).sort((a,b)=>b.sdPosColDia-a.sdPosColDia);
+  const posVis = expandState.posColeta ? posAll : posAll.slice(0, 8);
+  const posTotEl = document.getElementById("poscoleta-total");
+  if(posTotEl){
+    const tot = posAll.reduce((s,d)=>s+d.sdPosColDia,0);
+    posTotEl.innerHTML = SD_MAP && SD_INFO && SD_INFO.refDia
+      ? `${fmtDiaBR(SD_INFO.refDia)}: <b>${tot.toLocaleString("pt-BR")}</b> pacotes<span class="sep">·</span>${posAll.length} DOPs`
+      : "carregando…";
+  }
+  setHtml("rank-poscoleta", posVis.map((d,i)=>{
+    const pctInb = d.sdInbDia ? (d.sdPosColDia/d.sdInbDia*100).toFixed(0)+"% do inbound" : "";
+    return rankRow(i, d, d.sdPosColDia.toLocaleString("pt-BR") + (d.sdPosColDia===1?" pacote":" pacotes"),
+      d.sdPosColDia>=100?"critical":"warning", pctInb);
+  }).join("") || (SD_MAP ? '<div class="empty-state">Nenhum pacote recebido depois da coleta.</div>' : emptyRow()));
+  const posBtn = document.getElementById("poscoleta-toggle-bottom");
+  if(posBtn){
+    posBtn.style.display = (posAll.length > 8 || expandState.posColeta) ? "" : "none";
+    posBtn.textContent = expandState.posColeta ? "− Mostrar só os 8 maiores" : "+ Ver todos os " + posAll.length + " DOPs";
+    posBtn.classList.toggle("is-open", !!expandState.posColeta);
+  }
   const lossesBtn = document.getElementById("losses-toggle-bottom");
   if(lossesBtn){
     lossesBtn.style.display = (byLossesAll.length > 8 || expandState.losses) ? "" : "none";
@@ -1413,16 +1441,7 @@ function renderAll(){
   renderKpis("kpi-grid", kpiCardsPrimary(rows));
   renderKpis("kpi-grid-extra", kpiCardsSecondary(rows));
   renderAlerts(rows);
-  donut("donut-risco","legend-risco", groupCount(rows,"risco", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[riskClass(l)])), null);
-  donut("donut-coleta","legend-coleta", groupCount(rows,"statusColeta", l=>({good:"#0ca30c",warning:"#fab219",critical:"#d03b3b"}[coletaClass(l)])), null);
-  const cidadeCounts = {};
-  rows.forEach(d=>{ cidadeCounts[d.cidade]=(cidadeCounts[d.cidade]||0)+1; });
-  let cidadeArr = Object.entries(cidadeCounts).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
-  let top = cidadeArr.slice(0,7);
-  const rest = cidadeArr.slice(7).reduce((s,g)=>s+g.value,0);
-  if(rest>0) top.push({label:"Outras", value:rest});
-  top.forEach((g,i)=> g.color = CATS[i % CATS.length]);
-  donut("donut-cidade","legend-cidade", top, null);
+  // (gráficos de rosca de Risco, Status de Coleta e Cidade removidos do Resumo Geral)
   renderRankLists(rows);
   renderSemColetaTable(rows);
   renderTable("table-desempenho", rows, TABLE_COLS, sortState);
@@ -1464,6 +1483,7 @@ wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResum
 wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("losses-toggle-top","losses-toggle-bottom","losses", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("semcoleta-toggle-top","semcoleta-toggle-bottom","semColeta", ()=> renderSemColetaTable(CURRENT_ROWS));
+wireExpandToggle("poscoleta-toggle-top","poscoleta-toggle-bottom","posColeta", ()=> renderRankLists(CURRENT_ROWS));
 // ==================== ABA SAME DAY (gráficos + ranking por agência) ====================
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
