@@ -373,3 +373,26 @@ table.data td.num, table.data th.num { text-align:right; }
   body.filtros-abertos .mobile-filter-btn { border-color:var(--brand); color:var(--brand); }
   .mobile-filter-btn span:not(:empty) { margin-left:6px; background:var(--brand); color:#fff; border-radius:20px; padding:1px 7px; font-size:11px; }
 }
+
+/* ===== Filtro de seleção múltipla ===== */
+.filter { position:relative; }
+.ms { position:relative; }
+.ms-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:6px; border:none; background:transparent;
+  padding:0; font-size:13px; color:var(--text-primary); cursor:pointer; font-family:inherit; text-align:left; }
+.ms-txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ms-seta { color:var(--text-muted); font-size:11px; }
+.ms.ativo .ms-txt { color:var(--brand); font-weight:700; }
+.ms-painel { display:none; position:absolute; left:-12px; top:calc(100% + 10px); z-index:70; min-width:240px; max-width:320px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:8px; }
+.ms.aberto .ms-painel { display:block; }
+.ms-busca { width:100%; padding:7px 9px; border:1px solid var(--border); border-radius:6px; background:var(--page); color:var(--text-primary);
+  font-size:13px; margin-bottom:6px; outline:none; font-family:inherit; }
+.ms-acoes { display:flex; justify-content:space-between; padding:2px 4px 6px; border-bottom:1px solid var(--grid); margin-bottom:4px; }
+.ms-acoes a { font-size:12px; color:var(--brand); font-weight:600; cursor:pointer; }
+.ms-lista { max-height:280px; overflow-y:auto; }
+.ms-op { display:flex; align-items:center; gap:8px; padding:6px 6px; border-radius:6px; font-size:13px; color:var(--text-primary); cursor:pointer; }
+.ms-op:hover { background:rgba(128,128,128,.08); }
+.ms-op input { width:16px; height:16px; accent-color:var(--brand); flex-shrink:0; }
+@media (max-width:820px){ .ms-painel { left:-12px; right:auto; min-width:min(280px, 85vw); } .ms-op { padding:9px 6px; font-size:15px; } }
+.filter label.ms-op { text-transform:none; letter-spacing:0; font-size:13px; color:var(--text-primary); margin:0; display:flex; }
+@media (max-width:820px){ .filter label.ms-op { font-size:15px; } }
