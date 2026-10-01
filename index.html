@@ -134,10 +134,13 @@
     <div class="section" id="sec-sameday">
       <div class="section-title">Same Day <span class="sd-sub" id="sd-subtitle">— carregando…</span></div>
       <div class="sd-toolbar">
-        <div class="filter sd-data"><label>Data</label><input type="date" id="sd-f-data"></div>
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="sd-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="sd-f-fim"></div>
         <div class="sd-seg" id="sd-periodo">
-          <button data-p="dia" class="active">Dia</button>
+          <button data-p="dia" class="active">Último dia</button>
           <button data-p="semana">Semana</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="mes">Mês</button>
         </div>
         <div class="filter"><label>Sub-regional</label><select id="sd-f-subreg" data-empty="Todas"></select></div>
         <div class="filter"><label>Station</label><select id="sd-f-station" data-empty="Todas"></select></div>
