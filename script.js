@@ -171,7 +171,8 @@ document.getElementById("refresh-btn").addEventListener("click", ()=> { loadData
 // SOMA(Outbound Same Day) / SOMA(Outbound) — ponderado por volume.
 let SD_MAP = null;      // { "1722": {outDia, sdDia, outSem, sdSem}, ... }
 let SD_INFO = null;     // { refDia, semana, dias }
-let SD_ROWS = [];       // uma linha por DOP (aba Same Day)
+let SD_ROWS = [];       // uma linha por DOP (aba Same Day — data escolhida no calendário)
+let SD_SEC_INFO = null; // { refDia, semana, dias, diasDisponiveis... } da aba Same Day
 let SD_TREND = [];      // dia × station × responsável (gráfico de evolução)
 function dopKey(v){ return String(v==null?"":v).replace(/\D/g,""); }
 function applySameDay(){
@@ -192,9 +193,7 @@ async function loadSameDay(){
     const map = {};
     if(json.cols && json.rows){
       // formato novo (v3): linhas compactas + colunas
-      SD_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
-      SD_TREND = (json.trend||[]).map(r=>{ const o={}; (json.trendCols||[]).forEach((c,i)=>o[c]=r[i]); return o; });
-      SD_ROWS.forEach(r=>{ map[dopKey(r.id)] = {outDia:r.outD, sdDia:r.sdD, outSem:r.outS, sdSem:r.sdS}; });
+      json.rows.forEach(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); map[dopKey(o.id)] = {outDia:o.outD, sdDia:o.sdD, outSem:o.outS, sdSem:o.sdS}; });
     } else {
       (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
     }
@@ -202,6 +201,9 @@ async function loadSameDay(){
     SD_INFO = { refDia: json.refDia, semana: json.semana, dias: json.dias || [] };
     applySameDay();
     if(DATA.length) renderAll();
+    // a aba Same Day abre no último dia; se a pessoa já escolheu outra data
+    // no calendário, mantém a escolha dela
+    if(!sdView.data){ sdAplicarDadosSecao(json); }
     sdInitFiltros();
     renderSameDaySection();
   } catch(err){
@@ -1438,7 +1440,7 @@ wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdR
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
 // as sub-regionais mesmo quando o topo do painel está filtrado.
-const sdView = { periodo:"dia", subreg:"", station:"", resp:"", busca:"", showAllStations:false, showAllRank:false,
+const sdView = { data:"", periodo:"dia", subreg:"", station:"", resp:"", busca:"", showAllStations:false, showAllRank:false,
   sort:{ key:"fora", dir:-1 } };
 const SD_RANK_PREVIEW = 25, SD_STATION_PREVIEW = 12;
 function esc(v){ return String(v==null?"":v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -1514,7 +1516,9 @@ const sdLimparBtn = document.getElementById("sd-limpar");
 if(sdLimparBtn) sdLimparBtn.addEventListener("click", ()=>{
   sdView.subreg=""; sdView.station=""; sdView.resp=""; sdView.busca="";
   const b=document.getElementById("sd-busca"); if(b) b.value="";
-  sdAtualizarFiltros(); sdSalvar(); renderSameDaySection();
+  sdAtualizarFiltros(); sdSalvar();
+  if(SD_SEC_INFO && SD_SEC_INFO.refDia!==SD_SEC_INFO.ultimoDia) sdCarregarData(SD_SEC_INFO.ultimoDia);
+  else renderSameDaySection();
 });
 const sdBuscaInput = document.getElementById("sd-busca");
 if(sdBuscaInput) sdBuscaInput.addEventListener("input", e=>{ sdView.busca = e.target.value.trim().toLowerCase(); sdView.showAllRank=false; renderSdRanking(); });
@@ -1571,7 +1575,7 @@ function sdTrend(){
   const el = document.getElementById("sd-chart-trend"); if(!el) return;
   const porDia = {};
   sdFiltrar(SD_TREND).forEach(t=>{ const o = porDia[t.dia] || (porDia[t.dia] = {out:0, sd:0}); o.out += t.out; o.sd += t.sd; });
-  const dias = ((SD_INFO && SD_INFO.dias && SD_INFO.dias.length) ? SD_INFO.dias : Object.keys(porDia).sort())
+  const dias = ((SD_SEC_INFO && SD_SEC_INFO.dias && SD_SEC_INFO.dias.length) ? SD_SEC_INFO.dias : Object.keys(porDia).sort())
     .filter(d=>porDia[d] && porDia[d].out>0);
   const hint = document.getElementById("sd-trend-hint");
   if(hint) hint.textContent = "últimos " + dias.length + " dias com coleta · " + sdEscopoTexto();
@@ -1623,9 +1627,58 @@ function sdEscopoTexto(){
   return p.length ? p.join(" · ") : "Regional 4";
 }
 function sdPeriodoTexto(){
-  if(!SD_INFO) return "";
-  return sdView.periodo==="dia" ? "dia " + fmtDiaBR(SD_INFO.refDia) : "semana " + SD_INFO.semana + " (até " + fmtDiaBR(SD_INFO.refDia) + ")";
+  const I = SD_SEC_INFO; if(!I) return "";
+  if(sdView.periodo==="dia") return "dia " + fmtDiaBR(I.refDia);
+  return "semana " + I.semana + (I.semanaIni ? " (" + fmtDiaBR(I.semanaIni) + " a " + fmtDiaBR(I.semanaFim) + ")" : "");
 }
+// ---- calendário ----
+// Transforma a resposta do Apps Script nos dados da aba
+function sdAplicarDadosSecao(json){
+  SD_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
+  SD_TREND = (json.trend||[]).map(r=>{ const o={}; (json.trendCols||[]).forEach((c,i)=>o[c]=r[i]); return o; });
+  SD_SEC_INFO = { refDia: json.refDia, ultimoDia: json.ultimoDia || json.refDia, semana: json.semana,
+    semanaIni: json.semanaIni, semanaFim: json.semanaFim, dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [] };
+  const inp = document.getElementById("sd-f-data");
+  if(inp){
+    const disp = SD_SEC_INFO.diasDisponiveis;
+    if(disp.length){ inp.min = disp[0]; inp.max = disp[disp.length-1]; }
+    inp.value = SD_SEC_INFO.refDia || "";
+  }
+}
+const SD_CACHE_DATAS = {};
+async function sdCarregarData(data){
+  const sub = document.getElementById("sd-subtitle");
+  const disp = (SD_SEC_INFO && SD_SEC_INFO.diasDisponiveis) || [];
+  // dia sem coleta (ex.: domingo/feriado) → usa o dia com coleta anterior mais próximo
+  let alvo = data;
+  if(disp.length && !disp.includes(alvo)){
+    const ant = disp.filter(d=>d<alvo);
+    alvo = ant.length ? ant[ant.length-1] : disp[0];
+  }
+  const ultimo = SD_SEC_INFO && SD_SEC_INFO.ultimoDia;
+  sdView.data = (alvo && alvo!==ultimo) ? alvo : "";
+  if(sub) sub.textContent = "— carregando " + fmtDiaBR(alvo) + "…";
+  try{
+    let json = SD_CACHE_DATAS[alvo];
+    if(!json){
+      const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+      json = await fetchViaIframe(API_URL + sep + "tipo=sameday&data=" + encodeURIComponent(alvo), 90000);
+      if(!json || !json.rows) throw new Error("resposta sem dados");
+      SD_CACHE_DATAS[alvo] = json;
+    }
+    sdAplicarDadosSecao(json);
+    sdView.showAllRank = false; sdView.showAllStations = false;
+    sdAtualizarFiltros();
+    renderSameDaySection();
+    if(alvo!==data && sub) sub.textContent += " (sem coleta em " + fmtDiaBR(data) + ", mostrando o dia anterior com coleta)";
+  } catch(err){
+    console.error("Same Day (data):", err);
+    if(sub) sub.textContent = "— não foi possível carregar " + fmtDiaBR(alvo) + " (" + err.message + ")";
+    const inp = document.getElementById("sd-f-data"); if(inp && SD_SEC_INFO) inp.value = SD_SEC_INFO.refDia;
+  }
+}
+const sdDataInput = document.getElementById("sd-f-data");
+if(sdDataInput) sdDataInput.addEventListener("change", e=>{ if(e.target.value) sdCarregarData(e.target.value); });
 
 // ---- ranking por agência ----
 // Mesmas colunas do "Ranking DOP" do Data Studio, + "Fora do SD"
@@ -1688,9 +1741,10 @@ function renderSdRanking(){
 }
 
 function renderSameDaySection(){
-  if(!SD_ROWS.length || !SD_INFO) return;
+  if(!SD_ROWS.length || !SD_SEC_INFO) return;
   const sub = document.getElementById("sd-subtitle");
-  if(sub) sub.textContent = "— " + sdPeriodoTexto() + " · " + sdEscopoTexto();
+  if(sub) sub.textContent = "— " + sdPeriodoTexto() + " · " + sdEscopoTexto()
+    + (SD_SEC_INFO.refDia!==SD_SEC_INFO.ultimoDia ? " · último dia disponível: " + fmtDiaBR(SD_SEC_INFO.ultimoDia) : "");
   // KPIs do escopo filtrado
   const t = sdTotais(sdFiltrar(SD_ROWS));
   renderKpis("sd-kpis", [
@@ -1728,6 +1782,34 @@ function renderSameDaySection(){
   sdTrend();
   renderSdRanking();
 }
+// ==================== BARRA DE ROLAGEM HORIZONTAL TAMBÉM EM CIMA ====================
+// Tabelas largas (ex.: Ranking por Agência) só tinham a barra de arrastar
+// embaixo — com muitas linhas era preciso rolar a página até o fim pra mover
+// pro lado. Aqui cada .table-wrap ganha uma barra "espelho" logo acima,
+// sincronizada com a de baixo. Ela só aparece quando a tabela não cabe.
+function addTopScroll(wrap){
+  if(wrap.dataset.topScroll) return;
+  wrap.dataset.topScroll = "1";
+  const top = document.createElement("div");
+  top.className = "top-scroll";
+  const inner = document.createElement("div");
+  top.appendChild(inner);
+  wrap.parentNode.insertBefore(top, wrap);
+  let sync = false;
+  top.addEventListener("scroll", ()=>{ if(sync){ sync=false; return; } sync=true; wrap.scrollLeft = top.scrollLeft; });
+  wrap.addEventListener("scroll", ()=>{ if(sync){ sync=false; return; } sync=true; top.scrollLeft = wrap.scrollLeft; });
+  const update = ()=>{
+    inner.style.width = wrap.scrollWidth + "px";
+    top.style.display = wrap.scrollWidth > wrap.clientWidth + 1 ? "block" : "none";
+    top.scrollLeft = wrap.scrollLeft;
+  };
+  update();
+  new MutationObserver(()=> requestAnimationFrame(update)).observe(wrap, {childList:true, subtree:true});
+  if(window.ResizeObserver) new ResizeObserver(()=> update()).observe(wrap);
+  // seções escondidas têm largura 0 — recalcula quando a aba é aberta
+  document.querySelectorAll(".nav-item").forEach(n=> n.addEventListener("click", ()=> setTimeout(update, 0)));
+}
+document.querySelectorAll(".table-wrap").forEach(addTopScroll);
 // theme
 const themeBtn = document.getElementById("theme-toggle");
 function applyTheme(t){
