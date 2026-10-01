@@ -29,7 +29,7 @@ let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risc
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
 let CURRENT_ROWS = [];
-const expandState = { alerts:false, fifoResumo:false, sdResumo:false };
+const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false };
 function wireExpandToggle(topId, bottomId, stateKey, onToggle){
   const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
   const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
@@ -1188,13 +1188,33 @@ function renderRankLists(rows){
   renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
   // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
   // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
-  const byLosses = [...rows].sort((a,b)=>b.perdasValor-a.perdasValor).slice(0,8);
+  // Só agências que de fato têm perda; mostra 8 e o resto no "Ver todas".
+  const byLossesAll = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).sort((a,b)=>b.perdasValor-a.perdasValor);
+  const byLosses = expandState.losses ? byLossesAll : byLossesAll.slice(0, 8);
+  // Total de Losses do filtro atual (Estação, Sub-Regional, Responsável...).
+  // Sem filtro = total geral.
+  const lossesTotalEl = document.getElementById("losses-total");
+  if(lossesTotalEl){
+    const qtdTot = rows.reduce((s,d)=>s+d.perdasQtd,0);
+    const valTot = rows.reduce((s,d)=>s+d.perdasValor,0);
+    const dopsTot = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).length;
+    const escopo = filters.estacao || filters.subreg || filters.resp || filters.cidade || "Total geral";
+    lossesTotalEl.innerHTML = `${esc(escopo)}: <b>${qtdTot.toLocaleString("pt-BR")}</b> ${qtdTot===1?"pacote":"pacotes"}`
+      + `<span class="sep">·</span><b>${valTot.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</b>`
+      + `<span class="sep">·</span>${dopsTot} ${dopsTot===1?"DOP":"DOPs"}`;
+  }
   document.getElementById("rank-losses").innerHTML = byLosses.map((d,i)=>rankRow(
     i, d,
     d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
     d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
     d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
   )).join("") || emptyRow();
+  const lossesBtn = document.getElementById("losses-toggle-bottom");
+  if(lossesBtn){
+    lossesBtn.style.display = (byLossesAll.length > 8 || expandState.losses) ? "" : "none";
+    lossesBtn.textContent = expandState.losses ? "− Mostrar só as 8 maiores" : "+ Ver todas as " + byLossesAll.length + " agências com perdas";
+    lossesBtn.classList.toggle("is-open", !!expandState.losses);
+  }
   const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
   document.getElementById("rank-coleta").innerHTML = byColeta.map((d,i)=>rankRow(i,d,d.horasSemColeta.toFixed(0)+"h", coletaClass(d.statusColeta))).join("") || emptyRow();
 }
@@ -1436,6 +1456,7 @@ document.querySelectorAll("[data-goto]").forEach(el=>{
 wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> renderAlerts(CURRENT_ROWS));
 wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
+wireExpandToggle("losses-toggle-top","losses-toggle-bottom","losses", ()=> renderRankLists(CURRENT_ROWS));
 // ==================== ABA SAME DAY (gráficos + ranking por agência) ====================
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
