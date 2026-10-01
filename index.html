@@ -21,6 +21,7 @@
     </div>
     <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
     <div class="nav-item" data-section="gestao"><span class="dot"></span>Minha Gestão<span class="nav-badge" id="nav-gestao-badge">0</span></div>
+    <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
     <div class="nav-item" data-section="rankings"><span class="dot"></span>Rankings</div>
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
@@ -87,7 +88,7 @@
           <div class="card-expand-btn" id="fifo-resumo-toggle-bottom">+ Ver ranking completo</div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">📉 Ranking — Pior % Same Day (semana)</div><div class="card-link" id="sameday-resumo-toggle-top">Ver ranking completo</div></div>
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior Same Day (semana)</div><div class="card-link" id="sameday-resumo-toggle-top">Ver ranking completo</div></div>
           <div id="rank-sameday-resumo"></div>
           <div class="card-expand-btn" id="sameday-resumo-toggle-bottom">+ Ver ranking completo</div>
         </div>
@@ -129,6 +130,46 @@
       </div>
     </div>
 
+    <!-- SAME DAY -->
+    <div class="section" id="sec-sameday">
+      <div class="section-title">Same Day <span class="sd-sub" id="sd-subtitle">— carregando…</span></div>
+      <div class="sd-toolbar">
+        <div class="sd-seg" id="sd-periodo">
+          <button data-p="dia" class="active">Dia</button>
+          <button data-p="semana">Semana</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="sd-f-subreg" data-empty="Todas"></select></div>
+        <div class="filter"><label>Station</label><select id="sd-f-station" data-empty="Todas"></select></div>
+        <div class="filter"><label>Responsável</label><select id="sd-f-resp" data-empty="Todos"></select></div>
+        <button class="theme-btn" id="sd-limpar">Limpar filtros</button>
+      </div>
+      <div class="kpi-grid" id="sd-kpis"></div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Same Day por Sub-regional</div><div class="sd-hint">clique numa barra para filtrar</div></div>
+          <div id="sd-chart-subreg" class="sd-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title" id="sd-station-title">Same Day por Station</div><div class="sd-hint">clique numa barra para filtrar</div></div>
+          <div id="sd-chart-station" class="sd-bars"></div>
+          <div class="card-expand-btn" id="sd-station-more" style="display:none"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">Evolução diária do Same Day</div><div class="sd-hint" id="sd-trend-hint"></div></div>
+        <div id="sd-chart-trend" class="sd-trend"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Ranking por Agência</div>
+          <div class="sd-hint">ordenado pelos pacotes que ficaram fora do Same Day · clique no cabeçalho para reordenar</div>
+        </div>
+        <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
+        <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
+        <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
     <!-- RANKINGS -->
     <div class="section" id="sec-rankings">
       <div class="section-title">Rankings</div>
@@ -138,7 +179,7 @@
           <div id="rank-fifo"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">Pior % Same Day (semana)</div></div>
+          <div class="card-head"><div class="card-title">Pior Same Day (semana)</div></div>
           <div id="rank-sameday"></div>
         </div>
       </div>
