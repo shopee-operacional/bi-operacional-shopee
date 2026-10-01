@@ -29,7 +29,7 @@ let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risc
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
 let CURRENT_ROWS = [];
-const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false };
+const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false, semColeta:false };
 function wireExpandToggle(topId, bottomId, stateKey, onToggle){
   const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
   const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
@@ -181,6 +181,7 @@ function applySameDay(){
     const m = SD_MAP[dopKey(d.dop)];
     d.sdOutDia = m ? m.outDia : 0; d.sdSdDia = m ? m.sdDia : 0;
     d.sdOutSem = m ? m.outSem : 0; d.sdSdSem = m ? m.sdSem : 0;
+    d.sdInbDia = m ? (m.inbDia||0) : 0; d.sdPosColDia = m ? (m.posColDia||0) : 0;
     d.sameDayFlag = d.sdOutDia ? d.sdSdDia / d.sdOutDia : 0;
     d.sameDaySemana = d.sdOutSem ? d.sdSdSem / d.sdOutSem : 0;
     d.temSameDay = d.sdOutSem > 0;
@@ -193,7 +194,7 @@ async function loadSameDay(){
     const map = {};
     if(json.cols && json.rows){
       // formato novo (v3): linhas compactas + colunas
-      json.rows.forEach(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); map[dopKey(o.id)] = {outDia:o.outD, sdDia:o.sdD, outSem:o.outS, sdSem:o.sdS}; });
+      json.rows.forEach(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); map[dopKey(o.id)] = {outDia:o.outD, sdDia:o.sdD, outSem:o.outS, sdSem:o.sdS, inbDia:o.inbD, posColDia:o.posColD}; });
     } else {
       (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
     }
@@ -1065,7 +1066,14 @@ function kpiCardsPrimary(rows){
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
-  ];
+  ].concat(SD_MAP && SD_INFO && SD_INFO.refDia ? (()=>{
+    // Pacotes que chegaram no DOP depois da última coleta do dia (ficam pro dia seguinte)
+    const pos = rows.reduce((s,d)=>s+(d.sdPosColDia||0),0);
+    const inb = rows.reduce((s,d)=>s+(d.sdInbDia||0),0);
+    const dops = rows.filter(d=>(d.sdPosColDia||0)>0).length;
+    return [{label:"Recebidos pós-coleta ("+fmtDiaBR(SD_INFO.refDia)+")", value: pos.toLocaleString("pt-BR"), icon:"📥",
+      cls: pos>0?"warn":"", sub: (inb? (pos/inb*100).toFixed(1).replace(".",",")+"% do inbound · " : "") + dops + " DOPs"}];
+  })() : []);
 }
 // Cards extras — indicadores próprios deste painel operacional (risco,
 // atrasados), que não existem no painel de agências.
@@ -1087,7 +1095,7 @@ function renderKpis(targetId, cards){
   cards.forEach(k=>{
     const div = document.createElement("div");
     div.className = "kpi"+(k.cls?" "+k.cls:"");
-    div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>`;
+    div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>` + (k.sub ? `<div class="kpi-delta">${k.sub}</div>` : "");
     el.appendChild(div);
   });
 }
@@ -1166,69 +1174,71 @@ function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
   }
 }
 function renderRankLists(rows){
-  const byFifo = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana).slice(0,8);
-  const fifoHtml = byFifo.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
-  document.getElementById("rank-fifo").innerHTML = fifoHtml;
-  const rankFifoResumo = document.getElementById("rank-fifo-resumo");
-  const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
-  if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
-  renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
+  // Tudo fica no Resumo Geral (a aba "Rankings" foi removida): preview curto
+  // e o "Ver ranking completo" abre a lista inteira.
+  const setHtml = (id, html)=>{ const el = document.getElementById(id); if(el) el.innerHTML = html; };
+  // FIFO
+  const byFifoAll = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana);
+  const fifoPreview = expandState.fifoResumo ? byFifoAll : byFifoAll.slice(0, RESUMO_PREVIEW_COUNT);
+  setHtml("rank-fifo-resumo", fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow());
+  renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifoAll.length>RESUMO_PREVIEW_COUNT);
   // Same Day: ranqueia pelos pacotes que ficaram FORA do Same Day na semana
   // (é o que mais derruba o % da sub-regional). Ordenar só pelo % deixava no
   // topo DOP com 3 pacotes e 0%, que quase não pesa no resultado.
   const sdBase = SD_MAP ? rows.filter(d=>d.temSameDay) : rows;
   const foraSD = d => SD_MAP ? (d.sdOutSem||0) - (d.sdSdSem||0) : -d.sameDaySemana;
-  const bySameDay = [...sdBase].sort((a,b)=>foraSD(b)-foraSD(a)).slice(0,8);
+  const bySameDayAll = [...sdBase].sort((a,b)=>foraSD(b)-foraSD(a));
   const sdExtra = d => SD_MAP ? foraSD(d).toLocaleString("pt-BR")+" fora do SD" : null;
-  const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow();
-  document.getElementById("rank-sameday").innerHTML = sdHtml;
-  const rankSdResumo = document.getElementById("rank-sameday-resumo");
-  const sdPreview = expandState.sdResumo ? bySameDay : bySameDay.slice(0, RESUMO_PREVIEW_COUNT);
-  if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow();
-  renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
-  // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
-  // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
-  // Só agências que de fato têm perda; mostra 8 e o resto no "Ver todas".
+  const sdPreview = expandState.sdResumo ? bySameDayAll : bySameDayAll.slice(0, RESUMO_PREVIEW_COUNT);
+  setHtml("rank-sameday-resumo", sdPreview.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow());
+  renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDayAll.length>RESUMO_PREVIEW_COUNT);
+  // Losses — ranqueia pelo valor perdido (R$); só agências com perda.
   const byLossesAll = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).sort((a,b)=>b.perdasValor-a.perdasValor);
   const byLosses = expandState.losses ? byLossesAll : byLossesAll.slice(0, 8);
-  // Total de Losses do filtro atual (Estação, Sub-Regional, Responsável...).
-  // Sem filtro = total geral.
+  // Total de Losses do filtro atual (Estação, Sub-Regional, Responsável...). Sem filtro = total geral.
   const lossesTotalEl = document.getElementById("losses-total");
   if(lossesTotalEl){
     const qtdTot = rows.reduce((s,d)=>s+d.perdasQtd,0);
     const valTot = rows.reduce((s,d)=>s+d.perdasValor,0);
-    const dopsTot = rows.filter(d=>d.perdasQtd>0 || d.perdasValor>0).length;
     const escopo = filters.estacao || filters.subreg || filters.resp || filters.cidade || "Total geral";
     lossesTotalEl.innerHTML = `${esc(escopo)}: <b>${qtdTot.toLocaleString("pt-BR")}</b> ${qtdTot===1?"pacote":"pacotes"}`
       + `<span class="sep">·</span><b>${valTot.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</b>`
-      + `<span class="sep">·</span>${dopsTot} ${dopsTot===1?"DOP":"DOPs"}`;
+      + `<span class="sep">·</span>${byLossesAll.length} ${byLossesAll.length===1?"DOP":"DOPs"}`;
   }
-  document.getElementById("rank-losses").innerHTML = byLosses.map((d,i)=>rankRow(
+  setHtml("rank-losses", byLosses.map((d,i)=>rankRow(
     i, d,
     d.perdasValor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}),
     d.perdasValor>=1000?"critical":d.perdasValor>0?"warning":"good",
     d.perdasQtd.toLocaleString("pt-BR") + (d.perdasQtd===1?" pacote":" pacotes")
-  )).join("") || emptyRow();
+  )).join("") || emptyRow());
   const lossesBtn = document.getElementById("losses-toggle-bottom");
   if(lossesBtn){
     lossesBtn.style.display = (byLossesAll.length > 8 || expandState.losses) ? "" : "none";
     lossesBtn.textContent = expandState.losses ? "− Mostrar só as 8 maiores" : "+ Ver todas as " + byLossesAll.length + " agências com perdas";
     lossesBtn.classList.toggle("is-open", !!expandState.losses);
   }
-  const byColeta = [...rows].sort((a,b)=>b.horasSemColeta-a.horasSemColeta).slice(0,8);
-  document.getElementById("rank-coleta").innerHTML = byColeta.map((d,i)=>rankRow(i,d,d.horasSemColeta.toFixed(0)+"h", coletaClass(d.statusColeta))).join("") || emptyRow();
 }
 // Tabela "Dops sem coleta há mais tempo" — mesma lógica do painel de agências.
 const SEM_COLETA_COLS = [
   {k:"agencia", l:"Agência"}, {k:"dop", l:"DOP"},
   {k:"ultimaColetaFmt", l:"Última Coleta"}, {k:"agingSemColeta", l:"Dias Sem Coleta"},
-  {k:"backlogOps", l:"Backlog"}
+  {k:"horasSemColeta", l:"Horas Sem Coleta"}, {k:"backlogOps", l:"Backlog"}
 ];
 function renderSemColetaTable(rows){
-  const withAging = rows.filter(d=>d.agingSemColeta > 0)
-    .sort((a,b)=>b.agingSemColeta-a.agingSemColeta)
-    .slice(0,8)
+  // Junta o antigo "Mais horas sem coleta" (aba Rankings) com esta tabela:
+  // ordena por dias sem coleta e, no empate, por horas.
+  const allAging = rows.filter(d=>d.agingSemColeta > 0 || d.horasSemColeta >= 24)
+    .sort((a,b)=>(b.agingSemColeta-a.agingSemColeta) || (b.horasSemColeta-a.horasSemColeta));
+  const withAging = (expandState.semColeta ? allAging : allAging.slice(0,8))
     .map(d=> Object.assign({}, d, { ultimaColetaFmt: fmtDate(d.ultimaColeta) }));
+  const totEl = document.getElementById("semcoleta-total");
+  if(totEl) totEl.innerHTML = allAging.length ? `<b>${allAging.length}</b> ${allAging.length===1?"DOP":"DOPs"} sem coleta` : "";
+  const scBtn = document.getElementById("semcoleta-toggle-bottom");
+  if(scBtn){
+    scBtn.style.display = (allAging.length > 8 || expandState.semColeta) ? "" : "none";
+    scBtn.textContent = expandState.semColeta ? "− Mostrar só os 8 primeiros" : "+ Ver todos os " + allAging.length + " DOPs sem coleta";
+    scBtn.classList.toggle("is-open", !!expandState.semColeta);
+  }
   const el = document.getElementById("table-sem-coleta");
   if(!el) return;
   // NUNCA usar el.parentElement.innerHTML aqui — isso apaga o próprio elemento
@@ -1248,6 +1258,7 @@ function renderSemColetaTable(rows){
       let v = d[c.k];
       if(c.k==="dop") return `<td class="dop-strong">${v}</td>`;
       if(c.k==="agingSemColeta") return `<td><span class="badge ${v>=3?'critical':v>=2?'warning':'warning'}"><span class="ic"></span>${v} dia(s)</span></td>`;
+      if(c.k==="horasSemColeta") return `<td>${(v||0).toFixed(0)}h</td>`;
       if(typeof v==="number") v = v.toLocaleString("pt-BR",{maximumFractionDigits:1});
       return `<td>${v}</td>`;
     }).join("")+"</tr>";
@@ -1416,12 +1427,7 @@ function renderAll(){
   renderSemColetaTable(rows);
   renderTable("table-desempenho", rows, TABLE_COLS, sortState);
   renderTable("table-base", rows, BASE_COLS, baseSortState);
-  // Minha Gestão
-  const gestaoRows = filters.gestaoResp ? rows.filter(d=>d.resp===filters.gestaoResp) : rows;
-  document.getElementById("nav-gestao-badge").textContent = filters.gestaoResp ? gestaoRows.length : rows.length;
-  renderKpis("kpi-grid-gestao", kpiCardsPrimary(gestaoRows).concat(kpiCardsSecondary(gestaoRows)));
-  renderTable("table-gestao", gestaoRows, TABLE_COLS, gestaoSortState);
-  renderGestaoPills();
+  // (aba "Minha Gestão" removida — o filtro "Responsável" do topo faz o mesmo em todas as abas)
   const dates = rows.map(d=>d.data).filter(Boolean).sort();
   const last = dates[dates.length-1];
   document.getElementById("update-chip").title = "Última linha atualizada na planilha: " + (last ? fmtDate(last) : "—");
@@ -1457,6 +1463,7 @@ wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> rende
 wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("losses-toggle-top","losses-toggle-bottom","losses", ()=> renderRankLists(CURRENT_ROWS));
+wireExpandToggle("semcoleta-toggle-top","semcoleta-toggle-bottom","semColeta", ()=> renderSemColetaTable(CURRENT_ROWS));
 // ==================== ABA SAME DAY (gráficos + ranking por agência) ====================
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
@@ -1564,6 +1571,7 @@ function sdTipHtml(titulo, o, opts){
     <div class="r">Pickup <b>${sdNum(o.out)}</b></div>
     <div class="r">Pickup Same Day <b>${sdNum(o.sd)}</b></div>
     <div class="r">Fora do Same Day <b>${sdNum(o.out-o.sd)}</b></div>
+    ${opts.semNext ? "" : `<div class="r">Recebidos pós-coleta <b>${sdNum(o.posCol)}</b></div>`}
     ${opts.semNext ? "" : `<div class="r">Next day <b>${sdNum(o.next)}</b></div>`}
     ${o.dops!=null && !opts.semDops ? `<div class="r">DOPs <b>${sdNum(o.dops)}</b></div>` : ""}`;
 }
@@ -1807,12 +1815,13 @@ function renderSameDaySection(){
   // KPIs do escopo filtrado
   const t = sdTotais(sdFiltrar(SD_ROWS));
   renderKpis("sd-kpis", [
-    {label:"% Same Day", value: sdPct(t.pct), icon:"⚡", cls: t.pct<0.85?"crit":(t.pct<0.95?"warn":"")},
+    {label:"% Same Day", value: sdPct(t.pct), icon:"⚡", cls: t.pct<0.85?"crit":(t.pct<0.95?"warn":""), sub: sdNum(t.dops) + " DOPs com pickup"},
     {label:"Pickup", value: sdNum(t.out), icon:"⬆"},
     {label:"Pickup Same Day", value: sdNum(t.sd), icon:"✅"},
     {label:"Fora do Same Day", value: sdNum(t.out-t.sd), icon:"⏳"},
     {label:"Next day", value: sdNum(t.next), icon:"📦"},
-    {label:"DOPs com pickup", value: sdNum(t.dops), icon:"🏪"},
+    {label:"Recebidos pós-coleta", value: sdNum(t.posCol), icon:"📥", cls: t.posCol>0?"warn":"",
+      sub: (t.inb ? (t.posCol/t.inb*100).toFixed(1).replace(".",",") + "% do inbound · " : "") + sdNum(sdFiltrar(SD_ROWS).filter(r=>sdVal(r,"posCol")>0).length) + " DOPs"},
   ]);
   // Sub-regional: sempre mostra todas (só respeita o filtro de responsável)
   const baseReg = sdFiltrar(SD_ROWS,["subreg","station"]);
@@ -1869,6 +1878,34 @@ function addTopScroll(wrap){
   document.querySelectorAll(".nav-item").forEach(n=> n.addEventListener("click", ()=> setTimeout(update, 0)));
 }
 document.querySelectorAll(".table-wrap").forEach(addTopScroll);
+// ==================== CELULAR: menu gaveta + app instalável (PWA) ====================
+(function(){
+  const abrir = ()=> document.body.classList.add("menu-aberto");
+  const fechar = ()=> document.body.classList.remove("menu-aberto");
+  const btn = document.getElementById("mobile-menu-btn");
+  const fundo = document.getElementById("sidebar-backdrop");
+  if(btn) btn.addEventListener("click", ()=> document.body.classList.contains("menu-aberto") ? fechar() : abrir());
+  if(fundo) fundo.addEventListener("click", fechar);
+  const titulo = document.getElementById("mobile-section-name");
+  document.querySelectorAll(".nav-item").forEach(n=> n.addEventListener("click", ()=>{
+    fechar();
+    if(titulo) titulo.textContent = (n.childNodes[1] && n.childNodes[1].textContent || n.textContent).trim();
+    window.scrollTo({top:0});
+  }));
+  const fbtn = document.getElementById("mobile-filter-btn");
+  if(fbtn) fbtn.addEventListener("click", ()=> document.body.classList.toggle("filtros-abertos"));
+  // mostra no botão quantos filtros gerais estão ativos
+  const contar = ()=>{
+    const n = ["resp","subreg","cidade","estacao","statuscoleta","risco"].filter(k=>{ const el=document.getElementById("f-"+k); return el && el.value; }).length;
+    const c = document.getElementById("mobile-filter-count"); if(c) c.textContent = n ? String(n) : "";
+  };
+  ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{ const el=document.getElementById("f-"+k); if(el) el.addEventListener("change", contar); });
+  const ref = document.getElementById("mobile-refresh-btn");
+  if(ref) ref.addEventListener("click", ()=>{ const r = document.getElementById("refresh-btn"); if(r) r.click(); });
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", ()=> navigator.serviceWorker.register("sw.js").catch(e=>console.warn("SW:", e)));
+  }
+})();
 // theme
 const themeBtn = document.getElementById("theme-toggle");
 function applyTheme(t){
