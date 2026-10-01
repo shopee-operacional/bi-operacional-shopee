@@ -87,12 +87,10 @@
           <div id="alerts-list"></div>
           <div class="card-expand-btn" id="alerts-toggle-bottom">+ Ver todas as alertas</div>
         </div>
-        <div class="card">
-          <div class="card-head"><div class="card-title">◓ Distribuição por Risco Operacional</div></div>
-          <div class="donut-wrap">
-            <svg id="donut-risco" width="150" height="150" viewBox="0 0 150 150"></svg>
-            <div class="legend" id="legend-risco"></div>
-          </div>
+        <div class="card" id="card-poscoleta">
+          <div class="card-head"><div class="card-title">📥 Recebidos pós-coleta por DOP</div><div class="losses-total" id="poscoleta-total"></div></div>
+          <div id="rank-poscoleta"></div>
+          <div class="card-expand-btn" id="poscoleta-toggle-bottom" style="display:none"></div>
         </div>
       </div>
 
@@ -119,23 +117,6 @@
           <div class="card-head"><div class="card-title">🚚 Dops sem coleta há mais tempo</div><div class="losses-total" id="semcoleta-total"></div></div>
           <div class="table-wrap"><table class="data" id="table-sem-coleta"></table></div>
           <div class="card-expand-btn" id="semcoleta-toggle-bottom" style="display:none"></div>
-        </div>
-      </div>
-
-      <div class="grid2">
-        <div class="card">
-          <div class="card-head"><div class="card-title">🏙 Distribuição por Cidade</div></div>
-          <div class="donut-wrap">
-            <svg id="donut-cidade" width="150" height="150" viewBox="0 0 150 150"></svg>
-            <div class="legend" id="legend-cidade"></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div class="card-title">🚛 Distribuição por Status de Coleta</div></div>
-          <div class="donut-wrap">
-            <svg id="donut-coleta" width="150" height="150" viewBox="0 0 150 150"></svg>
-            <div class="legend" id="legend-coleta"></div>
-          </div>
         </div>
       </div>
     </div>
