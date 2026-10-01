@@ -2,6 +2,7 @@ const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3a
 function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
 function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
 function pct0(v){ return (num(v)*100).toFixed(0)+"%"; }
+function pct1(v){ return (num(v)*100).toFixed(1).replace(".",",")+"%"; }
 function riskClass(r){
   if(!r) return "warning";
   r = r.toUpperCase();
@@ -146,6 +147,7 @@ async function loadData(showOverlay){
     const json = await fetchViaIframe(API_URL, 20000);
     const rows = Array.isArray(json) ? json : (json.rows || []);
     DATA = normalizeRows(rows);
+    applySameDay();
     banner.style.display = "none";
     populateFilters();
     renderAll();
@@ -161,7 +163,50 @@ async function loadData(showOverlay){
     overlay.style.display = "none";
   }
 }
-document.getElementById("refresh-btn").addEventListener("click", ()=> loadData(true));
+document.getElementById("refresh-btn").addEventListener("click", ()=> { loadData(true); loadSameDay(); });
+// ==================== SAME DAY (base "Backup:PUDO | Relatórios OPS") ====================
+// O % Same Day da BASE_TRATADA não batia com o Data Studio "Daily OPS".
+// Agora vem da mesma base do Data Studio (aba "PUDO | OPS Reg4"), via
+// ?tipo=sameday no Apps Script (SameDay.gs). Regra igual ao Data Studio:
+// SOMA(Outbound Same Day) / SOMA(Outbound) — ponderado por volume.
+let SD_MAP = null;      // { "1722": {outDia, sdDia, outSem, sdSem}, ... }
+let SD_INFO = null;     // { refDia, semana }
+function dopKey(v){ return String(v==null?"":v).replace(/\D/g,""); }
+function applySameDay(){
+  if(!SD_MAP) return;
+  DATA.forEach(d=>{
+    const m = SD_MAP[dopKey(d.dop)];
+    d.sdOutDia = m ? m.outDia : 0; d.sdSdDia = m ? m.sdDia : 0;
+    d.sdOutSem = m ? m.outSem : 0; d.sdSdSem = m ? m.sdSem : 0;
+    d.sameDayFlag = d.sdOutDia ? d.sdSdDia / d.sdOutDia : 0;
+    d.sameDaySemana = d.sdOutSem ? d.sdSdSem / d.sdOutSem : 0;
+    d.temSameDay = d.sdOutSem > 0;
+  });
+}
+async function loadSameDay(){
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=sameday", 90000);
+    const map = {};
+    (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
+    SD_MAP = map;
+    SD_INFO = { refDia: json.refDia, semana: json.semana };
+    applySameDay();
+    if(DATA.length) renderAll();
+  } catch(err){
+    console.error("Same Day:", err);
+  }
+}
+// Soma ponderada (igual Data Studio) para um conjunto de DOPs
+function sameDayPonderado(rows, tipo){
+  let o=0, s=0;
+  rows.forEach(d=>{
+    if(tipo==="dia"){ o+=d.sdOutDia||0; s+=d.sdSdDia||0; }
+    else { o+=d.sdOutSem||0; s+=d.sdSdSem||0; }
+  });
+  return o ? s/o : 0;
+}
+function fmtDiaBR(iso){ if(!iso) return ""; const p=String(iso).split("-"); return p[2]+"/"+p[1]; }
 // ==================== HISTÓRICO — INBOUND PÓS-FECHAMENTO ====================
 // Carregado sob demanda (só quando a aba "Histórico Pós-Fechamento" é aberta
 // pela primeira vez), pra não pesar a busca automática de 5 em 5 minutos.
@@ -985,11 +1030,15 @@ function kpiCardsPrimary(rows){
   const backlogTotal = rows.reduce((s,d)=>s+d.backlogOps,0);
   const semColetaHoje = rows.filter(d=>!d.statusColeta.toUpperCase().includes("COLETOU")).length;
   const fifoMedio = rows.length? rows.reduce((s,d)=>s+d.fifoSemana,0)/rows.length : 0;
-  const sdMedio = rows.length? rows.reduce((s,d)=>s+d.sameDaySemana,0)/rows.length : 0;
+  const sdMedio = SD_MAP ? sameDayPonderado(rows,"semana")
+    : (rows.length? rows.reduce((s,d)=>s+d.sameDaySemana,0)/rows.length : 0);
   // "Hoje" usa os mesmos flags do dia (FIFO HOJE / SAME DAY) já usados no
   // Detalhe da Agência — aqui só agregamos a média entre as agências.
   const fifoHojeMedio = rows.length? rows.reduce((s,d)=>s+d.fifoHojeFlag,0)/rows.length : 0;
-  const sdHojeMedio = rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0;
+  const sdHojeMedio = SD_MAP ? sameDayPonderado(rows,"dia")
+    : (rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0);
+  const sdLabelSem = SD_MAP && SD_INFO && SD_INFO.semana ? "% Same Day (semana "+SD_INFO.semana+")" : "% Same Day Médio (semana)";
+  const sdLabelDia = SD_MAP && SD_INFO && SD_INFO.refDia ? "% Same Day ("+fmtDiaBR(SD_INFO.refDia)+")" : "% Same Day Médio (hoje)";
   const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
   const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
   return [
@@ -997,8 +1046,8 @@ function kpiCardsPrimary(rows){
     {label:"Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label:"% FIFO Médio (semana)", value: pct0(fifoMedio), icon:"📈"},
     {label:"% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
-    {label:"% Same Day Médio (semana)", value: pct0(sdMedio), icon:"⚡"},
-    {label:"% Same Day Médio (hoje)", value: pct0(sdHojeMedio), icon:"📅"},
+    {label: sdLabelSem, value: SD_MAP ? pct1(sdMedio) : pct0(sdMedio), icon:"⚡"},
+    {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
   ];
@@ -1109,7 +1158,9 @@ function renderRankLists(rows){
   const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
   if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
   renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
-  const bySameDay = [...rows].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
+  // DOPs sem outbound na semana ficam de fora (senão aparecem com 0% no topo)
+  const sdBase = SD_MAP ? rows.filter(d=>d.temSameDay) : rows;
+  const bySameDay = [...sdBase].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
   const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
   document.getElementById("rank-sameday").innerHTML = sdHtml;
   const rankSdResumo = document.getElementById("rank-sameday-resumo");
@@ -1375,4 +1426,6 @@ let currentTheme = "light";
 themeBtn.addEventListener("click", ()=>{ currentTheme = currentTheme==="dark"?"light":"dark"; applyTheme(currentTheme); });
 applyTheme(currentTheme);
 loadData(true);
+loadSameDay();
 setInterval(()=> loadData(false), REFRESH_INTERVAL_MS);
+setInterval(()=> loadSameDay(), 30 * 60 * 1000); // base de Same Day muda pouco ao longo do dia
