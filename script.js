@@ -24,7 +24,9 @@ function coletaClass(s){
 const API_URL = "https://script.google.com/a/macros/shopee.com/s/AKfycbyAlO5tzyNj2xxOjZDRkT8GNov5h9HwEjaRHOvPypVwYkymldkqCXbY15lSIduc1UNTNQ/exec";
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
 let DATA = [];
-let filters = { resp:"", subreg:"", cidade:"", estacao:"", statuscoleta:"", risco:"" };
+// Filtros do topo aceitam VÁRIOS valores (lista vazia = Todos)
+let filters = { resp:[], subreg:[], cidade:[], estacao:[], statuscoleta:[], risco:[] };
+const FILTROS_TOPO = ["resp","subreg","cidade","estacao","statuscoleta","risco"];
 // Estado de expansão dos cards "ver todas / ver ranking completo" do Resumo
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
@@ -72,13 +74,73 @@ function populateFilters(){
   populateSelect("f-estacao", uniq("estacao"));
   populateSelect("f-statuscoleta", uniq("statusColeta"));
   populateSelect("f-risco", uniq("risco"));
-  ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
-    if(!document.getElementById("f-"+k).value) filters[k] = "";
+  const campos = { resp:"resp", subreg:"subreg", cidade:"cidade", estacao:"estacao", statuscoleta:"statusColeta", risco:"risco" };
+  FILTROS_TOPO.forEach(k=>{
+    const valores = uniq(campos[k]);
+    filters[k] = filters[k].filter(v=>valores.includes(v)); // tira o que não existe mais
+    msRender(k, valores);
   });
 }
-["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{
-  document.getElementById("f-"+k).addEventListener("change", e=>{ filters[k]=e.target.value; renderAll(); });
-});
+// ---------- Filtro com seleção múltipla (caixinhas) ----------
+// Substitui visualmente cada <select id="f-..."> por um botão que abre uma
+// lista com caixinhas. Dá pra marcar 1, vários ou nenhum (= Todos).
+function msTexto(k){
+  const sel = document.getElementById("f-"+k);
+  const vazio = (k==="cidade" || k==="estacao") ? "Todas" : "Todos";
+  const v = filters[k];
+  if(!v.length) return vazio;
+  if(v.length===1) return v[0];
+  return v.length + " selecionados";
+}
+function msRender(k, valores){
+  const sel = document.getElementById("f-"+k); if(!sel) return;
+  sel.style.display = "none";
+  let box = document.getElementById("ms-"+k);
+  if(!box){
+    box = document.createElement("div");
+    box.className = "ms"; box.id = "ms-"+k;
+    box.innerHTML = `<button type="button" class="ms-btn"><span class="ms-txt"></span><span class="ms-seta">▾</span></button><div class="ms-painel"></div>`;
+    sel.parentNode.insertBefore(box, sel.nextSibling);
+    box.querySelector(".ms-btn").addEventListener("click", ev=>{
+      ev.stopPropagation();
+      const aberto = box.classList.contains("aberto");
+      document.querySelectorAll(".ms.aberto").forEach(m=>m.classList.remove("aberto"));
+      if(!aberto){ box.classList.add("aberto"); const b = box.querySelector(".ms-busca"); if(b) b.focus(); }
+    });
+    box.querySelector(".ms-painel").addEventListener("click", ev=> ev.stopPropagation());
+  }
+  box.dataset.valores = JSON.stringify(valores);
+  const painel = box.querySelector(".ms-painel");
+  const busca = valores.length > 8 ? `<input class="ms-busca" placeholder="Buscar…">` : "";
+  painel.innerHTML = `${busca}
+    <div class="ms-acoes"><a data-a="todos">Marcar todos</a><a data-a="limpar">Limpar</a></div>
+    <div class="ms-lista">${valores.map(v=>`<label class="ms-op"><input type="checkbox" value="${esc(v)}" ${filters[k].includes(v)?"checked":""}><span>${esc(v)}</span></label>`).join("")}</div>`;
+  painel.querySelectorAll(".ms-op input").forEach(cb=> cb.addEventListener("change", ()=>{
+    filters[k] = [...painel.querySelectorAll(".ms-op input:checked")].map(c=>c.value);
+    msAtualizar(k); renderAll();
+  }));
+  painel.querySelectorAll(".ms-acoes a").forEach(a=> a.addEventListener("click", ()=>{
+    // "Marcar todos" marca só os visíveis (respeita a busca)
+    const vis = [...painel.querySelectorAll(".ms-op")].filter(o=>o.style.display!=="none").map(o=>o.querySelector("input"));
+    if(a.dataset.a==="todos") vis.forEach(c=>c.checked=true); else painel.querySelectorAll(".ms-op input").forEach(c=>c.checked=false);
+    filters[k] = [...painel.querySelectorAll(".ms-op input:checked")].map(c=>c.value);
+    msAtualizar(k); renderAll();
+  }));
+  const b = painel.querySelector(".ms-busca");
+  if(b) b.addEventListener("input", ()=>{
+    const q = b.value.trim().toLowerCase();
+    painel.querySelectorAll(".ms-op").forEach(o=> o.style.display = o.textContent.toLowerCase().includes(q) ? "" : "none");
+  });
+  msAtualizar(k);
+}
+function msAtualizar(k){
+  const box = document.getElementById("ms-"+k); if(!box) return;
+  box.querySelector(".ms-txt").textContent = msTexto(k);
+  box.classList.toggle("ativo", filters[k].length>0);
+  box.title = filters[k].join(", ");
+  document.dispatchEvent(new CustomEvent("filtros-mudaram"));
+}
+document.addEventListener("click", ()=> document.querySelectorAll(".ms.aberto").forEach(m=>m.classList.remove("aberto")));
 function setLiveStatus(ok, message){
   const dot = document.getElementById("live-dot");
   const chip = document.getElementById("update-chip");
@@ -1024,12 +1086,12 @@ const nfRefreshBtn = document.getElementById("nf-refresh");
 if(nfRefreshBtn) nfRefreshBtn.addEventListener("click", ()=> loadNotasFiscais());
 function filtered(){
   return DATA.filter(d =>
-    (!filters.resp || d.resp===filters.resp) &&
-    (!filters.subreg || d.subreg===filters.subreg) &&
-    (!filters.cidade || d.cidade===filters.cidade) &&
-    (!filters.estacao || d.estacao===filters.estacao) &&
-    (!filters.statuscoleta || d.statusColeta===filters.statuscoleta) &&
-    (!filters.risco || d.risco===filters.risco)
+    (!filters.resp.length || filters.resp.includes(d.resp)) &&
+    (!filters.subreg.length || filters.subreg.includes(d.subreg)) &&
+    (!filters.cidade.length || filters.cidade.includes(d.cidade)) &&
+    (!filters.estacao.length || filters.estacao.includes(d.estacao)) &&
+    (!filters.statuscoleta.length || filters.statuscoleta.includes(d.statusColeta)) &&
+    (!filters.risco.length || filters.risco.includes(d.risco))
   );
 }
 function alertIndicador(d){
@@ -1207,7 +1269,8 @@ function renderRankLists(rows){
   if(lossesTotalEl){
     const qtdTot = rows.reduce((s,d)=>s+d.perdasQtd,0);
     const valTot = rows.reduce((s,d)=>s+d.perdasValor,0);
-    const escopo = filters.estacao || filters.subreg || filters.resp || filters.cidade || "Total geral";
+    const escopoLista = [filters.estacao, filters.subreg, filters.resp, filters.cidade].find(l=>l.length);
+    const escopo = !escopoLista ? "Total geral" : (escopoLista.length===1 ? escopoLista[0] : escopoLista.length + " selecionados");
     lossesTotalEl.innerHTML = `${esc(escopo)}: <b>${qtdTot.toLocaleString("pt-BR")}</b> ${qtdTot===1?"pacote":"pacotes"}`
       + `<span class="sep">·</span><b>${valTot.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</b>`
       + `<span class="sep">·</span>${byLossesAll.length} ${byLossesAll.length===1?"DOP":"DOPs"}`;
@@ -1916,10 +1979,10 @@ document.querySelectorAll(".table-wrap").forEach(addTopScroll);
   if(fbtn) fbtn.addEventListener("click", ()=> document.body.classList.toggle("filtros-abertos"));
   // mostra no botão quantos filtros gerais estão ativos
   const contar = ()=>{
-    const n = ["resp","subreg","cidade","estacao","statuscoleta","risco"].filter(k=>{ const el=document.getElementById("f-"+k); return el && el.value; }).length;
+    const n = FILTROS_TOPO.filter(k=> filters[k].length).length;
     const c = document.getElementById("mobile-filter-count"); if(c) c.textContent = n ? String(n) : "";
   };
-  ["resp","subreg","cidade","estacao","statuscoleta","risco"].forEach(k=>{ const el=document.getElementById("f-"+k); if(el) el.addEventListener("change", contar); });
+  document.addEventListener("filtros-mudaram", contar);
   const ref = document.getElementById("mobile-refresh-btn");
   if(ref) ref.addEventListener("click", ()=>{ const r = document.getElementById("refresh-btn"); if(r) r.click(); });
   if("serviceWorker" in navigator){
