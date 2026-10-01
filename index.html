@@ -107,17 +107,17 @@
         </div>
       </div>
 
-      <div class="grid2">
-        <div class="card">
-          <div class="card-head"><div class="card-title">💸 Maiores Ofensores — Losses</div><div class="losses-total" id="losses-total"></div></div>
-          <div id="rank-losses"></div>
-          <div class="card-expand-btn" id="losses-toggle-bottom" style="display:none"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div class="card-title">🚚 Dops sem coleta há mais tempo</div><div class="losses-total" id="semcoleta-total"></div></div>
-          <div class="table-wrap"><table class="data" id="table-sem-coleta"></table></div>
-          <div class="card-expand-btn" id="semcoleta-toggle-bottom" style="display:none"></div>
-        </div>
+      <!-- Sem coleta e Losses em linha inteira, um embaixo do outro -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">🚚 Dops sem coleta há mais tempo</div><div class="losses-total" id="semcoleta-total"></div></div>
+        <div class="table-wrap"><table class="data" id="table-sem-coleta"></table></div>
+        <div class="card-expand-btn" id="semcoleta-toggle-bottom" style="display:none"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">💸 Maiores Ofensores — Losses</div><div class="losses-total" id="losses-total"></div></div>
+        <div id="rank-losses"></div>
+        <div class="card-expand-btn" id="losses-toggle-bottom" style="display:none"></div>
       </div>
     </div>
 
