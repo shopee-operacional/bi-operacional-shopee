@@ -170,7 +170,9 @@ document.getElementById("refresh-btn").addEventListener("click", ()=> { loadData
 // ?tipo=sameday no Apps Script (SameDay.gs). Regra igual ao Data Studio:
 // SOMA(Outbound Same Day) / SOMA(Outbound) — ponderado por volume.
 let SD_MAP = null;      // { "1722": {outDia, sdDia, outSem, sdSem}, ... }
-let SD_INFO = null;     // { refDia, semana }
+let SD_INFO = null;     // { refDia, semana, dias }
+let SD_ROWS = [];       // uma linha por DOP (aba Same Day)
+let SD_TREND = [];      // dia × station × responsável (gráfico de evolução)
 function dopKey(v){ return String(v==null?"":v).replace(/\D/g,""); }
 function applySameDay(){
   if(!SD_MAP) return;
@@ -188,13 +190,24 @@ async function loadSameDay(){
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     const json = await fetchViaIframe(API_URL + sep + "tipo=sameday", 90000);
     const map = {};
-    (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
+    if(json.cols && json.rows){
+      // formato novo (v3): linhas compactas + colunas
+      SD_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
+      SD_TREND = (json.trend||[]).map(r=>{ const o={}; (json.trendCols||[]).forEach((c,i)=>o[c]=r[i]); return o; });
+      SD_ROWS.forEach(r=>{ map[dopKey(r.id)] = {outDia:r.outD, sdDia:r.sdD, outSem:r.outS, sdSem:r.sdS}; });
+    } else {
+      (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
+    }
     SD_MAP = map;
-    SD_INFO = { refDia: json.refDia, semana: json.semana };
+    SD_INFO = { refDia: json.refDia, semana: json.semana, dias: json.dias || [] };
     applySameDay();
     if(DATA.length) renderAll();
+    sdInitFiltros();
+    renderSameDaySection();
   } catch(err){
     console.error("Same Day:", err);
+    const sub = document.getElementById("sd-subtitle");
+    if(sub) sub.textContent = "— não foi possível carregar agora (" + err.message + ")";
   }
 }
 // Soma ponderada (igual Data Studio) para um conjunto de DOPs
@@ -1158,14 +1171,18 @@ function renderRankLists(rows){
   const fifoPreview = expandState.fifoResumo ? byFifo : byFifo.slice(0, RESUMO_PREVIEW_COUNT);
   if(rankFifoResumo) rankFifoResumo.innerHTML = fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow();
   renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifo.length>RESUMO_PREVIEW_COUNT);
-  // DOPs sem outbound na semana ficam de fora (senão aparecem com 0% no topo)
+  // Same Day: ranqueia pelos pacotes que ficaram FORA do Same Day na semana
+  // (é o que mais derruba o % da sub-regional). Ordenar só pelo % deixava no
+  // topo DOP com 3 pacotes e 0%, que quase não pesa no resultado.
   const sdBase = SD_MAP ? rows.filter(d=>d.temSameDay) : rows;
-  const bySameDay = [...sdBase].sort((a,b)=>a.sameDaySemana-b.sameDaySemana).slice(0,8);
-  const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
+  const foraSD = d => SD_MAP ? (d.sdOutSem||0) - (d.sdSdSem||0) : -d.sameDaySemana;
+  const bySameDay = [...sdBase].sort((a,b)=>foraSD(b)-foraSD(a)).slice(0,8);
+  const sdExtra = d => SD_MAP ? foraSD(d).toLocaleString("pt-BR")+" fora do SD" : null;
+  const sdHtml = bySameDay.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow();
   document.getElementById("rank-sameday").innerHTML = sdHtml;
   const rankSdResumo = document.getElementById("rank-sameday-resumo");
   const sdPreview = expandState.sdResumo ? bySameDay : bySameDay.slice(0, RESUMO_PREVIEW_COUNT);
-  if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct0(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana))).join("") || emptyRow();
+  if(rankSdResumo) rankSdResumo.innerHTML = sdPreview.map((d,i)=>rankRow(i,d,pct1(d.sameDaySemana), fifoBadgeClass(d.sameDaySemana), sdExtra(d))).join("") || emptyRow();
   renderResumoToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo","Ver ranking completo", bySameDay.length>RESUMO_PREVIEW_COUNT);
   // Maiores ofensores em Losses — ranqueia pelo valor perdido (R$), que é o
   // que realmente pesa pro negócio (mais direto que quantidade de pacotes).
@@ -1401,6 +1418,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
     if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
+    if(item.dataset.section === "sameday" && SD_ROWS.length){ renderSameDaySection(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
   });
@@ -1416,6 +1434,300 @@ document.querySelectorAll("[data-goto]").forEach(el=>{
 wireExpandToggle("alerts-toggle-top","alerts-toggle-bottom","alerts", ()=> renderAlerts(CURRENT_ROWS));
 wireExpandToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdResumo", ()=> renderRankLists(CURRENT_ROWS));
+// ==================== ABA SAME DAY (gráficos + ranking por agência) ====================
+// Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
+// próprios (Sub-regional / Station / Responsável), pra poder comparar todas
+// as sub-regionais mesmo quando o topo do painel está filtrado.
+const sdView = { periodo:"dia", subreg:"", station:"", resp:"", busca:"", showAllStations:false, showAllRank:false,
+  sort:{ key:"fora", dir:-1 } };
+const SD_RANK_PREVIEW = 25, SD_STATION_PREVIEW = 12;
+function esc(v){ return String(v==null?"":v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function sdNum(n){ return Math.round(n||0).toLocaleString("pt-BR"); }
+function sdPct(v){ return ((v||0)*100).toFixed(2).replace(".",",")+"%"; }
+function sdSuf(){ return sdView.periodo==="dia" ? "D" : "S"; }
+function sdVal(r,k){ return r[k+sdSuf()] || 0; }
+function sdSalvar(){ try{ localStorage.setItem("sdView", JSON.stringify({periodo:sdView.periodo, subreg:sdView.subreg, station:sdView.station, resp:sdView.resp})); }catch(e){} }
+(function sdCarregarPrefs(){
+  try{ const p = JSON.parse(localStorage.getItem("sdView")||"null"); if(p) Object.assign(sdView, p); else sdView.subreg = "__default__"; }
+  catch(e){ sdView.subreg = "__default__"; }
+})();
+// Filtra as linhas pelos filtros da aba, ignorando os que estão em "skip"
+function sdFiltrar(rows, skip){
+  skip = skip || [];
+  return rows.filter(r=>
+    (skip.includes("subreg") || !sdView.subreg || r.subreg===sdView.subreg) &&
+    (skip.includes("station") || !sdView.station || r.station===sdView.station) &&
+    (skip.includes("resp") || !sdView.resp || r.resp===sdView.resp));
+}
+function sdAgrupar(rows, campo){
+  const g = {};
+  rows.forEach(r=>{
+    const k = (campo==="_todos") ? "_todos" : (r[campo] || "—");
+    const o = g[k] || (g[k] = {label:k, inb:0, out:0, sd:0, next:0, posCol:0, posFech:0, dops:0});
+    o.inb += sdVal(r,"inb"); o.out += sdVal(r,"out"); o.sd += sdVal(r,"sd");
+    o.next += sdVal(r,"next"); o.posCol += sdVal(r,"posCol"); o.posFech += sdVal(r,"posFech");
+    if(sdVal(r,"out")>0) o.dops++;
+  });
+  return Object.values(g).filter(o=>o.out>0).map(o=>Object.assign(o, {pct:o.sd/o.out}));
+}
+function sdTotais(rows){ return sdAgrupar(rows, "_todos")[0] || {inb:0,out:0,sd:0,next:0,posCol:0,posFech:0,dops:0,pct:0}; }
+function sdOptions(id, values, atual){
+  const sel = document.getElementById(id); if(!sel) return;
+  const vazio = sel.dataset.empty || "Todos";
+  sel.innerHTML = `<option value="">${vazio}</option>` + values.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  sel.value = values.includes(atual) ? atual : "";
+}
+function sdInitFiltros(){
+  if(!SD_ROWS.length) return;
+  if(sdView.subreg==="__default__"){
+    sdView.subreg = SD_ROWS.some(r=>r.subreg==="CO") ? "CO" : "";
+  }
+  sdAtualizarFiltros();
+}
+function sdAtualizarFiltros(){
+  const u = (rows,k)=>[...new Set(rows.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const subregs = u(SD_ROWS,"subreg");
+  if(sdView.subreg && !subregs.includes(sdView.subreg)) sdView.subreg = "";
+  sdOptions("sd-f-subreg", subregs, sdView.subreg);
+  const stations = u(sdFiltrar(SD_ROWS,["station","resp"]),"station");
+  if(sdView.station && !stations.includes(sdView.station)) sdView.station = "";
+  sdOptions("sd-f-station", stations, sdView.station);
+  const resps = u(sdFiltrar(SD_ROWS,["resp"]),"resp");
+  if(sdView.resp && !resps.includes(sdView.resp)) sdView.resp = "";
+  sdOptions("sd-f-resp", resps, sdView.resp);
+  document.querySelectorAll("#sd-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===sdView.periodo));
+}
+function sdSet(campo, valor){
+  sdView[campo] = valor;
+  if(campo==="subreg"){ sdView.station = ""; sdView.showAllStations = false; }
+  sdView.showAllRank = false;
+  sdAtualizarFiltros(); sdSalvar(); renderSameDaySection();
+}
+["subreg","station","resp"].forEach(k=>{
+  const el = document.getElementById("sd-f-"+k);
+  if(el) el.addEventListener("change", e=> sdSet(k, e.target.value));
+});
+document.querySelectorAll("#sd-periodo button").forEach(b=>{
+  b.addEventListener("click", ()=>{ sdView.periodo = b.dataset.p; sdAtualizarFiltros(); sdSalvar(); renderSameDaySection(); });
+});
+const sdLimparBtn = document.getElementById("sd-limpar");
+if(sdLimparBtn) sdLimparBtn.addEventListener("click", ()=>{
+  sdView.subreg=""; sdView.station=""; sdView.resp=""; sdView.busca="";
+  const b=document.getElementById("sd-busca"); if(b) b.value="";
+  sdAtualizarFiltros(); sdSalvar(); renderSameDaySection();
+});
+const sdBuscaInput = document.getElementById("sd-busca");
+if(sdBuscaInput) sdBuscaInput.addEventListener("input", e=>{ sdView.busca = e.target.value.trim().toLowerCase(); sdView.showAllRank=false; renderSdRanking(); });
+
+// ---- tooltip ----
+let sdTipEl = null;
+function sdTip(html, ev){
+  if(!sdTipEl){ sdTipEl = document.createElement("div"); sdTipEl.className = "sd-tip"; document.body.appendChild(sdTipEl); }
+  if(!html){ sdTipEl.style.display = "none"; return; }
+  sdTipEl.innerHTML = html; sdTipEl.style.display = "block";
+  const w = sdTipEl.offsetWidth, h = sdTipEl.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if(x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+  if(y + h > window.innerHeight - 8) y = ev.clientY - h - 14;
+  sdTipEl.style.left = x + "px"; sdTipEl.style.top = y + "px";
+}
+function sdTipHtml(titulo, o, opts){
+  opts = opts || {};
+  return `<div class="t">${esc(titulo)}</div>
+    <div class="r">Same Day <b>${sdPct(o.pct)}</b></div>
+    <div class="r">Pickup <b>${sdNum(o.out)}</b></div>
+    <div class="r">Pickup Same Day <b>${sdNum(o.sd)}</b></div>
+    <div class="r">Fora do Same Day <b>${sdNum(o.out-o.sd)}</b></div>
+    ${opts.semNext ? "" : `<div class="r">Next day <b>${sdNum(o.next)}</b></div>`}
+    ${o.dops!=null && !opts.semDops ? `<div class="r">DOPs <b>${sdNum(o.dops)}</b></div>` : ""}`;
+}
+
+// ---- barras horizontais (sub-regional / station) ----
+// Barra = % Same Day (eixo 0–100%). Linha tracejada = % do conjunto todo,
+// pra ver de cara quem está abaixo da média.
+function sdBarras(elId, grupos, selecionado, onClick, refPct, refLabel){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = g.label===selecionado ? "sel" : (selecionado ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}">
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.pct*100).toFixed(2)}%"></div>
+        ${refPct!=null?`<div class="sd-bar-ref" style="left:${(refPct*100).toFixed(2)}%"></div>`:""}</div>
+      <div class="sd-bar-val">${sdPct(g.pct)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    const ref = refPct!=null ? `<div class="r" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">${esc(refLabel||"Média")} <b>${sdPct(refPct)}</b></div>` : "";
+    row.addEventListener("mousemove", ev=> sdTip(sdTipHtml(g.label, g) + ref, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+
+// ---- linha de evolução diária ----
+function sdTrend(){
+  const el = document.getElementById("sd-chart-trend"); if(!el) return;
+  const porDia = {};
+  sdFiltrar(SD_TREND).forEach(t=>{ const o = porDia[t.dia] || (porDia[t.dia] = {out:0, sd:0}); o.out += t.out; o.sd += t.sd; });
+  const dias = ((SD_INFO && SD_INFO.dias && SD_INFO.dias.length) ? SD_INFO.dias : Object.keys(porDia).sort())
+    .filter(d=>porDia[d] && porDia[d].out>0);
+  const hint = document.getElementById("sd-trend-hint");
+  if(hint) hint.textContent = "últimos " + dias.length + " dias com coleta · " + sdEscopoTexto();
+  if(dias.length < 2){ el.innerHTML = '<div class="empty-state">Poucos dias com dados para esse filtro.</div>'; return; }
+  const pts = dias.map(d=>({dia:d, out:porDia[d].out, sd:porDia[d].sd, pct:porDia[d].sd/porDia[d].out}));
+  const W = Math.max(320, el.clientWidth || 600), H = el.clientHeight || 220;
+  const m = {l:44, r:20, t:22, b:26};
+  const iw = W-m.l-m.r, ih = H-m.t-m.b;
+  let lo = Math.min(...pts.map(p=>p.pct)), hi = Math.max(...pts.map(p=>p.pct));
+  lo = Math.max(0, Math.floor((lo-0.02)*20)/20); hi = Math.min(1, Math.ceil((hi+0.01)*20)/20);
+  if(hi-lo < 0.05) hi = Math.min(1, lo+0.05);
+  const x = i => m.l + i*iw/(pts.length-1);
+  const y = v => m.t + ih - (v-lo)/(hi-lo)*ih;
+  const ticks = []; for(let v=lo; v<=hi+1e-9; v+=0.05) ticks.push(v);
+  const path = pts.map((p,i)=>(i?"L":"M")+x(i).toFixed(1)+","+y(p.pct).toFixed(1)).join(" ");
+  const passo = Math.ceil(pts.length/8);
+  const ult = pts[pts.length-1];
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Evolução diária do Same Day">
+    ${ticks.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>
+      <text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${Math.round(v*100)}%</text>`).join("")}
+    ${pts.map((p,i)=> (i%passo===0 || i===pts.length-1) ? `<text x="${x(i)}" y="${H-6}" text-anchor="middle">${fmtDiaBR(p.dia)}</text>` : "").join("")}
+    <path d="${path}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map((p,i)=>`<circle class="sd-pt" data-i="${i}" cx="${x(i)}" cy="${y(p.pct)}" r="4" fill="var(--brand)" stroke="var(--surface-2)" stroke-width="2"/>`).join("")}
+    <text x="${x(pts.length-1)}" y="${y(ult.pct)-10}" text-anchor="end" style="fill:var(--text-primary);font-weight:700">${sdPct(ult.pct)}</text>
+    <line class="sd-cross" x1="0" x2="0" y1="${m.t}" y2="${m.t+ih}" stroke="var(--text-muted)" stroke-dasharray="3 3" style="display:none"/>
+    <rect class="sd-hit" x="${m.l-10}" y="${m.t}" width="${iw+20}" height="${ih}" fill="transparent"/>
+  </svg>`;
+  const svg = el.querySelector("svg"), hit = el.querySelector(".sd-hit"), cross = el.querySelector(".sd-cross");
+  hit.addEventListener("mousemove", ev=>{
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(pts.length-1, Math.round((px-m.l)/(iw/(pts.length-1)))));
+    const p = pts[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.style.display = "";
+    el.querySelectorAll(".sd-pt").forEach(c=>c.setAttribute("r", +c.dataset.i===i ? 6 : 4));
+    const [a,mm,d] = p.dia.split("-");
+    sdTip(sdTipHtml(d+"/"+mm+"/"+a, p, {semNext:true, semDops:true}), ev);
+  });
+  hit.addEventListener("mouseleave", ()=>{ cross.style.display = "none"; el.querySelectorAll(".sd-pt").forEach(c=>c.setAttribute("r",4)); sdTip(null); });
+}
+let sdResizeT;
+window.addEventListener("resize", ()=>{ clearTimeout(sdResizeT); sdResizeT = setTimeout(()=>{ if(SD_ROWS.length) sdTrend(); }, 200); });
+
+function sdEscopoTexto(){
+  const p = [];
+  if(sdView.subreg) p.push(sdView.subreg);
+  if(sdView.station) p.push(sdView.station);
+  if(sdView.resp) p.push(sdView.resp);
+  return p.length ? p.join(" · ") : "Regional 4";
+}
+function sdPeriodoTexto(){
+  if(!SD_INFO) return "";
+  return sdView.periodo==="dia" ? "dia " + fmtDiaBR(SD_INFO.refDia) : "semana " + SD_INFO.semana + " (até " + fmtDiaBR(SD_INFO.refDia) + ")";
+}
+
+// ---- ranking por agência ----
+// Mesmas colunas do "Ranking DOP" do Data Studio, + "Fora do SD"
+// (pickup − pickup same day), que é o que derruba o %. % Impacto segue a
+// regra do Data Studio: inbound pós-coleta do DOP ÷ total do filtro.
+const SD_RANK_COLS = [
+  {k:"pos", l:"#", num:true, nosort:true},
+  {k:"dop", l:"DOP"}, {k:"nome", l:"Agência"}, {k:"station", l:"Station"}, {k:"resp", l:"Responsável"},
+  {k:"inb", l:"Inbound", num:true}, {k:"out", l:"Pickup", num:true}, {k:"sd", l:"Pickup SD", num:true},
+  {k:"pct", l:"Same Day", num:true}, {k:"fora", l:"Fora do SD", num:true},
+  {k:"posCol", l:"Inb. pós-coleta", num:true}, {k:"next", l:"Next day", num:true}, {k:"impacto", l:"% Impacto", num:true}
+];
+function renderSdRanking(){
+  const el = document.getElementById("sd-ranking"); if(!el) return;
+  let rows = sdFiltrar(SD_ROWS).filter(r=>sdVal(r,"out")>0).map(r=>({
+    raw:r, dop:"DOP"+r.id, nome:r.nome||"—", station:r.station, resp:r.resp, cidade:r.cidade||"",
+    inb:sdVal(r,"inb"), out:sdVal(r,"out"), sd:sdVal(r,"sd"), next:sdVal(r,"next"), posCol:sdVal(r,"posCol")
+  }));
+  const totPosCol = rows.reduce((s,r)=>s+r.posCol,0);
+  rows.forEach(r=>{ r.pct = r.sd/r.out; r.fora = r.out-r.sd; r.impacto = totPosCol ? r.posCol/totPosCol : 0; });
+  if(sdView.busca) rows = rows.filter(r=> (r.dop+" "+r.nome+" "+r.cidade+" "+r.station).toLowerCase().includes(sdView.busca));
+  const st = sdView.sort;
+  rows.sort((a,b)=>{ const va=a[st.key], vb=b[st.key];
+    const c = typeof va==="number" ? va-vb : String(va||"").localeCompare(String(vb||""),"pt-BR");
+    return c*st.dir || (b.fora-a.fora); });
+  const tot = rows.reduce((t,r)=>{ ["inb","out","sd","next","posCol","fora"].forEach(k=>t[k]+=r[k]); return t; }, {inb:0,out:0,sd:0,next:0,posCol:0,fora:0});
+  const vis = sdView.showAllRank ? rows : rows.slice(0, SD_RANK_PREVIEW);
+  const seta = k => st.key===k ? (st.dir<0?" ▼":" ▲") : "";
+  const cel = (c,r,i)=>{
+    switch(c.k){
+      case "pos": return i+1;
+      case "nome": return `<span title="${esc(r.nome)}">${esc(r.nome.length>26 ? r.nome.slice(0,25)+"…" : r.nome)}</span>`;
+      case "pct": return `<span class="badge ${fifoBadgeClass(r.pct)}"><span class="ic"></span>${sdPct(r.pct)}</span>`;
+      case "impacto": return sdPct(r.impacto);
+      case "dop": case "station": case "resp": return esc(r[c.k]||"—");
+      default: return sdNum(r[c.k]);
+    }
+  };
+  el.innerHTML = `<thead><tr>${SD_RANK_COLS.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}" ${c.nosort?'style="cursor:default"':""}>${c.l}${seta(c.k)}</th>`).join("")}</tr></thead>
+    <tbody>${vis.map((r,i)=>`<tr data-dop="${esc(r.raw.id)}">${SD_RANK_COLS.map(c=>`<td class="${c.num?"num":""}">${cel(c,r,i)}</td>`).join("")}</tr>`).join("")
+      || `<tr><td colspan="${SD_RANK_COLS.length}"><div class="empty-state">Nenhuma agência para esse filtro.</div></td></tr>`}</tbody>
+    ${rows.length?`<tfoot><tr style="font-weight:700">
+      <td></td><td colspan="4">Total (${sdNum(rows.length)} agências)</td>
+      <td class="num">${sdNum(tot.inb)}</td><td class="num">${sdNum(tot.out)}</td><td class="num">${sdNum(tot.sd)}</td>
+      <td class="num">${sdPct(tot.out?tot.sd/tot.out:0)}</td><td class="num">${sdNum(tot.fora)}</td>
+      <td class="num">${sdNum(tot.posCol)}</td><td class="num">${sdNum(tot.next)}</td><td class="num">100%</td></tr></tfoot>`:""}`;
+  el.querySelectorAll("th").forEach(th=>{
+    const k = th.dataset.k; if(k==="pos") return;
+    th.onclick = ()=>{ if(st.key===k) st.dir*=-1; else { st.key=k; st.dir = (["dop","nome","station","resp","pct"].includes(k)) ? 1 : -1; } renderSdRanking(); };
+  });
+  el.querySelectorAll("tbody tr[data-dop]").forEach(tr=>{
+    tr.onclick = ()=>{ const d = DATA.find(x=>dopKey(x.dop)===tr.dataset.dop); if(d) openDetail(d.dop); };
+  });
+  const more = document.getElementById("sd-ranking-more");
+  if(more){
+    more.style.display = rows.length > SD_RANK_PREVIEW ? "" : "none";
+    more.textContent = sdView.showAllRank ? "− Mostrar só as " + SD_RANK_PREVIEW + " primeiras" : "+ Ver todas as " + sdNum(rows.length) + " agências";
+    more.onclick = ()=>{ sdView.showAllRank = !sdView.showAllRank; renderSdRanking(); };
+  }
+}
+
+function renderSameDaySection(){
+  if(!SD_ROWS.length || !SD_INFO) return;
+  const sub = document.getElementById("sd-subtitle");
+  if(sub) sub.textContent = "— " + sdPeriodoTexto() + " · " + sdEscopoTexto();
+  // KPIs do escopo filtrado
+  const t = sdTotais(sdFiltrar(SD_ROWS));
+  renderKpis("sd-kpis", [
+    {label:"% Same Day", value: sdPct(t.pct), icon:"⚡", cls: t.pct<0.85?"crit":(t.pct<0.95?"warn":"")},
+    {label:"Pickup", value: sdNum(t.out), icon:"⬆"},
+    {label:"Pickup Same Day", value: sdNum(t.sd), icon:"✅"},
+    {label:"Fora do Same Day", value: sdNum(t.out-t.sd), icon:"⏳"},
+    {label:"Next day", value: sdNum(t.next), icon:"📦"},
+    {label:"DOPs com pickup", value: sdNum(t.dops), icon:"🏪"},
+  ]);
+  // Sub-regional: sempre mostra todas (só respeita o filtro de responsável)
+  const baseReg = sdFiltrar(SD_ROWS,["subreg","station"]);
+  const regional = sdTotais(baseReg);
+  const subregs = sdAgrupar(baseReg, "subreg").sort((a,b)=>a.label.localeCompare(b.label,"pt-BR"));
+  sdBarras("sd-chart-subreg", subregs, sdView.subreg, lbl=> sdSet("subreg", sdView.subreg===lbl ? "" : lbl), regional.pct, "Regional 4");
+  // Station: dentro da sub-regional escolhida, pior % primeiro
+  const baseSt = sdFiltrar(SD_ROWS,["station"]);
+  let stations = sdAgrupar(baseSt, "station").sort((a,b)=>a.pct-b.pct);
+  const tit = document.getElementById("sd-station-title");
+  if(tit) tit.textContent = "Same Day por Station" + (sdView.subreg ? " — " + sdView.subreg : "") + " (pior primeiro)";
+  const totSt = stations.length;
+  if(!sdView.showAllStations){
+    const top = stations.slice(0, SD_STATION_PREVIEW);
+    if(sdView.station && !top.some(g=>g.label===sdView.station)){ const s = stations.find(g=>g.label===sdView.station); if(s) top.push(s); }
+    stations = top;
+  }
+  sdBarras("sd-chart-station", stations, sdView.station, lbl=> sdSet("station", sdView.station===lbl ? "" : lbl),
+    sdTotais(baseSt).pct, sdView.subreg ? "Média " + sdView.subreg : "Regional 4");
+  const more = document.getElementById("sd-station-more");
+  if(more){
+    more.style.display = totSt > SD_STATION_PREVIEW ? "" : "none";
+    more.textContent = sdView.showAllStations ? "− Mostrar só as " + SD_STATION_PREVIEW + " piores" : "+ Ver todas as " + totSt + " stations";
+    more.onclick = ()=>{ sdView.showAllStations = !sdView.showAllStations; renderSameDaySection(); };
+  }
+  sdTrend();
+  renderSdRanking();
+}
 // theme
 const themeBtn = document.getElementById("theme-toggle");
 function applyTheme(t){
