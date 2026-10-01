@@ -203,7 +203,7 @@ async function loadSameDay(){
     if(DATA.length) renderAll();
     // a aba Same Day abre no último dia; se a pessoa já escolheu outra data
     // no calendário, mantém a escolha dela
-    if(!sdView.data){ sdAplicarDadosSecao(json); }
+    if(!sdView.ini){ sdAplicarDadosSecao(json); }
     sdInitFiltros();
     renderSameDaySection();
   } catch(err){
@@ -1461,15 +1461,16 @@ wireExpandToggle("losses-toggle-top","losses-toggle-bottom","losses", ()=> rende
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
 // as sub-regionais mesmo quando o topo do painel está filtrado.
-const sdView = { data:"", periodo:"dia", subreg:"", station:"", resp:"", busca:"", showAllStations:false, showAllRank:false,
+const sdView = { ini:"", subreg:"", station:"", resp:"", busca:"", showAllStations:false, showAllRank:false,
   sort:{ key:"fora", dir:-1 } };
 const SD_RANK_PREVIEW = 25, SD_STATION_PREVIEW = 12;
 function esc(v){ return String(v==null?"":v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function sdNum(n){ return Math.round(n||0).toLocaleString("pt-BR"); }
 function sdPct(v){ return ((v||0)*100).toFixed(2).replace(".",",")+"%"; }
-function sdSuf(){ return sdView.periodo==="dia" ? "D" : "S"; }
+// a aba usa sempre as colunas "D" = soma do período escolhido no calendário
+function sdSuf(){ return "D"; }
 function sdVal(r,k){ return r[k+sdSuf()] || 0; }
-function sdSalvar(){ try{ localStorage.setItem("sdView", JSON.stringify({periodo:sdView.periodo, subreg:sdView.subreg, station:sdView.station, resp:sdView.resp})); }catch(e){} }
+function sdSalvar(){ try{ localStorage.setItem("sdView", JSON.stringify({subreg:sdView.subreg, station:sdView.station, resp:sdView.resp})); }catch(e){} }
 (function sdCarregarPrefs(){
   try{ const p = JSON.parse(localStorage.getItem("sdView")||"null"); if(p) Object.assign(sdView, p); else sdView.subreg = "__default__"; }
   catch(e){ sdView.subreg = "__default__"; }
@@ -1518,7 +1519,7 @@ function sdAtualizarFiltros(){
   const resps = u(sdFiltrar(SD_ROWS,["resp"]),"resp");
   if(sdView.resp && !resps.includes(sdView.resp)) sdView.resp = "";
   sdOptions("sd-f-resp", resps, sdView.resp);
-  document.querySelectorAll("#sd-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===sdView.periodo));
+  document.querySelectorAll("#sd-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===sdPresetAtual()));
 }
 function sdSet(campo, valor){
   sdView[campo] = valor;
@@ -1531,14 +1532,14 @@ function sdSet(campo, valor){
   if(el) el.addEventListener("change", e=> sdSet(k, e.target.value));
 });
 document.querySelectorAll("#sd-periodo button").forEach(b=>{
-  b.addEventListener("click", ()=>{ sdView.periodo = b.dataset.p; sdAtualizarFiltros(); sdSalvar(); renderSameDaySection(); });
+  b.addEventListener("click", ()=>{ const r = sdPreset(b.dataset.p); if(r) sdCarregarPeriodo(r[0], r[1]); });
 });
 const sdLimparBtn = document.getElementById("sd-limpar");
 if(sdLimparBtn) sdLimparBtn.addEventListener("click", ()=>{
   sdView.subreg=""; sdView.station=""; sdView.resp=""; sdView.busca="";
   const b=document.getElementById("sd-busca"); if(b) b.value="";
   sdAtualizarFiltros(); sdSalvar();
-  if(SD_SEC_INFO && SD_SEC_INFO.refDia!==SD_SEC_INFO.ultimoDia) sdCarregarData(SD_SEC_INFO.ultimoDia);
+  if(SD_SEC_INFO && (SD_SEC_INFO.periodoIni!==SD_SEC_INFO.ultimoDia || SD_SEC_INFO.periodoFim!==SD_SEC_INFO.ultimoDia)) sdCarregarPeriodo(SD_SEC_INFO.ultimoDia, SD_SEC_INFO.ultimoDia);
   else renderSameDaySection();
 });
 const sdBuscaInput = document.getElementById("sd-busca");
@@ -1649,57 +1650,94 @@ function sdEscopoTexto(){
 }
 function sdPeriodoTexto(){
   const I = SD_SEC_INFO; if(!I) return "";
-  if(sdView.periodo==="dia") return "dia " + fmtDiaBR(I.refDia);
-  return "semana " + I.semana + (I.semanaIni ? " (" + fmtDiaBR(I.semanaIni) + " a " + fmtDiaBR(I.semanaFim) + ")" : "");
+  if(I.periodoIni===I.periodoFim) return "dia " + fmtDiaBR(I.periodoFim);
+  return fmtDiaBR(I.periodoIni) + " a " + fmtDiaBR(I.periodoFim) + " (" + I.diasNoPeriodo + " dias com coleta)";
 }
-// ---- calendário ----
+// ---- calendário (data início / data fim) ----
 // Transforma a resposta do Apps Script nos dados da aba
 function sdAplicarDadosSecao(json){
   SD_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
   SD_TREND = (json.trend||[]).map(r=>{ const o={}; (json.trendCols||[]).forEach((c,i)=>o[c]=r[i]); return o; });
-  SD_SEC_INFO = { refDia: json.refDia, ultimoDia: json.ultimoDia || json.refDia, semana: json.semana,
-    semanaIni: json.semanaIni, semanaFim: json.semanaFim, dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [] };
-  const inp = document.getElementById("sd-f-data");
-  if(inp){
-    const disp = SD_SEC_INFO.diasDisponiveis;
+  const fim = json.periodoFim || json.refDia;
+  SD_CACHE_DATAS[(json.periodoIni || json.refDia) + "_" + fim] = json;
+  SD_SEC_INFO = { refDia: json.refDia, ultimoDia: json.ultimoDia || json.refDia,
+    periodoIni: json.periodoIni || json.refDia, periodoFim: fim, diasNoPeriodo: json.diasNoPeriodo || 1,
+    semana: json.semana, semanaIni: json.semanaIni, semanaFim: json.semanaFim,
+    dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [] };
+  const disp = SD_SEC_INFO.diasDisponiveis;
+  ["sd-f-ini","sd-f-fim"].forEach(id=>{
+    const inp = document.getElementById(id); if(!inp) return;
     if(disp.length){ inp.min = disp[0]; inp.max = disp[disp.length-1]; }
-    inp.value = SD_SEC_INFO.refDia || "";
+  });
+  const a = document.getElementById("sd-f-ini"), b = document.getElementById("sd-f-fim");
+  if(a) a.value = SD_SEC_INFO.periodoIni || "";
+  if(b) b.value = SD_SEC_INFO.periodoFim || "";
+  document.querySelectorAll("#sd-periodo button").forEach(bt=>bt.classList.toggle("active", bt.dataset.p===sdPresetAtual()));
+}
+// Atalhos: Último dia / Semana / 7 dias / Mês (sempre a partir do último dia com dados)
+function sdPreset(tipo){
+  const I = SD_SEC_INFO; if(!I) return null;
+  const disp = I.diasDisponiveis || [], ult = I.ultimoDia;
+  if(!ult) return null;
+  if(tipo==="dia") return [ult, ult];
+  if(tipo==="7d"){ const ds = disp.filter(d=>d<=ult).slice(-7); return [ds[0]||ult, ult]; }
+  if(tipo==="mes") return [ult.slice(0,8)+"01", ult];
+  if(tipo==="semana"){
+    // segunda-feira da semana do último dia
+    const d = new Date(ult+"T12:00:00"); const dow = (d.getDay()+6)%7; d.setDate(d.getDate()-dow);
+    return [d.toISOString().slice(0,10), ult];
   }
+  return null;
+}
+function sdPresetAtual(){
+  const I = SD_SEC_INFO; if(!I) return "dia";
+  for(const t of ["dia","semana","7d","mes"]){
+    const r = sdPreset(t); if(!r) continue;
+    const ini = (I.diasDisponiveis||[]).filter(d=>d>=r[0] && d<=r[1])[0];
+    if(ini===I.periodoIni && r[1]===I.periodoFim) return t;
+  }
+  return "";
 }
 const SD_CACHE_DATAS = {};
-async function sdCarregarData(data){
+async function sdCarregarPeriodo(ini, fim){
+  if(!ini && !fim) return;
+  ini = ini || fim; fim = fim || ini;
+  if(ini > fim){ const t = ini; ini = fim; fim = t; }
   const sub = document.getElementById("sd-subtitle");
-  const disp = (SD_SEC_INFO && SD_SEC_INFO.diasDisponiveis) || [];
-  // dia sem coleta (ex.: domingo/feriado) → usa o dia com coleta anterior mais próximo
-  let alvo = data;
-  if(disp.length && !disp.includes(alvo)){
-    const ant = disp.filter(d=>d<alvo);
-    alvo = ant.length ? ant[ant.length-1] : disp[0];
-  }
   const ultimo = SD_SEC_INFO && SD_SEC_INFO.ultimoDia;
-  sdView.data = (alvo && alvo!==ultimo) ? alvo : "";
-  if(sub) sub.textContent = "— carregando " + fmtDiaBR(alvo) + "…";
+  sdView.ini = (ini===ultimo && fim===ultimo) ? "" : ini;
+  if(sub) sub.textContent = "— carregando " + (ini===fim ? fmtDiaBR(ini) : fmtDiaBR(ini) + " a " + fmtDiaBR(fim)) + "…";
+  const chave = ini + "_" + fim;
   try{
-    let json = SD_CACHE_DATAS[alvo];
+    let json = SD_CACHE_DATAS[chave];
     if(!json){
       const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-      json = await fetchViaIframe(API_URL + sep + "tipo=sameday&data=" + encodeURIComponent(alvo), 90000);
+      json = await fetchViaIframe(API_URL + sep + "tipo=sameday&ini=" + encodeURIComponent(ini) + "&fim=" + encodeURIComponent(fim), 90000);
       if(!json || !json.rows) throw new Error("resposta sem dados");
-      SD_CACHE_DATAS[alvo] = json;
+      SD_CACHE_DATAS[chave] = json;
     }
     sdAplicarDadosSecao(json);
     sdView.showAllRank = false; sdView.showAllStations = false;
     sdAtualizarFiltros();
     renderSameDaySection();
-    if(alvo!==data && sub) sub.textContent += " (sem coleta em " + fmtDiaBR(data) + ", mostrando o dia anterior com coleta)";
+    if(json.periodoIni && (json.periodoIni!==ini || json.periodoFim!==fim) && sub)
+      sub.textContent += " (ajustado para os dias com coleta)";
   } catch(err){
-    console.error("Same Day (data):", err);
-    if(sub) sub.textContent = "— não foi possível carregar " + fmtDiaBR(alvo) + " (" + err.message + ")";
-    const inp = document.getElementById("sd-f-data"); if(inp && SD_SEC_INFO) inp.value = SD_SEC_INFO.refDia;
+    console.error("Same Day (período):", err);
+    if(sub) sub.textContent = "— não foi possível carregar o período (" + err.message + ")";
+    if(SD_SEC_INFO){
+      const a = document.getElementById("sd-f-ini"), b = document.getElementById("sd-f-fim");
+      if(a) a.value = SD_SEC_INFO.periodoIni; if(b) b.value = SD_SEC_INFO.periodoFim;
+    }
   }
 }
-const sdDataInput = document.getElementById("sd-f-data");
-if(sdDataInput) sdDataInput.addEventListener("change", e=>{ if(e.target.value) sdCarregarData(e.target.value); });
+["sd-f-ini","sd-f-fim"].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener("change", ()=>{
+    const a = document.getElementById("sd-f-ini").value, b = document.getElementById("sd-f-fim").value;
+    if(a || b) sdCarregarPeriodo(a, b);
+  });
+});
 
 // ---- ranking por agência ----
 // Mesmas colunas do "Ranking DOP" do Data Studio, + "Fora do SD"
