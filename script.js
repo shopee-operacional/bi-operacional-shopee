@@ -198,6 +198,15 @@ function fetchViaIframe(url, timeoutMs){
     document.body.appendChild(iframe);
   });
 }
+// ==================== ANIMAÇÃO DE CARREGAMENTO ====================
+// Mascote animado (icons/carregando.gif). Some sozinho quando os dados
+// chegam, porque o conteúdo da área é substituído pelo resultado.
+function loaderHtml(texto){
+  return `<div class="loader-anim" role="status">
+    <img class="loader-gif" src="icons/carregando.gif" alt="" width="120" height="142">
+    <div class="loader-txt">${texto}</div>
+  </div>`;
+}
 async function loadData(showOverlay){
   const overlay = document.getElementById("loading-overlay");
   const banner = document.getElementById("error-banner");
@@ -298,7 +307,7 @@ let HIST_RANKING_COMPLETO = []; // último ranking calculado (sem corte de Top 1
 let HIST_DOP_FILTRO = null; // quando setado (busca por DOP confirmada), a lista mostra só esse DOP
 async function loadHistorico(){
   const tableEl = document.getElementById("table-historico");
-  if(tableEl) tableEl.innerHTML = '<div class="empty-state">Carregando histórico… (pode levar até um minuto, a base é grande)</div>';
+  if(tableEl) tableEl.innerHTML = loaderHtml('Carregando histórico… (pode levar até um minuto, a base é grande)');
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     // Timeout bem maior que o dos dados principais: a aba "Dados por Dia" tem
@@ -693,7 +702,7 @@ async function loadBacklogAnalise(){
   // Igual o Histórico: a aba "Forward" (Backlog OPS) pode ser grande, então
   // avisamos que pode demorar e damos um timeout bem mais folgado que os
   // 30s anteriores (estavam estourando o "Tempo esgotado ao buscar dados").
-  if(el) el.innerHTML = '<div class="empty-state">Carregando análise de backlog… (pode levar até um minuto)</div>';
+  if(el) el.innerHTML = loaderHtml('Carregando análise de backlog… (pode levar até um minuto)');
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 75000);
@@ -987,7 +996,7 @@ function nfFormatMes(v){
 }
 async function loadNotasFiscais(){
   const el = document.getElementById("nf-rank-regional");
-  if(el) el.innerHTML = '<div class="empty-state">Carregando pendências…</div>';
+  if(el) el.innerHTML = loaderHtml('Carregando pendências…');
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     // Timeout maior que o padrão: se a aba PAGAMENTOS ainda não tiver sido
@@ -1754,7 +1763,7 @@ function sdAplicarDadosSecao(json){
   SD_SEC_INFO = { refDia: json.refDia, ultimoDia: json.ultimoDia || json.refDia,
     periodoIni: json.periodoIni || json.refDia, periodoFim: fim, diasNoPeriodo: json.diasNoPeriodo || 1,
     semana: json.semana, semanaIni: json.semanaIni, semanaFim: json.semanaFim,
-    dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [] };
+    dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [], diasPendentes: json.diasPendentes || [] };
   const disp = SD_SEC_INFO.diasDisponiveis;
   ["sd-f-ini","sd-f-fim"].forEach(id=>{
     const inp = document.getElementById(id); if(!inp) return;
@@ -1894,7 +1903,10 @@ function renderSameDaySection(){
   if(!SD_ROWS.length || !SD_SEC_INFO) return;
   const sub = document.getElementById("sd-subtitle");
   if(sub) sub.textContent = "— " + sdPeriodoTexto() + " · " + sdEscopoTexto()
-    + (SD_SEC_INFO.refDia!==SD_SEC_INFO.ultimoDia ? " · último dia disponível: " + fmtDiaBR(SD_SEC_INFO.ultimoDia) : "");
+    + (SD_SEC_INFO.refDia!==SD_SEC_INFO.ultimoDia ? " · último dia disponível: " + fmtDiaBR(SD_SEC_INFO.ultimoDia) : "")
+    // dia mais novo que ainda não carregou por completo na base de origem
+    + ((SD_SEC_INFO.diasPendentes||[]).length ? " · " + SD_SEC_INFO.diasPendentes.map(d=>fmtDiaBR(d.dia)).join(", ")
+        + " ainda não carregou na base (" + SD_SEC_INFO.diasPendentes.map(d=>sdNum(d.pacotes)).join(", ") + " pacotes)" : "");
   // KPIs do escopo filtrado
   const t = sdTotais(sdFiltrar(SD_ROWS));
   renderKpis("sd-kpis", [
