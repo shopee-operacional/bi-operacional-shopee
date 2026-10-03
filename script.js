@@ -1485,8 +1485,74 @@ function alertIndicador(d){
 }
 // Cards principais — mesmo conjunto do painel de agências (backlog, coleta,
 // FIFO/Same Day médios, volumes).
+// ==================== BACKLOG AO VIVO (3 frentes) ====================
+// Card "Backlog Total" do Resumo: soma Forward + RR + BSC Failed direto da
+// planilha "Gestão da Rotina | PUDO" (?tipo=backlogresumo, BacklogResumo.gs).
+// Mostra o que está nas agências AGORA, inclusive o que chegou hoje (D_0).
+// O "BACKLOG TOTAL (OPS)" da BASE_TRATADA (backlog do fim do último dia)
+// continua sendo usado nos alertas, no risco e nas tabelas por agência.
+let BR_ROWS = null;   // [{frente, dop, agencia, resp, subreg, estacao, cidade, total, d0, d1}]
+let BR_INFO = null;   // { atualizadoEm, frentes, frentesFaltando }
+let BR_ERRO = false;  // true se a busca ao vivo falhou (aí o card mostra o número do fim do dia)
+async function loadBacklogResumo(){
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=backlogresumo", 90000);
+    if(!json || !json.cols || !json.rows) throw new Error("resposta sem dados — confira se o BacklogResumo.gs foi publicado");
+    BR_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
+    BR_ERRO = false;
+    BR_INFO = { atualizadoEm: json.atualizadoEm, frentes: json.frentes || [], frentesFaltando: json.frentesFaltando || [] };
+    if(DATA.length) renderAll();
+  } catch(err){
+    console.error("Backlog ao vivo:", err);
+    BR_ERRO = true;
+    if(DATA.length) renderAll();
+  }
+}
+// Soma o backlog ao vivo respeitando os filtros do topo. Sem filtro de
+// sub-regional, vale o escopo do painel (as sub-regionais da BASE_TRATADA).
+function backlogAoVivo(rows){
+  if(!BR_ROWS) return null;
+  const N = v => String(v==null?"":v).trim().toUpperCase();
+  const conj = lista => new Set(lista.map(N));
+  let subs = filters.subreg.length ? conj(filters.subreg) : conj(uniq("subreg"));
+  subs.delete("NÃO INFORMADO"); subs.delete("");
+  const resp = filters.resp.length ? conj(filters.resp) : null;
+  const est = filters.estacao.length ? conj(filters.estacao) : null;
+  const cid = filters.cidade.length ? conj(filters.cidade) : null;
+  // Status de coleta e Risco só existem na BASE_TRATADA: nesses casos, vale a lista de DOPs filtrada
+  const dops = (filters.statuscoleta.length || filters.risco.length) ? new Set(rows.map(d=>dopKey(d.dop))) : null;
+  const r = { total:0, d0:0, d1:0, porFrente:{}, dops:new Set() };
+  BR_ROWS.forEach(b=>{
+    if(subs.size && !subs.has(N(b.subreg))) return;
+    if(resp && !resp.has(N(b.resp))) return;
+    if(est && !est.has(N(b.estacao))) return;
+    if(cid && !cid.has(N(b.cidade))) return;
+    if(dops && !dops.has(dopKey(b.dop))) return;
+    r.total += b.total||0; r.d0 += b.d0||0; r.d1 += b.d1||0;
+    r.porFrente[b.frente] = (r.porFrente[b.frente]||0) + (b.total||0);
+    r.dops.add(dopKey(b.dop));
+  });
+  return r;
+}
+function kpiCardBacklog(rows){
+  const vivo = backlogAoVivo(rows);
+  if(!vivo){
+    // ainda carregando (ou BacklogResumo.gs não publicado): mostra o número antigo da BASE_TRATADA
+    const antigo = rows.reduce((s,d)=>s+d.backlogOps,0);
+    return {label:"Backlog Total (OPS)", value: antigo.toLocaleString("pt-BR"), icon:"📦", sub: BR_ERRO ? "fim do último dia · total ao vivo indisponível" : "fim do último dia · carregando o total ao vivo…"};
+  }
+  const n = v => Math.round(v||0).toLocaleString("pt-BR");
+  const frentes = (BR_INFO.frentes.length ? BR_INFO.frentes : Object.keys(vivo.porFrente))
+    .map(f=> esc(f) + " <b>" + n(vivo.porFrente[f]) + "</b>").join(" · ");
+  const hora = BR_INFO.atualizadoEm ? new Date(BR_INFO.atualizadoEm).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
+  const falta = BR_INFO.frentesFaltando.length ? "<br>⚠ não lida: " + esc(BR_INFO.frentesFaltando.join("; ")) : "";
+  return {label:"Backlog Total (" + (BR_INFO.frentes.length || 3) + " frentes)", value: n(vivo.total), icon:"📦",
+    sub: frentes + "<br>hoje (D0) <b>" + n(vivo.d0) + "</b> · dias anteriores <b>" + n(vivo.d1) + "</b>"
+      + "<br>" + n(vivo.dops.size) + (vivo.dops.size===1 ? " DOP" : " DOPs") + (hora ? " · lido às " + hora : "") + falta,
+    title: "Backlog que está nas agências agora, somando as frentes (planilha Gestão da Rotina | PUDO)."};
+}
 function kpiCardsPrimary(rows){
-  const backlogTotal = rows.reduce((s,d)=>s+d.backlogOps,0);
   const semColetaHoje = rows.filter(d=>!d.statusColeta.toUpperCase().includes("COLETOU")).length;
   const fifoMedio = rows.length? rows.reduce((s,d)=>s+d.fifoSemana,0)/rows.length : 0;
   const sdMedio = SD_MAP ? sameDayPonderado(rows,"semana")
@@ -1501,7 +1567,7 @@ function kpiCardsPrimary(rows){
   const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
   const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
   return [
-    {label:"Backlog Total (OPS)", value: backlogTotal.toLocaleString("pt-BR"), icon:"📦"},
+    kpiCardBacklog(rows),
     {label:"Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label:"% FIFO Médio (semana)", value: pct0(fifoMedio), icon:"📈"},
     {label:"% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
@@ -1540,6 +1606,7 @@ function renderKpis(targetId, cards){
     const div = document.createElement("div");
     div.className = "kpi"+(k.cls?" "+k.cls:"");
     div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>` + (k.sub ? `<div class="kpi-delta">${k.sub}</div>` : "");
+    if(k.title) div.title = k.title;
     if(k.goto){
       div.style.cursor = "pointer";
       div.title = "Clique para ver por DOP";
@@ -2710,5 +2777,7 @@ themeBtn.addEventListener("click", ()=>{ currentTheme = currentTheme==="dark"?"l
 applyTheme(currentTheme);
 loadData(true);
 loadSameDay();
+loadBacklogResumo();
 setInterval(()=> loadData(false), REFRESH_INTERVAL_MS);
+setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadSameDay(), 30 * 60 * 1000); // base de Same Day muda pouco ao longo do dia
