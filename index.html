@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="loading-overlay" class="loading-overlay"><div class="loading-box"><span class="spinner"></span> Carregando indicadores…</div></div>
+<div id="loading-overlay" class="loading-overlay"><div class="loading-box loading-box-anim"><div class="loader-anim"><img class="loader-gif" src="icons/carregando.gif" alt="" width="120" height="142"><div class="loader-txt">Carregando indicadores…</div></div></div></div>
 <div class="app">
   <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   <div class="sidebar" id="sidebar">
@@ -31,6 +31,7 @@
     </div>
     <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
     <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
+    <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
@@ -162,6 +163,58 @@
         <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
         <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
         <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- LEAD TIME -->
+    <div class="section" id="sec-leadtime">
+      <div class="section-title">Lead Time <span class="sd-sub" id="lt-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="lt-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="lt-f-fim"></div>
+        <div class="sd-seg" id="lt-periodo">
+          <button data-p="dia">Último dia</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="15d">15 dias</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="lt-f-subreg" data-empty="Todas"></select></div>
+        <div class="filter"><label>Station</label><select id="lt-f-station" data-empty="Todas"></select></div>
+        <div class="filter"><label>Canal</label><select id="lt-f-canal" data-empty="Todos"></select></div>
+        <button class="theme-btn" id="lt-limpar">Limpar filtros</button>
+      </div>
+      <div id="lt-loading"></div>
+      <div id="lt-conteudo" style="display:none">
+        <div class="kpi-grid" id="lt-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Lead time por Sub-regional</div><div class="sd-hint">quanto maior, pior · clique para filtrar</div></div>
+            <div id="lt-chart-subreg" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title" id="lt-station-title">Lead time por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="lt-chart-station" class="sd-bars"></div>
+            <div class="card-expand-btn" id="lt-station-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Lead time por dia</div><div class="lt-legenda" id="lt-trend-legenda"></div></div>
+            <div id="lt-chart-trend" class="sd-trend"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">On hold por dia</div><div class="sd-hint">pacotes</div></div>
+            <div id="lt-chart-onhold" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Ranking por Agência</div>
+            <div class="sd-hint">ordenado pelo tempo total (o que mais pesa no lead time) · clique no cabeçalho para reordenar</div>
+          </div>
+          <div class="search-box"><input id="lt-busca" placeholder="Buscar por DOP, agência, station ou justificativa…"></div>
+          <div class="table-wrap"><table class="data" id="lt-ranking"></table></div>
+          <div class="card-expand-btn" id="lt-ranking-more" style="display:none"></div>
+        </div>
       </div>
     </div>
 
