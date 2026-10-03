@@ -447,3 +447,4 @@ table.data td.num, table.data th.num { text-align:right; }
 /* barra de rolagem do menu lateral: fina e só aparece ao passar o mouse */
 .sidebar-inner { scrollbar-width:thin; scrollbar-color: transparent transparent; }
 .sidebar-inner:hover { scrollbar-color: var(--baseline) transparent; }
+.kpi-delta b { color:var(--text-secondary); font-weight:600; font-variant-numeric: tabular-nums; }
