@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="loading-overlay" class="loading-overlay"><div class="loading-box loading-box-anim"><div class="loader-anim"><img class="loader-gif" src="icons/carregando.gif" alt="" width="120" height="142"><div class="loader-txt">Carregando indicadores…</div></div></div></div>
+<div id="loading-overlay" class="loading-overlay"><div class="loading-box loading-box-anim"><div class="loader-anim"><img class="loader-gif" src="icons/carregando.gif" alt="" width="110" height="142" onerror="this.outerHTML='&lt;span class=&quot;spinner&quot;&gt;&lt;/span&gt;'"><div class="loader-txt">Carregando indicadores…</div></div></div></div>
 <div class="app">
   <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
   <div class="sidebar" id="sidebar">
@@ -318,24 +318,3 @@
           </div>
           <div class="filter" style="max-width:220px; flex:1; min-width:180px;">
             <label>Buscar por DOP</label>
-            <input id="historico-dop-input" type="text" inputmode="numeric" placeholder="Ex: 1722" style="width:100%; border:none; background:transparent; color:var(--text-primary); font-size:13px; outline:none; padding:0;">
-          </div>
-        </div>
-        <div class="empty-state" id="historico-dop-search-msg" style="display:none; padding:0 0 12px; text-align:left; font-size:12px;"></div>
-        <div class="hist-rank-list" id="table-historico"></div>
-      </div>
-      <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
-        <div class="card-head">
-          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 3 meses)</div>
-        </div>
-        <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
-
-    <div class="footer-note">Fonte: Base tratada (BI Operacional Shopee) · Painel desenvolvido para Hellen Mirla e Vitor Hugo 💙</div>
-  </div>
-</div>
-
-<script src="script.js"></script>
-</body>
-</html>
