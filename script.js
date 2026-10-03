@@ -203,7 +203,7 @@ function fetchViaIframe(url, timeoutMs){
 // chegam, porque o conteúdo da área é substituído pelo resultado.
 function loaderHtml(texto){
   return `<div class="loader-anim" role="status">
-    <img class="loader-gif" src="icons/carregando.gif" alt="" width="120" height="142">
+    <img class="loader-gif" src="icons/carregando.gif" alt="" width="110" height="142" onerror="this.outerHTML='&lt;span class=&quot;spinner&quot;&gt;&lt;/span&gt;'">
     <div class="loader-txt">${texto}</div>
   </div>`;
 }
