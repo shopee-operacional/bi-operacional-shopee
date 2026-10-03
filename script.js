@@ -234,7 +234,20 @@ async function loadData(showOverlay){
     overlay.style.display = "none";
   }
 }
-document.getElementById("refresh-btn").addEventListener("click", ()=> { loadData(true); loadSameDay(); });
+// "Atualizar agora" = recarregar o painel inteiro, como o Ctrl+Shift+R:
+// baixa de novo os arquivos do site (ignorando o cache do navegador) e
+// recarrega a página, que então busca todos os dados outra vez.
+async function atualizarTudo(){
+  const overlay = document.getElementById("loading-overlay");
+  if(overlay) overlay.style.display = "flex";
+  const arquivos = [location.href.split("#")[0], "script.js", "style.css", "carregando.gif"];
+  try{
+    // cache:"reload" força buscar na rede e já atualiza a cópia guardada pelo navegador
+    await Promise.all(arquivos.map(u => fetch(u, { cache: "reload" }).catch(()=>null)));
+  } catch(e){ /* sem internet etc.: recarrega mesmo assim */ }
+  location.reload();
+}
+document.getElementById("refresh-btn").addEventListener("click", atualizarTudo);
 // ==================== SAME DAY (base "Backup:PUDO | Relatórios OPS") ====================
 // O % Same Day da BASE_TRATADA não batia com o Data Studio "Daily OPS".
 // Agora vem da mesma base do Data Studio (aba "PUDO | OPS Reg4"), via
