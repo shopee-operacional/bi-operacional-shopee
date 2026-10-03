@@ -5,7 +5,6 @@
 (function(){
   const add = (tag, attrs)=>{ const el = document.createElement(tag); Object.keys(attrs).forEach(k=>el.setAttribute(k, attrs[k])); document.head.appendChild(el); };
   add("link", {rel:"manifest", href:"manifest.json"});
-  add("link", {rel:"icon", type:"image/png", sizes:"192x192", href:"icons/icon-192.png"});
   add("link", {rel:"apple-touch-icon", href:"icons/apple-touch-icon.png"});
   add("meta", {name:"apple-mobile-web-app-capable", content:"yes"});
   add("meta", {name:"mobile-web-app-capable", content:"yes"});
@@ -347,6 +346,17 @@ if(!document.querySelector(".app")){
 </div>
 `);
 }
+// Ícone da aba do navegador (favicon): usa o mesmo logo do menu lateral,
+// que já vem embutido na página — não precisa de arquivo de imagem separado.
+(function(){
+  const img = document.querySelector(".brand-icon img");
+  if(!img) return;
+  let link = document.querySelector('link[rel="icon"]');
+  if(!link){ link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
+  link.type = "image/png";
+  link.removeAttribute("sizes");
+  link.href = img.src;
+})();
 const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3aa7","#e34948"];
 function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
 function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
