@@ -418,7 +418,8 @@ table.data td.num, table.data th.num { text-align:right; }
 @keyframes la-pula-fita { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
 @keyframes la-fumaca { from { opacity:.8; transform:translate(0,0) scale(1); } to { opacity:0; transform:translate(-14px,-8px) scale(1.8); } }
 @media (prefers-reduced-motion: reduce){ .loader-anim * { animation:none !important; } }
-.loader-gif { width:120px; height:auto; border-radius:16px; box-shadow:0 4px 14px rgba(0,0,0,.12); }
+/* mascote com fundo transparente; "opacity" controla o quanto ele fica transparente (1 = normal, 0.5 = bem transparente) */
+.loader-gif { width:110px; height:auto; opacity:.8; }
 
 /* ===== Lead Time ===== */
 .lt-legenda { display:flex; gap:12px; font-size:12px; color:var(--text-secondary); }
