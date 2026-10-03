@@ -1538,6 +1538,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
     if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
     if(item.dataset.section === "sameday" && SD_ROWS.length){ renderSameDaySection(); }
+    if(item.dataset.section === "leadtime"){ if(!LT_LOADED) loadLeadTime(); else renderLeadTime(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
   });
@@ -1945,6 +1946,331 @@ function renderSameDaySection(){
   sdTrend();
   renderSdRanking();
 }
+// ==================== ABA LEAD TIME (planilha "Lead time & on hold") ====================
+// Lead time = SOMA(time_total_svp) / SOMA(orders_total_svp), por canal (SVP / Seller).
+// Dados via ?tipo=leadtime (LeadTime.gs). Carrega só quando a aba é aberta.
+let LT = null;            // { rows, trend, periodoIni, periodoFim, diasDisponiveis... }
+let LT_LOADED = false;
+const LT_CACHE = {};
+const ltView = { subreg:"__default__", station:"", canal:"", busca:"", showAll:false, showAllStations:false, sort:{ key:"tempo", dir:-1 } };
+const LT_RANK_PREVIEW = 25, LT_STATION_PREVIEW = 12;
+function ltFmt(v){ return (v||0).toFixed(2).replace(".",","); }
+function ltLead(o){ return o.orders ? o.tempo/o.orders : 0; }
+function ltFiltrar(rows, skip){
+  skip = skip || [];
+  return rows.filter(r=>
+    (skip.includes("subreg") || !ltView.subreg || r.subreg===ltView.subreg) &&
+    (skip.includes("station") || !ltView.station || r.station===ltView.station) &&
+    (skip.includes("canal") || !ltView.canal || r.canal===ltView.canal));
+}
+function ltAgrupar(rows, campo){
+  const g = {};
+  rows.forEach(r=>{
+    const k = campo==="_todos" ? "_todos" : (r[campo] || "—");
+    const o = g[k] || (g[k] = {label:k, orders:0, tempo:0, pickup:0, onhold:0, dops:{}});
+    o.orders += r.orders||0; o.tempo += r.tempo||0; o.pickup += r.pickup||0; o.onhold += r.onhold||0;
+    if(r.id) o.dops[r.id] = 1;
+  });
+  return Object.values(g).filter(o=>o.orders>0).map(o=>Object.assign(o, {lead: ltLead(o), nDops: Object.keys(o.dops).length}));
+}
+function ltTotais(rows){ return ltAgrupar(rows,"_todos")[0] || {orders:0,tempo:0,pickup:0,onhold:0,lead:0,nDops:0}; }
+function ltEscopoTexto(){
+  const p = [];
+  if(ltView.subreg) p.push(ltView.subreg);
+  if(ltView.station) p.push(ltView.station);
+  if(ltView.canal) p.push(ltView.canal);
+  return p.length ? p.join(" · ") : "Regional 4";
+}
+function ltPeriodoTexto(){
+  if(!LT) return "";
+  return LT.periodoIni===LT.periodoFim ? "dia " + fmtDiaBR(LT.periodoFim)
+    : fmtDiaBR(LT.periodoIni) + " a " + fmtDiaBR(LT.periodoFim) + " (" + LT.diasNoPeriodo + " dias)";
+}
+function ltPreset(tipo){
+  const d = (LT && LT.diasDisponiveis) || []; if(!d.length) return null;
+  const ult = d[d.length-1];
+  if(tipo==="dia") return [ult, ult];
+  if(tipo==="7d") return [d.slice(-7)[0], ult];
+  if(tipo==="15d") return [d[0], ult];
+  return null;
+}
+function ltPresetAtual(){
+  for(const t of ["dia","7d","15d"]){ const r = ltPreset(t); if(r && r[0]===LT.periodoIni && r[1]===LT.periodoFim) return t; }
+  return "";
+}
+function ltAplicar(json){
+  const obj = (cols, r)=>{ const o={}; cols.forEach((c,i)=>o[c]=r[i]); return o; };
+  LT = Object.assign({}, json, {
+    rows: (json.rows||[]).map(r=>obj(json.cols, r)),
+    trend: (json.trend||[]).map(r=>obj(json.trendCols, r))
+  });
+  LT_CACHE[json.periodoIni + "_" + json.periodoFim] = json;
+  const disp = LT.diasDisponiveis || [];
+  ["lt-f-ini","lt-f-fim"].forEach(id=>{ const el = document.getElementById(id); if(el && disp.length){ el.min = disp[0]; el.max = disp[disp.length-1]; } });
+  const a = document.getElementById("lt-f-ini"), b = document.getElementById("lt-f-fim");
+  if(a) a.value = LT.periodoIni || ""; if(b) b.value = LT.periodoFim || "";
+  if(ltView.subreg==="__default__") ltView.subreg = LT.rows.some(r=>r.subreg==="CO") ? "CO" : "";
+}
+async function loadLeadTime(ini, fim){
+  const sub = document.getElementById("lt-subtitle");
+  const load = document.getElementById("lt-loading"), cont = document.getElementById("lt-conteudo");
+  if(ini && fim && ini > fim){ const t = ini; ini = fim; fim = t; }
+  try{
+    let json = (ini && fim) ? LT_CACHE[ini + "_" + fim] : null;
+    if(!json){
+      if(!LT && load){ load.innerHTML = loaderHtml("Carregando lead time…"); load.style.display = ""; }
+      if(sub) sub.textContent = "— carregando…";
+      const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+      const q = (ini || fim) ? "&ini=" + encodeURIComponent(ini||fim) + "&fim=" + encodeURIComponent(fim||ini) : "";
+      json = await fetchViaIframe(API_URL + sep + "tipo=leadtime" + q, 90000);
+      if(!json || !json.rows || !json.cols) throw new Error("resposta sem dados — confira se o LeadTime.gs foi publicado");
+    }
+    ltAplicar(json);
+    LT_LOADED = true;
+    if(load) load.style.display = "none";
+    if(cont) cont.style.display = "";
+    ltView.showAll = false; ltView.showAllStations = false;
+    ltAtualizarFiltros();
+    renderLeadTime();
+  } catch(err){
+    console.error("Lead Time:", err);
+    if(sub) sub.textContent = "— não foi possível carregar (" + err.message + ")";
+    if(load && !LT) load.innerHTML = '<div class="empty-state">Não foi possível carregar o Lead Time agora (' + esc(err.message) + ').</div>';
+  }
+}
+function ltAtualizarFiltros(){
+  if(!LT) return;
+  const u = (rows,k)=>[...new Set(rows.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const subregs = u(LT.rows,"subreg");
+  if(ltView.subreg && !subregs.includes(ltView.subreg)) ltView.subreg = "";
+  sdOptions("lt-f-subreg", subregs, ltView.subreg);
+  const stations = u(ltFiltrar(LT.rows,["station"]),"station");
+  if(ltView.station && !stations.includes(ltView.station)) ltView.station = "";
+  sdOptions("lt-f-station", stations, ltView.station);
+  const canais = u(LT.rows,"canal");
+  if(ltView.canal && !canais.includes(ltView.canal)) ltView.canal = "";
+  sdOptions("lt-f-canal", canais, ltView.canal);
+  const atual = ltPresetAtual();
+  document.querySelectorAll("#lt-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===atual));
+}
+function ltSet(campo, valor){
+  ltView[campo] = valor;
+  if(campo==="subreg"){ ltView.station = ""; ltView.showAllStations = false; }
+  ltView.showAll = false;
+  ltAtualizarFiltros(); renderLeadTime();
+}
+["subreg","station","canal"].forEach(k=>{
+  const el = document.getElementById("lt-f-"+k);
+  if(el) el.addEventListener("change", e=> ltSet(k, e.target.value));
+});
+["lt-f-ini","lt-f-fim"].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener("change", ()=>{
+    const a = document.getElementById("lt-f-ini").value, b = document.getElementById("lt-f-fim").value;
+    if(a || b) loadLeadTime(a || b, b || a);
+  });
+});
+document.querySelectorAll("#lt-periodo button").forEach(b=>{
+  b.addEventListener("click", ()=>{ const r = ltPreset(b.dataset.p); if(r) loadLeadTime(r[0], r[1]); });
+});
+(function(){
+  const limpar = document.getElementById("lt-limpar");
+  if(limpar) limpar.addEventListener("click", ()=>{
+    ltView.subreg = ""; ltView.station = ""; ltView.canal = ""; ltView.busca = "";
+    const b = document.getElementById("lt-busca"); if(b) b.value = "";
+    ltAtualizarFiltros(); renderLeadTime();
+  });
+  const busca = document.getElementById("lt-busca");
+  if(busca) busca.addEventListener("input", e=>{ ltView.busca = e.target.value.trim().toLowerCase(); ltView.showAll = false; renderLtRanking(); });
+})();
+function ltTipHtml(titulo, o){
+  return `<div class="t">${esc(titulo)}</div>
+    <div class="r">Lead time <b>${ltFmt(o.lead)}</b></div>
+    <div class="r">Pedidos <b>${sdNum(o.orders)}</b></div>
+    <div class="r">Pickup <b>${sdNum(o.pickup)}</b></div>
+    <div class="r">On hold <b>${sdNum(o.onhold)}</b></div>
+    ${o.nDops ? `<div class="r">DOPs <b>${sdNum(o.nDops)}</b></div>` : ""}`;
+}
+// Barras horizontais: comprimento = lead time (quanto maior, pior). Linha tracejada = média do conjunto.
+function ltBarras(elId, grupos, selecionado, onClick, ref, refLabel, campoValor, fmt){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  const val = g => campoValor ? g[campoValor] : g.lead;
+  const f = fmt || ltFmt;
+  const max = Math.max(...grupos.map(val), ref||0) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = g.label===selecionado ? "sel" : (selecionado ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}" ${onClick?"":'style="cursor:default"'}>
+      <div class="sd-bar-label" title="${esc(g.rotulo||g.label)}">${esc(g.rotulo||g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(val(g)/max*100).toFixed(2)}%"></div>
+        ${ref!=null?`<div class="sd-bar-ref" style="left:${(ref/max*100).toFixed(2)}%"></div>`:""}</div>
+      <div class="sd-bar-val">${f(val(g))}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    const rodape = ref!=null ? `<div class="r" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">${esc(refLabel||"Média")} <b>${f(ref)}</b></div>` : "";
+    row.addEventListener("mousemove", ev=> sdTip(ltTipHtml(g.rotulo||g.label, g) + rodape, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+// Linha: lead time por dia (uma linha por canal quando há mais de um; legenda acima)
+const LT_CORES = { "SVP":"var(--brand)", "Seller":"var(--text-muted)" };
+function ltTrend(){
+  const el = document.getElementById("lt-chart-trend"); if(!el || !LT) return;
+  const linhas = ltFiltrar(LT.trend).filter(t=>t.dia>=LT.periodoIniTrend && t.dia<=LT.periodoFim);
+  const dias = [...new Set(linhas.map(t=>t.dia))].sort();
+  const canais = ltView.canal ? [ltView.canal] : [...new Set(linhas.map(t=>t.canal))].sort((a,b)=> a==="SVP"?-1:b==="SVP"?1:a.localeCompare(b));
+  const leg = document.getElementById("lt-trend-legenda");
+  if(dias.length < 2){ el.innerHTML = '<div class="empty-state">Poucos dias com dados para esse filtro.</div>'; if(leg) leg.innerHTML = ""; return; }
+  const series = canais.map(c=>{
+    const porDia = {};
+    linhas.filter(t=>t.canal===c).forEach(t=>{ const o = porDia[t.dia] || (porDia[t.dia] = {orders:0,tempo:0,pickup:0,onhold:0}); o.orders+=t.orders; o.tempo+=t.tempo; o.pickup+=t.pickup; o.onhold+=t.onhold; });
+    return { canal:c, cor: LT_CORES[c] || "var(--series-1)", pts: dias.map(d=> porDia[d] && porDia[d].orders ? Object.assign({dia:d, lead: ltLead(porDia[d])}, porDia[d]) : null) };
+  }).filter(s=>s.pts.some(Boolean));
+  if(leg) leg.innerHTML = series.length>1 ? series.map(s=>`<span class="lt-leg"><i style="background:${s.cor}"></i>${esc(s.canal)}</span>`).join("") : "";
+  const todos = series.flatMap(s=>s.pts.filter(Boolean).map(p=>p.lead));
+  const W = Math.max(320, el.clientWidth || 600), H = el.clientHeight || 220;
+  const m = {l:40, r:46, t:18, b:26};
+  const iw = W-m.l-m.r, ih = H-m.t-m.b;
+  const hi = Math.ceil(Math.max(...todos)*1.1) || 1, lo = 0;
+  const x = i => m.l + i*iw/(dias.length-1);
+  const y = v => m.t + ih - (v-lo)/(hi-lo)*ih;
+  const passoY = hi<=5 ? 1 : hi<=12 ? 2 : hi<=30 ? 5 : 10;
+  const ticks = []; for(let v=0; v<=hi; v+=passoY) ticks.push(v);
+  const passoX = Math.ceil(dias.length/8);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Lead time por dia">
+    ${ticks.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`).join("")}
+    ${dias.map((d,i)=> (i%passoX===0 || i===dias.length-1) ? `<text x="${x(i)}" y="${H-6}" text-anchor="middle">${fmtDiaBR(d)}</text>` : "").join("")}
+    ${series.map(s=>{
+      let d = "", pen = false;
+      s.pts.forEach((p,i)=>{ if(!p){ pen=false; return; } d += (pen?"L":"M")+x(i).toFixed(1)+","+y(p.lead).toFixed(1)+" "; pen=true; });
+      const ult = [...s.pts].reverse().find(Boolean), iu = s.pts.lastIndexOf(ult);
+      return `<path d="${d}" fill="none" stroke="${s.cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        ${s.pts.map((p,i)=> p ? `<circle cx="${x(i)}" cy="${y(p.lead)}" r="4" fill="${s.cor}" stroke="var(--surface-2)" stroke-width="2"/>` : "").join("")}
+        <text x="${x(iu)+8}" y="${y(ult.lead)+4}" style="fill:var(--text-primary);font-weight:700">${ltFmt(ult.lead)}</text>`;
+    }).join("")}
+    <line class="sd-cross" x1="0" x2="0" y1="${m.t}" y2="${m.t+ih}" stroke="var(--text-muted)" stroke-dasharray="3 3" style="display:none"/>
+    <rect class="sd-hit" x="${m.l-10}" y="${m.t}" width="${iw+20}" height="${ih}" fill="transparent"/>
+  </svg>`;
+  const svg = el.querySelector("svg"), hit = el.querySelector(".sd-hit"), cross = el.querySelector(".sd-cross");
+  hit.addEventListener("mousemove", ev=>{
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(dias.length-1, Math.round((px-m.l)/(iw/(dias.length-1)))));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.style.display = "";
+    const [a,mm,d] = dias[i].split("-");
+    sdTip(`<div class="t">${d}/${mm}/${a}</div>` + series.map(s=> s.pts[i]
+      ? `<div class="r"><span><i class="lt-dot" style="background:${s.cor}"></i>${esc(s.canal)}</span><b>${ltFmt(s.pts[i].lead)}</b></div>` : "").join("")
+      + `<div class="r" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">On hold <b>${sdNum(series.reduce((t,s)=>t+(s.pts[i]?s.pts[i].onhold:0),0))}</b></div>`, ev);
+  });
+  hit.addEventListener("mouseleave", ()=>{ cross.style.display = "none"; sdTip(null); });
+}
+const LT_RANK_COLS = [
+  {k:"pos", l:"#", num:true, nosort:true},
+  {k:"dop", l:"DOP"}, {k:"nome", l:"Agência"}, {k:"station", l:"Station"}, {k:"canal", l:"Canal"},
+  {k:"orders", l:"Pedidos", num:true}, {k:"lead", l:"Lead time", num:true}, {k:"tempo", l:"Tempo total", num:true},
+  {k:"pickup", l:"Pickup", num:true}, {k:"trips", l:"Viagens", num:true}, {k:"onhold", l:"On hold", num:true},
+  {k:"just", l:"Última justificativa"}
+];
+function ltBadge(v, ref){ return v > ref*1.5 ? "critical" : v > ref ? "warning" : "good"; }
+function renderLtRanking(){
+  const el = document.getElementById("lt-ranking"); if(!el || !LT) return;
+  let rows = ltFiltrar(LT.rows).filter(r=>r.orders>0).map(r=>Object.assign({}, r, { dop:"DOP"+r.id, lead: ltLead(r) }));
+  const ref = ltTotais(rows).lead;
+  if(ltView.busca) rows = rows.filter(r=> (r.dop+" "+r.nome+" "+r.station+" "+r.just).toLowerCase().includes(ltView.busca));
+  const st = ltView.sort;
+  rows.sort((a,b)=>{ const va=a[st.key], vb=b[st.key];
+    const c = typeof va==="number" ? va-vb : String(va||"").localeCompare(String(vb||""),"pt-BR");
+    return c*st.dir || (b.tempo-a.tempo); });
+  const tot = ltTotais(rows);
+  const vis = ltView.showAll ? rows : rows.slice(0, LT_RANK_PREVIEW);
+  const seta = k => st.key===k ? (st.dir<0?" ▼":" ▲") : "";
+  const corta = (t,n)=> t.length>n ? t.slice(0,n-1)+"…" : t;
+  const cel = (c,r,i)=>{
+    switch(c.k){
+      case "pos": return i+1;
+      case "nome": return `<span title="${esc(r.nome)}">${esc(corta(r.nome||"—",26))}</span>`;
+      case "just": return `<span title="${esc(r.just)}">${esc(corta(r.just||"—",30))}</span>`;
+      case "lead": return `<span class="badge ${ltBadge(r.lead, ref)}"><span class="ic"></span>${ltFmt(r.lead)}</span>`;
+      case "dop": case "station": case "canal": return esc(r[c.k]||"—");
+      default: return sdNum(r[c.k]);
+    }
+  };
+  el.innerHTML = `<thead><tr>${LT_RANK_COLS.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}" ${c.nosort?'style="cursor:default"':""}>${c.l}${seta(c.k)}</th>`).join("")}</tr></thead>
+    <tbody>${vis.map((r,i)=>`<tr data-dop="${esc(r.id)}">${LT_RANK_COLS.map(c=>`<td class="${c.num?"num":""}">${cel(c,r,i)}</td>`).join("")}</tr>`).join("")
+      || `<tr><td colspan="${LT_RANK_COLS.length}"><div class="empty-state">Nenhuma agência para esse filtro.</div></td></tr>`}</tbody>
+    ${rows.length?`<tfoot><tr style="font-weight:700"><td></td><td colspan="4">Total (${sdNum(rows.length)} linhas)</td>
+      <td class="num">${sdNum(tot.orders)}</td><td class="num">${ltFmt(tot.lead)}</td><td class="num">${sdNum(tot.tempo)}</td>
+      <td class="num">${sdNum(tot.pickup)}</td><td class="num"></td><td class="num">${sdNum(tot.onhold)}</td><td></td></tr></tfoot>`:""}`;
+  el.querySelectorAll("th").forEach(th=>{
+    const k = th.dataset.k; if(k==="pos") return;
+    th.onclick = ()=>{ if(st.key===k) st.dir*=-1; else { st.key=k; st.dir = (["dop","nome","station","canal","just"].includes(k)) ? 1 : -1; } renderLtRanking(); };
+  });
+  el.querySelectorAll("tbody tr[data-dop]").forEach(tr=>{
+    tr.onclick = ()=>{ const d = DATA.find(x=>dopKey(x.dop)===tr.dataset.dop); if(d) openDetail(d.dop); };
+  });
+  const more = document.getElementById("lt-ranking-more");
+  if(more){
+    more.style.display = rows.length > LT_RANK_PREVIEW ? "" : "none";
+    more.textContent = ltView.showAll ? "− Mostrar só as " + LT_RANK_PREVIEW + " primeiras" : "+ Ver todas as " + sdNum(rows.length) + " linhas";
+    more.onclick = ()=>{ ltView.showAll = !ltView.showAll; renderLtRanking(); };
+  }
+}
+function renderLeadTime(){
+  if(!LT) return;
+  const sub = document.getElementById("lt-subtitle");
+  if(sub) sub.textContent = "— " + ltPeriodoTexto() + " · " + ltEscopoTexto();
+  // a linha de evolução mostra o período escolhido ou, no mínimo, os últimos 7 dias até o fim dele
+  const ate = (LT.diasDisponiveis||[]).filter(d=>d<=LT.periodoFim);
+  const ult7 = ate.slice(-7)[0] || LT.periodoIni;
+  LT.periodoIniTrend = LT.periodoIni < ult7 ? LT.periodoIni : ult7;
+  const escopo = ltFiltrar(LT.rows);
+  const t = ltTotais(escopo);
+  const porCanal = ltAgrupar(ltFiltrar(LT.rows,["canal"]), "canal");
+  const lc = n => { const g = porCanal.find(x=>x.label===n); return g ? ltFmt(g.lead) : "—"; };
+  renderKpis("lt-kpis", [
+    {label:"Lead time" + (ltView.canal ? " (" + ltView.canal + ")" : ""), value: ltFmt(t.lead), icon:"⏱", sub: sdNum(t.nDops) + " DOPs"},
+    {label:"Lead time SVP", value: lc("SVP"), icon:"🏪"},
+    {label:"Lead time Seller", value: lc("Seller"), icon:"🛍"},
+    {label:"Pedidos", value: sdNum(t.orders), icon:"🧾"},
+    {label:"Pickup", value: sdNum(t.pickup), icon:"⬆"},
+    {label:"On hold", value: sdNum(t.onhold), icon:"⏸", cls: t.onhold>0?"warn":""},
+  ]);
+  const baseReg = ltFiltrar(LT.rows,["subreg","station"]);
+  ltBarras("lt-chart-subreg", ltAgrupar(baseReg,"subreg").sort((a,b)=>a.label.localeCompare(b.label,"pt-BR")),
+    ltView.subreg, lbl=> ltSet("subreg", ltView.subreg===lbl ? "" : lbl), ltTotais(baseReg).lead, "Regional 4");
+  const baseSt = ltFiltrar(LT.rows,["station"]);
+  let stations = ltAgrupar(baseSt,"station").sort((a,b)=>b.lead-a.lead);
+  const tit = document.getElementById("lt-station-title");
+  if(tit) tit.textContent = "Lead time por Station" + (ltView.subreg ? " — " + ltView.subreg : "") + " (pior primeiro)";
+  const totSt = stations.length;
+  if(!ltView.showAllStations){
+    const top = stations.slice(0, LT_STATION_PREVIEW);
+    if(ltView.station && !top.some(g=>g.label===ltView.station)){ const s = stations.find(g=>g.label===ltView.station); if(s) top.push(s); }
+    stations = top;
+  }
+  ltBarras("lt-chart-station", stations, ltView.station, lbl=> ltSet("station", ltView.station===lbl ? "" : lbl),
+    ltTotais(baseSt).lead, ltView.subreg ? "Média " + ltView.subreg : "Regional 4");
+  const more = document.getElementById("lt-station-more");
+  if(more){
+    more.style.display = totSt > LT_STATION_PREVIEW ? "" : "none";
+    more.textContent = ltView.showAllStations ? "− Mostrar só as " + LT_STATION_PREVIEW + " piores" : "+ Ver todas as " + totSt + " stations";
+    more.onclick = ()=>{ ltView.showAllStations = !ltView.showAllStations; renderLeadTime(); };
+  }
+  // on hold por dia (mesmos dias da linha de evolução)
+  const porDia = {};
+  ltFiltrar(LT.trend).filter(x=>x.dia>=LT.periodoIniTrend && x.dia<=LT.periodoFim).forEach(x=>{
+    const o = porDia[x.dia] || (porDia[x.dia] = {label:x.dia, rotulo: fmtDiaBR(x.dia), orders:0, tempo:0, pickup:0, onhold:0});
+    o.orders+=x.orders; o.tempo+=x.tempo; o.pickup+=x.pickup; o.onhold+=x.onhold;
+  });
+  const diasOn = Object.values(porDia).sort((a,b)=>a.label.localeCompare(b.label)).map(o=>Object.assign(o,{lead:ltLead(o)}));
+  ltBarras("lt-chart-onhold", diasOn, "", null, null, null, "onhold", sdNum);
+  ltTrend();
+  renderLtRanking();
+}
+window.addEventListener("resize", ()=>{ clearTimeout(window._ltResizeT); window._ltResizeT = setTimeout(()=>{ if(LT && document.getElementById("sec-leadtime").classList.contains("active")) ltTrend(); }, 200); });
 // ==================== BARRA DE ROLAGEM HORIZONTAL TAMBÉM EM CIMA ====================
 // Tabelas largas (ex.: Ranking por Agência) só tinham a barra de arrastar
 // embaixo — com muitas linhas era preciso rolar a página até o fim pra mover
