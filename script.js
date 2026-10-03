@@ -1,3 +1,352 @@
+// ==================== APP NO CELULAR (ícone na tela inicial) ====================
+// Estas marcações ficavam no <head> do index.html; agora são criadas aqui,
+// pra o index.html poder ser mínimo. Só têm efeito se os arquivos
+// manifest.json e a pasta icons existirem no repositório.
+(function(){
+  const add = (tag, attrs)=>{ const el = document.createElement(tag); Object.keys(attrs).forEach(k=>el.setAttribute(k, attrs[k])); document.head.appendChild(el); };
+  add("link", {rel:"manifest", href:"manifest.json"});
+  add("link", {rel:"icon", type:"image/png", sizes:"192x192", href:"icons/icon-192.png"});
+  add("link", {rel:"apple-touch-icon", href:"icons/apple-touch-icon.png"});
+  add("meta", {name:"apple-mobile-web-app-capable", content:"yes"});
+  add("meta", {name:"mobile-web-app-capable", content:"yes"});
+  add("meta", {name:"apple-mobile-web-app-title", content:"BI Shopee"});
+})();
+// ==================== ESTRUTURA DA PÁGINA ====================
+// Todo o HTML do painel fica aqui, e não mais no index.html. O index.html
+// virou um arquivo mínimo (só carrega o style.css e este script.js), porque
+// ele vinha sendo cortado ao ser colado no GitHub e derrubava o painel.
+// Para mudar menus, títulos, abas ou o rodapé do menu, edite o texto abaixo.
+// (Se o index.html antigo, completo, ainda estiver no ar, este bloco é ignorado.)
+if(!document.querySelector(".app")){
+  document.body.insertAdjacentHTML("afterbegin", `
+<div id="loading-overlay" class="loading-overlay"><div class="loading-box loading-box-anim"><div class="loader-anim"><img class="loader-gif" src="carregando.gif" alt="" width="110" height="142" onerror="this.outerHTML='&lt;span class=&quot;spinner&quot;&gt;&lt;/span&gt;'"><div class="loader-txt">Carregando indicadores…</div></div></div></div>
+<div class="app">
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="sidebar" id="sidebar">
+   <div class="sidebar-inner">
+    <div class="brand">
+      <div class="brand-icon">
+        <img src="data:image/png;base64,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" alt="Shopee" width="26" height="26" style="width:76%;height:76%;object-fit:contain;display:block;">
+      </div>
+      <div class="brand-text">
+        <div class="t1">Painel Operacional</div>
+        <div class="t2">Shopee</div>
+      </div>
+    </div>
+    <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
+    <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
+    <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
+    <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
+    <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
+    <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
+    <div class="nav-item" data-section="notasfiscais"><span class="dot"></span>Pagamentos<span class="nav-badge" id="nav-nf-badge">0</span></div>
+    <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
+    <div class="nav-item" data-section="historico"><span class="dot"></span>Histórico Pós-Fechamento</div>
+    <div class="sidebar-foot">
+      <div class="sfoot-desc">Acompanhamento operacional<br>SVP &amp; FM</div>
+      <div class="sfoot-line">Desenvolvido por <b>Hellen Mirla</b></div>
+      <div class="sfoot-line">Dúvidas e sugestões:<br><a href="mailto:hellen.mirla@shopee.com">hellen.mirla@shopee.com</a><br>ou SeaTalk</div>
+      <div class="sfoot-copy">© ${new Date().getFullYear()} · Todos os direitos reservados</div>
+    </div>
+   </div>
+  </div>
+
+  <div class="main">
+    <!-- Barra do celular: botão de menu + logo + atualizar (só aparece em telas pequenas) -->
+    <div class="mobile-bar">
+      <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Abrir menu">☰</button>
+      <div class="mobile-title"><span>Painel Operacional</span><b id="mobile-section-name">Resumo Geral</b></div>
+      <button class="mobile-filter-btn" id="mobile-filter-btn" aria-label="Filtros">Filtros<span id="mobile-filter-count"></span></button>
+      <button class="mobile-refresh-btn" id="mobile-refresh-btn" aria-label="Atualizar">⟳</button>
+    </div>
+    <div class="error-banner" id="error-banner"></div>
+    <div class="topbar">
+      <div class="filter"><label>Responsável</label>
+        <select id="f-resp"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Sub-Regional</label>
+        <select id="f-subreg"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Cidade</label>
+        <select id="f-cidade"><option value="">Todas</option></select>
+      </div>
+      <div class="filter"><label>Estação</label>
+        <select id="f-estacao"><option value="">Todas</option></select>
+      </div>
+      <div class="filter"><label>Status Coleta</label>
+        <select id="f-statuscoleta"><option value="">Todos</option></select>
+      </div>
+      <div class="filter"><label>Risco Operacional</label>
+        <select id="f-risco"><option value="">Todos</option></select>
+      </div>
+      <div class="spacer"></div>
+      <div class="update-chip" id="update-chip"><span class="live-dot" id="live-dot"></span> Sincronizando…</div>
+      <button class="theme-btn primary" id="refresh-btn">⟳ Atualizar agora</button>
+      <button class="theme-btn" id="theme-toggle">◑ Modo escuro</button>
+    </div>
+
+    <!-- RESUMO GERAL -->
+    <div class="section active" id="sec-resumo">
+      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="kpi-grid kpi-grid-secondary" id="kpi-grid-extra"></div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">⚠ Alertas — Prioridade</div><div class="card-link" id="alerts-toggle-top">Ver todas</div></div>
+          <div class="col-head" style="display:grid;grid-template-columns:3px 1.3fr 0.55fr 0.95fr 0.7fr;gap:10px;">
+            <span></span><span>Agência</span><span>DOP</span><span>Indicador</span><span>Valor</span>
+          </div>
+          <div id="alerts-list"></div>
+          <div class="card-expand-btn" id="alerts-toggle-bottom">+ Ver todas as alertas</div>
+        </div>
+        <div class="card" id="card-poscoleta">
+          <div class="card-head"><div class="card-title">📥 Recebidos pós-coleta por DOP</div><div class="losses-total" id="poscoleta-total"></div></div>
+          <div id="rank-poscoleta"></div>
+          <div class="card-expand-btn" id="poscoleta-toggle-bottom" style="display:none"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" id="fifo-resumo-toggle-top">Ver ranking completo</div></div>
+          <div id="rank-fifo-resumo"></div>
+          <div class="card-expand-btn" id="fifo-resumo-toggle-bottom">+ Ver ranking completo</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">📉 Ranking — Pior Same Day (semana)</div><div class="card-link" id="sameday-resumo-toggle-top">Ver ranking completo</div></div>
+          <div id="rank-sameday-resumo"></div>
+          <div class="card-expand-btn" id="sameday-resumo-toggle-bottom">+ Ver ranking completo</div>
+        </div>
+      </div>
+
+      <!-- Sem coleta e Losses em linha inteira, um embaixo do outro -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">🚚 Dops sem coleta há mais tempo</div><div class="losses-total" id="semcoleta-total"></div></div>
+        <div class="table-wrap"><table class="data" id="table-sem-coleta"></table></div>
+        <div class="card-expand-btn" id="semcoleta-toggle-bottom" style="display:none"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">💸 Maiores Ofensores — Losses</div><div class="losses-total" id="losses-total"></div></div>
+        <div id="rank-losses"></div>
+        <div class="card-expand-btn" id="losses-toggle-bottom" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- SAME DAY -->
+    <div class="section" id="sec-sameday">
+      <div class="section-title">Same Day <span class="sd-sub" id="sd-subtitle">— carregando…</span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="sd-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="sd-f-fim"></div>
+        <div class="sd-seg" id="sd-periodo">
+          <button data-p="dia" class="active">Último dia</button>
+          <button data-p="semana">Semana</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="mes">Mês</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="sd-f-subreg" data-empty="Todas"></select></div>
+        <div class="filter"><label>Station</label><select id="sd-f-station" data-empty="Todas"></select></div>
+        <div class="filter"><label>Responsável</label><select id="sd-f-resp" data-empty="Todos"></select></div>
+        <button class="theme-btn" id="sd-limpar">Limpar filtros</button>
+      </div>
+      <div class="kpi-grid" id="sd-kpis"></div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Same Day por Sub-regional</div><div class="sd-hint">clique numa barra para filtrar</div></div>
+          <div id="sd-chart-subreg" class="sd-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title" id="sd-station-title">Same Day por Station</div><div class="sd-hint">clique numa barra para filtrar</div></div>
+          <div id="sd-chart-station" class="sd-bars"></div>
+          <div class="card-expand-btn" id="sd-station-more" style="display:none"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">Evolução diária do Same Day</div><div class="sd-hint" id="sd-trend-hint"></div></div>
+        <div id="sd-chart-trend" class="sd-trend"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Ranking por Agência</div>
+          <div class="sd-hint">ordenado pelos pacotes que ficaram fora do Same Day · clique no cabeçalho para reordenar</div>
+        </div>
+        <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
+        <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
+        <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- LEAD TIME -->
+    <div class="section" id="sec-leadtime">
+      <div class="section-title">Lead Time <span class="sd-sub" id="lt-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="lt-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="lt-f-fim"></div>
+        <div class="sd-seg" id="lt-periodo">
+          <button data-p="dia">Último dia</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="15d">15 dias</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="lt-f-subreg" data-empty="Todas"></select></div>
+        <div class="filter"><label>Station</label><select id="lt-f-station" data-empty="Todas"></select></div>
+        <div class="filter"><label>Canal</label><select id="lt-f-canal" data-empty="Todos"></select></div>
+        <button class="theme-btn" id="lt-limpar">Limpar filtros</button>
+      </div>
+      <div id="lt-loading"></div>
+      <div id="lt-conteudo" style="display:none">
+        <div class="kpi-grid" id="lt-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Lead time por Sub-regional</div><div class="sd-hint">quanto maior, pior · clique para filtrar</div></div>
+            <div id="lt-chart-subreg" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title" id="lt-station-title">Lead time por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="lt-chart-station" class="sd-bars"></div>
+            <div class="card-expand-btn" id="lt-station-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Lead time por dia</div><div class="lt-legenda" id="lt-trend-legenda"></div></div>
+            <div id="lt-chart-trend" class="sd-trend"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">On hold por dia</div><div class="sd-hint">pacotes</div></div>
+            <div id="lt-chart-onhold" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Ranking por Agência</div>
+            <div class="sd-hint">ordenado pelo tempo total (o que mais pesa no lead time) · clique no cabeçalho para reordenar</div>
+          </div>
+          <div class="search-box"><input id="lt-busca" placeholder="Buscar por DOP, agência, station ou justificativa…"></div>
+          <div class="table-wrap"><table class="data" id="lt-ranking"></table></div>
+          <div class="card-expand-btn" id="lt-ranking-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESEMPENHO -->
+    <div class="section" id="sec-desempenho">
+      <div class="section-title">Desempenho por Agência</div>
+      <div class="card">
+        <div class="table-wrap"><table class="data" id="table-desempenho"></table></div>
+      </div>
+    </div>
+
+    <!-- DETALHE -->
+    <div class="section" id="sec-detalhe">
+      <div class="section-title">Detalhe da Agência</div>
+      <div class="search-box"><input id="detail-search" placeholder="Buscar por DOP ou nome da agência…"></div>
+      <div class="card" id="detail-card"><div class="empty-state">Busque uma agência pelo DOP ou nome para ver o detalhe completo.</div></div>
+    </div>
+
+    <!-- ANALISE DE BACKLOG -->
+    <div class="section" id="sec-backlog">
+      <div class="section-title">Análise de Backlog — Pacotes Arrastados por Dia</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📦 Pacotes parados por frente e analista</div>
+          <div class="card-link" id="backlog-refresh">Atualizar</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter"><label>Frente</label><select id="backlog-f-frente"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Regional</label><select id="backlog-f-regional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Sub-Regional</label><select id="backlog-f-subregional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Analista</label><select id="backlog-f-analista"><option value="">Todos</option></select></div>
+        </div>
+        <div class="search-box"><input id="backlog-search" placeholder="Buscar por analista, DOP ou nome da agência…"></div>
+        <div class="col-head">Prioridade para pacotes D3 ou mais (D1-D2 ainda não são críticos) — clique no analista para ver os DOPs</div>
+        <div id="backlog-list"><div class="empty-state">Abra esta aba para carregar a análise de backlog.</div></div>
+      </div>
+    </div>
+
+    <!-- NOTAS FISCAIS PENDENTES -->
+    <div class="section" id="sec-notasfiscais">
+      <div class="section-title">Pagamentos</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📄 DOPs aguardando validação do analista</div>
+          <div class="card-link" id="nf-refresh">Atualizar</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter"><label>Mês</label><select id="nf-f-mes"><option value="">Todos</option></select></div>
+          <div class="filter"><label>Regional</label><select id="nf-f-regional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Sub-Regional</label><select id="nf-f-subregional"><option value="">Todas</option></select></div>
+          <div class="filter"><label>Analista</label><select id="nf-f-analista"><option value="">Todos</option></select></div>
+        </div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);" id="nf-kpi-grid"></div>
+      </div>
+
+      <div class="grid3">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Regional</div></div>
+          <div id="nf-rank-regional"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Sub-Regional</div></div>
+          <div id="nf-rank-subregional"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Por Analista</div></div>
+          <div id="nf-rank-analista"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Lista de DOPs pendentes</div></div>
+        <div class="table-wrap"><table class="data" id="nf-table"></table></div>
+      </div>
+    </div>
+
+    <!-- BASE -->
+    <div class="section" id="sec-base">
+      <div class="section-title">Base de Dados</div>
+      <div class="card">
+        <div class="table-wrap"><table class="data" id="table-base"></table></div>
+      </div>
+    </div>
+
+    <!-- HISTORICO POS-FECHAMENTO -->
+        <div class="section" id="sec-historico">
+      <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📦 Ranking — Agências</div>
+          <div class="card-link" id="historico-refresh">Atualizar</div>
+        </div>
+        <div class="pill-row" id="historico-mode-pills">
+          <div class="pill active" data-mode="dia">Por dia</div>
+          <div class="pill" data-mode="semana">Por semana</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter" id="historico-period-filter" style="max-width:220px;">
+            <label id="historico-period-label">Dia</label>
+            <select id="historico-period-select"></select>
+          </div>
+          <div class="filter" style="max-width:220px; flex:1; min-width:180px;">
+            <label>Buscar por DOP</label>
+            <input id="historico-dop-input" type="text" inputmode="numeric" placeholder="Ex: 1722" style="width:100%; border:none; background:transparent; color:var(--text-primary); font-size:13px; outline:none; padding:0;">
+          </div>
+        </div>
+        <div class="empty-state" id="historico-dop-search-msg" style="display:none; padding:0 0 12px; text-align:left; font-size:12px;"></div>
+        <div class="hist-rank-list" id="table-historico"></div>
+      </div>
+      <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
+        <div class="card-head">
+          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 3 meses)</div>
+        </div>
+        <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+
+  </div>
+</div>
+`);
+}
 const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3aa7","#e34948"];
 function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
 function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
