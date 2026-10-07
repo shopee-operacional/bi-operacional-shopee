@@ -1351,6 +1351,12 @@ if(backlogRefreshBtn) backlogRefreshBtn.addEventListener("click", ()=> loadBackl
 // Julho, Agosto etc. e já deriva a regional — ver pagColetarPendentes em
 // Pagamentos.gs).
 let NF_DATA = [];
+// Total de DOPs (e de pendentes) por mês / sub-regional / analista — vem do
+// Apps Script no campo "totais" (aba PAGAMENTOS_TOTAIS). É o que permite
+// mostrar, por analista, "total de DOPs", "pendentes" e "% pendente". Se o
+// Apps Script ainda for a versão antiga (sem "totais"), fica vazio e o
+// quadro "Por Analista" mostra só a contagem de pendentes, como antes.
+let NF_TOTAIS = [];
 let NF_LOADED = false;
 let nfFilters = { mes:"", regional:"", subregional:"", analista:"" };
 const NF_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1383,6 +1389,12 @@ async function loadNotasFiscais(){
     // já usarem o texto legível (em vez do timestamp cru que aparecia no
     // seletor "Mês").
     NF_DATA = brutos.map(d => Object.assign({}, d, { mes: nfFormatMes(d.mes) }));
+    const totaisBrutos = (!Array.isArray(json) && Array.isArray(json.totais)) ? json.totais : [];
+    NF_TOTAIS = totaisBrutos.map(t => Object.assign({}, t, {
+      mes: nfFormatMes(t.mes),
+      total: Number(t.total) || 0,
+      pendentes: Number(t.pendentes) || 0
+    }));
     NF_LOADED = true;
     populateNfFilters();
     renderNotasFiscais();
@@ -1422,6 +1434,58 @@ function nfFiltered(){
     (!nfFilters.analista || d.analista===nfFilters.analista)
   );
 }
+// Mesmos filtros de nfFiltered(), aplicados aos totais por analista.
+function nfTotaisFiltered(){
+  return NF_TOTAIS.filter(t =>
+    (!nfFilters.mes || t.mes===nfFilters.mes) &&
+    (!nfFilters.regional || t.regional===nfFilters.regional) &&
+    (!nfFilters.subregional || t.subRegional===nfFilters.subregional) &&
+    (!nfFilters.analista || t.analista===nfFilters.analista)
+  );
+}
+function nfPct(pend, total){
+  if(!total) return "—";
+  const p = pend/total*100;
+  return (p>0 && p<1 ? p.toFixed(1) : Math.round(p)) + "%";
+}
+// Quadro "Por Analista": para cada analista, total de DOPs no nome dele,
+// quantos ainda estão em "Analista validar" (nota pendente) e o % pendente.
+// Ordenado por quem tem mais pendentes.
+function nfRenderAnalistaList(targetId, totais){
+  const el = document.getElementById(targetId);
+  if(!el) return;
+  const m = {};
+  totais.forEach(t=>{
+    const k = t.analista || "(vazio)";
+    const o = m[k] || (m[k] = { label:k, total:0, pend:0 });
+    o.total += t.total; o.pend += t.pendentes;
+  });
+  const grupos = Object.values(m).filter(g=>g.total>0)
+    .sort((a,b)=> b.pend-a.pend || b.total-a.total || a.label.localeCompare(b.label));
+  if(!grupos.length){ el.innerHTML = emptyRow(); return; }
+  // Estilos embutidos (em vez das classes hist-rank-*) pra não depender do
+  // layout de celular dessas classes, que só prevê uma coluna de valor.
+  const cols = "display:grid;grid-template-columns:18px minmax(0,1fr) 44px 66px 50px;align-items:center;gap:10px;";
+  const numCss = "text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;";
+  const head = `<div class="col-head" style="${cols}padding:2px 10px 8px 6px;">
+      <span></span><span>Analista</span><span style="${numCss}">Total</span><span style="${numCss}">Pendentes</span><span style="${numCss}">% pend.</span>
+    </div>`;
+  const linhas = grupos.map((g,i)=>{
+    const frac = g.total ? Math.min(g.pend/g.total,1)*100 : 0;
+    return `
+    <div style="${cols}padding:7px 6px;font-size:12.5px;" title="${g.label}: ${g.pend} pendente(s) de ${g.total} DOP(s)">
+      <div class="rank-num">${i+1}</div>
+      <div style="min-width:0;">
+        <div class="hist-rank-label">${g.label}</div>
+        <div class="hbar-track" style="height:5px;margin-top:4px;"><div class="hbar-fill" style="width:${frac.toFixed(1)}%;background:var(--brand)"></div></div>
+      </div>
+      <div style="${numCss}color:var(--text-secondary);">${g.total}</div>
+      <div style="${numCss}color:var(--text-primary);font-weight:700;">${g.pend}</div>
+      <div style="${numCss}color:var(--brand);font-weight:700;">${nfPct(g.pend, g.total)}</div>
+    </div>`;
+  }).join("");
+  el.innerHTML = head + `<div class="hist-rank-rows hist-rank-rows-scroll">${linhas}</div>`;
+}
 function nfGroupCount(rows, field){
   const m = {};
   rows.forEach(d=>{ const k = d[field] || "(vazio)"; m[k] = (m[k]||0)+1; });
@@ -1442,16 +1506,20 @@ function nfRenderRankList(targetId, groups){
 }
 function renderNotasFiscais(){
   const rows = nfFiltered();
+  const totais = nfTotaisFiltered();
+  const totalDops = totais.reduce((s,t)=>s+t.total, 0);
   const badge = document.getElementById("nav-nf-badge");
   if(badge) badge.textContent = rows.length;
   renderKpis("nf-kpi-grid", [
-    {label:"Total Pendentes", value: rows.length, icon:"📄", cls: rows.length>0?"warn":""},
+    {label:"Total Pendentes", value: rows.length, icon:"📄", cls: rows.length>0?"warn":"",
+      sub: totalDops ? ("de " + totalDops + " DOPs · " + nfPct(rows.length, totalDops) + " pendente") : ""},
     {label:"Regionais Afetadas", value: nfUniq(rows,"regional").length, icon:"🗺"},
     {label:"Analistas com Pendência", value: nfUniq(rows,"analista").length, icon:"🧑‍💼"}
   ]);
   nfRenderRankList("nf-rank-regional", nfGroupCount(rows,"regional"));
   nfRenderRankList("nf-rank-subregional", nfGroupCount(rows,"subRegional"));
-  nfRenderRankList("nf-rank-analista", nfGroupCount(rows,"analista"));
+  if(NF_TOTAIS.length) nfRenderAnalistaList("nf-rank-analista", totais);
+  else nfRenderRankList("nf-rank-analista", nfGroupCount(rows,"analista"));
   const el = document.getElementById("nf-table");
   if(el){
     if(!rows.length){
