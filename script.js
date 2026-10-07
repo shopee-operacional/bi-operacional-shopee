@@ -106,8 +106,9 @@ if(!document.querySelector(".app")){
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><div class="card-title">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" id="fifo-resumo-toggle-top">Ver ranking completo</div></div>
+          <div class="card-head"><div class="card-title" id="fifo-rank-titulo">📉 Ranking — Pior % FIFO (semana)</div><div class="card-link" id="fifo-resumo-toggle-top">Ver ranking completo</div></div>
           <div id="rank-fifo-resumo"></div>
+          <div class="alert-sub" id="fifo-rank-nota" style="display:none; padding:8px 4px 0;"></div>
           <div class="card-expand-btn" id="fifo-resumo-toggle-bottom">+ Ver ranking completo</div>
         </div>
         <div class="card">
@@ -360,6 +361,8 @@ const CATS = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3a
 function num(v){ return (v===null||v===undefined||isNaN(v)) ? 0 : +v; }
 function pct(v){ return (num(v)*100).toFixed(1)+"%"; }
 function pct0(v){ return (num(v)*100).toFixed(0)+"%"; }
+// % FIFO com "sem dados": null = agência sem pacote elegível no período
+function pctFifo(v){ return (v===null || v===undefined || v==="") ? "sem dados" : pct0(v); }
 function pct1(v){ return (num(v)*100).toFixed(1).replace(".",",")+"%"; }
 function riskClass(r){
   if(!r) return "warning";
@@ -407,7 +410,11 @@ function normalizeRows(raw){
     backlog: num(r["BACKLOG"]), backlogOps: num(r["BACKLOG TOTAL (OPS)"]),
     inbound: num(r["INBOUND"]), outbound: num(r["OUTBOUND"]),
     fifoHojeFlag: num(r["FIFO HOJE"]), sameDayFlag: num(r["SAME DAY"]),
-    fifoSemana: num(r["FIFO SEMANA"]), sameDaySemana: num(r["SAME DAY SEMANA"]),
+    // FIFO da semana: célula em branco na BASE_TRATADA = agência sem pacote
+    // elegível na semana ("sem dados"), que é diferente de 0%. Fica null.
+    fifoSemana: (r["FIFO SEMANA"]==="" || r["FIFO SEMANA"]==null || isNaN(r["FIFO SEMANA"])) ? null : +r["FIFO SEMANA"],
+    semana: r["SEMANA"],
+    sameDaySemana: num(r["SAME DAY SEMANA"]),
     lost: num(r["LOST"]), pctAtrasados: num(r["% ATRASADOS"]),
     perdasQtd: num(r["QTD PACOTES PERDIDOS"]), perdasValor: num(r["VALOR PERDIDO (R$)"]),
     backlogEnvelhecido: num(r["BACKLOG ENVELHECIDO"]), totalAtrasados: num(r["TOTAL ATRASADOS"]),
@@ -1886,12 +1893,35 @@ function renderResumoToggle(topId, bottomId, stateKey, defaultLabel, hasMore){
     bottom.classList.toggle("is-open", isOpen);
   }
 }
+// Semana de referência = a semana da linha mais recente da base (coluna DATA).
+function semanaAtualDaBase(){
+  let melhor = null, sem = null;
+  DATA.forEach(d=>{
+    if(!d.data || d.semana==="" || d.semana==null) return;
+    const t = new Date(d.data).getTime();
+    if(isNaN(t)) return;
+    if(melhor===null || t > melhor){ melhor = t; sem = d.semana; }
+  });
+  return sem;
+}
 function renderRankLists(rows){
   // Tudo fica no Resumo Geral (a aba "Rankings" foi removida): preview curto
   // e o "Ver ranking completo" abre a lista inteira.
   const setHtml = (id, html)=>{ const el = document.getElementById(id); if(el) el.innerHTML = html; };
-  // FIFO
-  const byFifoAll = [...rows].sort((a,b)=>a.fifoSemana-b.fifoSemana);
+  // FIFO — só entram agências com leitura válida de FIFO na semana atual.
+  // Quem não teve pacote elegível ("sem dados") ou cujo último registro é de
+  // uma semana anterior fica de fora: não é 0%, é ausência de dado.
+  const semAtual = semanaAtualDaBase();
+  const fifoComDado = rows.filter(d=> d.fifoSemana!=null && (semAtual==null || String(d.semana)===String(semAtual)));
+  const byFifoAll = [...fifoComDado].sort((a,b)=>a.fifoSemana-b.fifoSemana);
+  const fifoTit = document.getElementById("fifo-rank-titulo");
+  if(fifoTit) fifoTit.textContent = "📉 Ranking — Pior % FIFO (semana" + (semAtual!=null ? " " + semAtual : "") + ")";
+  const fifoNota = document.getElementById("fifo-rank-nota");
+  if(fifoNota){
+    const fora = rows.length - fifoComDado.length;
+    fifoNota.textContent = fora > 0 ? fora + (fora===1 ? " agência sem dados de FIFO na semana não entra" : " agências sem dados de FIFO na semana não entram") + " no ranking." : "";
+    fifoNota.style.display = fora > 0 ? "" : "none";
+  }
   const fifoPreview = expandState.fifoResumo ? byFifoAll : byFifoAll.slice(0, RESUMO_PREVIEW_COUNT);
   setHtml("rank-fifo-resumo", fifoPreview.map((d,i)=>rankRow(i,d,pct0(d.fifoSemana), fifoBadgeClass(d.fifoSemana))).join("") || emptyRow());
   renderResumoToggle("fifo-resumo-toggle-top","fifo-resumo-toggle-bottom","fifoResumo","Ver ranking completo", byFifoAll.length>RESUMO_PREVIEW_COUNT);
@@ -2014,7 +2044,7 @@ function rankRow(i,d,val,cls,extra){
 const TABLE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"cidade", l:"Cidade"}, {k:"resp", l:"Responsável"},
   {k:"backlogOps", l:"Backlog"},
-  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
+  {k:"fifoSemana", l:"% FIFO Semana", fmt:pctFifo}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
   {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
   {k:"perdasQtd", l:"Pacotes Perdidos"}, {k:"risco", l:"Risco", badge:riskClass}, {k:"statusColeta", l:"Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
 ];
@@ -2051,7 +2081,7 @@ const BASE_COLS = [
   {k:"dop", l:"DOP"}, {k:"agencia", l:"Agência"}, {k:"resp", l:"Responsável"}, {k:"cidade", l:"Cidade"}, {k:"estado", l:"Estado"},
   {k:"subreg", l:"Sub-Regional"}, {k:"estacao", l:"Estação"}, {k:"backlog", l:"Backlog"}, {k:"backlogOps", l:"Backlog OPS"},
   {k:"inbound", l:"Inbound"}, {k:"outbound", l:"Outbound"},
-  {k:"fifoSemana", l:"% FIFO Semana", fmt:pct0}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
+  {k:"fifoSemana", l:"% FIFO Semana", fmt:pctFifo}, {k:"fifoHojeFlag", l:"% FIFO Hoje", fmt:pct0},
   {k:"sameDaySemana", l:"% Same Day Semana", fmt:pct0}, {k:"sameDayFlag", l:"% Same Day Hoje", fmt:pct0},
   {k:"pctAtrasados", l:"% Atrasados"}, {k:"horasSemColeta", l:"Hs sem coleta"}, {k:"risco", l:"Risco", badge:riskClass},
   {k:"statusColeta", l:"Status Coleta", badge:coletaClass}, {k:"status", l:"Status", badge:riskClass}
@@ -2107,7 +2137,7 @@ function renderDetail(d){
     </div>
     <div class="detail-grid">
       <div class="detail-item"><div class="l">Backlog Total (OPS)</div><div class="v">${d.backlogOps.toLocaleString("pt-BR")}</div></div>
-      <div class="detail-item"><div class="l">% FIFO Semana</div><div class="v">${pct0(d.fifoSemana)}</div></div>
+      <div class="detail-item"><div class="l">% FIFO Semana</div><div class="v">${pctFifo(d.fifoSemana)}</div></div>
       <div class="detail-item"><div class="l">% FIFO Hoje</div><div class="v">${pct0(d.fifoHojeFlag)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Hoje</div><div class="v">${pct0(d.sameDayFlag)}</div></div>
