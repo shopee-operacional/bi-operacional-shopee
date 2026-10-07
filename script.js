@@ -59,6 +59,7 @@ if(!document.querySelector(".app")){
       <button class="mobile-refresh-btn" id="mobile-refresh-btn" aria-label="Atualizar">⟳</button>
     </div>
     <div class="error-banner" id="error-banner"></div>
+    <div id="hist-banner" style="display:none; margin:0 0 12px; padding:10px 14px; border-radius:8px; border:1px solid var(--border); border-left:4px solid var(--brand); background:var(--surface-2); color:var(--text-primary); font-size:12.5px; line-height:1.5;"></div>
     <div class="topbar">
       <div class="filter"><label>Responsável</label>
         <select id="f-resp"><option value="">Todos</option></select>
@@ -66,8 +67,8 @@ if(!document.querySelector(".app")){
       <div class="filter"><label>Sub-Regional</label>
         <select id="f-subreg"><option value="">Todos</option></select>
       </div>
-      <div class="filter"><label>Cidade</label>
-        <select id="f-cidade"><option value="">Todas</option></select>
+      <div class="filter"><label>Data</label>
+        <select id="f-data"><option value="">Hoje (ao vivo)</option></select>
       </div>
       <div class="filter"><label>Estação</label>
         <select id="f-estacao"><option value="">Todas</option></select>
@@ -385,7 +386,9 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // busca dados novos a cada 5 minutos
 let DATA = [];
 // Filtros do topo aceitam VÁRIOS valores (lista vazia = Todos)
 let filters = { resp:[], subreg:[], cidade:[], estacao:[], statuscoleta:[], risco:[] };
-const FILTROS_TOPO = ["resp","subreg","cidade","estacao","statuscoleta","risco"];
+// (o filtro "Cidade" saiu do topo a pedido; filters.cidade continua existindo,
+// sempre vazio, só pra não mexer nas funções que ainda consultam esse campo)
+const FILTROS_TOPO = ["resp","subreg","estacao","statuscoleta","risco"];
 // Estado de expansão dos cards "ver todas / ver ranking completo" do Resumo
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
@@ -429,7 +432,6 @@ function populateSelect(id, values){
 function populateFilters(){
   populateSelect("f-resp", uniq("resp"));
   populateSelect("f-subreg", uniq("subreg"));
-  populateSelect("f-cidade", uniq("cidade"));
   populateSelect("f-estacao", uniq("estacao"));
   populateSelect("f-statuscoleta", uniq("statusColeta"));
   populateSelect("f-risco", uniq("risco"));
@@ -583,6 +585,7 @@ async function loadData(showOverlay){
     renderAll();
     const stamp = json.updatedAt ? fmtDate(json.updatedAt) : new Date().toLocaleTimeString("pt-BR");
     setLiveStatus(true, "Sincronizado às " + stamp);
+    if(!Array.isArray(json)) histPreencherDias(json.diasSalvos);
   } catch(err){
     console.error(err);
     banner.style.display = "block";
@@ -593,6 +596,108 @@ async function loadData(showOverlay){
     overlay.style.display = "none";
   }
 }
+// ==================== BASE SALVA POR DIA (filtro "Data") ====================
+// O Apps Script (HistoricoBase.gs) grava uma cópia da BASE_TRATADA por dia.
+// O filtro "Data" do topo troca os dados ao vivo pela cópia do dia escolhido
+// (?tipo=basedia&dia=yyyy-MM-dd). Vale para as abas que usam a BASE_TRATADA:
+// Resumo Geral, Desempenho por Agência, Detalhe da Agência e Base de Dados.
+// Same Day, Lead Time, Análise de Backlog, Pagamentos e Histórico
+// Pós-Fechamento têm data/fonte própria e não mudam com esse filtro.
+let HIST_DIA = "";        // "" = ao vivo; "yyyy-MM-dd" = vendo a cópia desse dia
+let SD_MAP_VIVO = null;   // Same Day ao vivo, guardado enquanto um dia salvo está aberto
+let SD_INFO_VIVO = null;
+const HIST_DIAS_SEMANA = ["dom","seg","ter","qua","qui","sex","sáb"];
+function histRotuloDia(iso){
+  const p = String(iso).split("-");
+  const d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+  return p[2]+"/"+p[1]+"/"+p[0] + (isNaN(d) ? "" : " (" + HIST_DIAS_SEMANA[d.getUTCDay()] + ")");
+}
+function histHora(iso){
+  const d = new Date(iso);
+  return (!iso || isNaN(d)) ? "" : d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+}
+// Preenche o seletor "Data" com os dias gravados (mais novo primeiro).
+function histPreencherDias(dias){
+  const sel = document.getElementById("f-data"); if(!sel) return;
+  const lista = Array.isArray(dias) ? dias : [];
+  sel.innerHTML = '<option value="">Hoje (ao vivo)</option>';
+  lista.forEach(x=>{
+    if(!x || !x.dia) return;
+    const o = document.createElement("option");
+    o.value = x.dia; o.textContent = histRotuloDia(x.dia);
+    sel.appendChild(o);
+  });
+  if(HIST_DIA && !lista.some(x=>x && x.dia===HIST_DIA)){
+    const o = document.createElement("option"); o.value = HIST_DIA; o.textContent = histRotuloDia(HIST_DIA); sel.appendChild(o);
+  }
+  sel.value = HIST_DIA;
+  sel.title = lista.length ? "" : "Ainda não há dias gravados — o histórico começa quando o HistoricoBase.gs for ativado no Apps Script.";
+}
+function histFaixa(json){
+  const el = document.getElementById("hist-banner"); if(!el) return;
+  if(!HIST_DIA){ el.style.display = "none"; el.innerHTML = ""; return; }
+  const hora = histHora(json && json.salvoEm);
+  el.innerHTML = "📅 Você está vendo a <b>base salva de " + histRotuloDia(HIST_DIA) + "</b>"
+    + (hora ? " (gravada às " + hora + ")" : "")
+    + ". Vale para Resumo Geral, Desempenho por Agência, Detalhe da Agência e Base de Dados — as outras abas têm data própria. "
+    + '<span id="hist-voltar" style="color:var(--brand);font-weight:700;cursor:pointer;white-space:nowrap;">Voltar para hoje</span>';
+  el.style.display = "block";
+  const v = document.getElementById("hist-voltar");
+  if(v) v.addEventListener("click", histVoltarAoVivo);
+}
+async function loadBaseDia(dia){
+  const overlay = document.getElementById("loading-overlay");
+  const banner = document.getElementById("error-banner");
+  const sel = document.getElementById("f-data");
+  if(overlay) overlay.style.display = "flex";
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=basedia&dia=" + encodeURIComponent(dia), 60000);
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows) || Array.isArray(json)) throw new Error("resposta sem dados — confira se o HistoricoBase.gs e o webapp.gs novos foram publicados");
+    const rows = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
+    // guarda o Same Day ao vivo só na 1ª vez que sai do "ao vivo"
+    if(!HIST_DIA){ SD_MAP_VIVO = SD_MAP; SD_INFO_VIVO = SD_INFO; }
+    HIST_DIA = dia;
+    DATA = normalizeRows(rows);
+    // Same Day que o painel mostrava naquele dia (gravado junto com a base)
+    const sd = json.sd;
+    if(sd && sd.cols && sd.rows){
+      const map = {};
+      sd.rows.forEach(r=>{ const o={}; sd.cols.forEach((c,i)=>o[c]=r[i]); map[dopKey(o.id)] = {outDia:o.outD, sdDia:o.sdD, outSem:o.outS, sdSem:o.sdS, inbDia:o.inbD, posColDia:o.posColD}; });
+      SD_MAP = map;
+      SD_INFO = { refDia: sd.refDia, semana: sd.semana, dias: sd.dias || [] };
+      applySameDay();
+    } else {
+      SD_MAP = null; SD_INFO = null; // sem Same Day gravado: usa as colunas da própria base
+    }
+    banner.style.display = "none";
+    populateFilters();
+    renderAll();
+    const hora = histHora(json.salvoEm);
+    setLiveStatus(true, "Base salva de " + fmtDiaBR(dia) + (hora ? " · " + hora : ""));
+    histFaixa(json);
+    if(sel) sel.value = dia;
+  } catch(err){
+    console.error(err);
+    banner.style.display = "block";
+    banner.textContent = "⚠ Não foi possível abrir a base de " + histRotuloDia(dia) + " (" + err.message + ").";
+    if(sel) sel.value = HIST_DIA; // volta o seletor para o que está de fato na tela
+  } finally {
+    if(overlay) overlay.style.display = "none";
+  }
+}
+function histVoltarAoVivo(){
+  if(HIST_DIA){ SD_MAP = SD_MAP_VIVO; SD_INFO = SD_INFO_VIVO; }
+  HIST_DIA = "";
+  const sel = document.getElementById("f-data"); if(sel) sel.value = "";
+  histFaixa(null);
+  loadData(true);
+}
+(function(){
+  const sel = document.getElementById("f-data"); if(!sel) return;
+  sel.addEventListener("change", e=>{ const dia = e.target.value; if(dia) loadBaseDia(dia); else histVoltarAoVivo(); });
+})();
 // "Atualizar agora" = recarregar o painel inteiro, como o Ctrl+Shift+R:
 // baixa de novo os arquivos do site (ignorando o cache do navegador) e
 // recarrega a página, que então busca todos os dados outra vez.
@@ -641,10 +746,16 @@ async function loadSameDay(){
     } else {
       (json.dops || []).forEach(r=>{ map[dopKey(r.id)] = r; });
     }
-    SD_MAP = map;
-    SD_INFO = { refDia: json.refDia, semana: json.semana, dias: json.dias || [] };
-    applySameDay();
-    if(DATA.length) renderAll();
+    const infoVivo = { refDia: json.refDia, semana: json.semana, dias: json.dias || [] };
+    if(HIST_DIA){
+      // um dia salvo está aberto: só guarda o ao vivo pra quando voltar
+      SD_MAP_VIVO = map; SD_INFO_VIVO = infoVivo;
+    } else {
+      SD_MAP = map;
+      SD_INFO = infoVivo;
+      applySameDay();
+      if(DATA.length) renderAll();
+    }
     // a aba Same Day abre no último dia; se a pessoa já escolheu outra data
     // no calendário, mantém a escolha dela
     if(!sdView.ini){ sdAplicarDadosSecao(json); }
@@ -1580,7 +1691,7 @@ async function loadBacklogResumo(){
 // Soma o backlog ao vivo respeitando os filtros do topo. Sem filtro de
 // sub-regional, vale o escopo do painel (as sub-regionais da BASE_TRATADA).
 function backlogAoVivo(rows){
-  if(!BR_ROWS) return null;
+  if(!BR_ROWS || HIST_DIA) return null;
   const N = v => String(v==null?"":v).trim().toUpperCase();
   const conj = lista => new Set(lista.map(N));
   let subs = filters.subreg.length ? conj(filters.subreg) : conj(uniq("subreg"));
@@ -1608,7 +1719,8 @@ function kpiCardBacklog(rows){
   if(!vivo){
     // ainda carregando (ou BacklogResumo.gs não publicado): mostra o número antigo da BASE_TRATADA
     const antigo = rows.reduce((s,d)=>s+d.backlogOps,0);
-    return {label:"Backlog Total (OPS)", value: antigo.toLocaleString("pt-BR"), icon:"📦", sub: BR_ERRO ? "fim do último dia · total ao vivo indisponível" : "fim do último dia · carregando o total ao vivo…"};
+    return {label:"Backlog Total (OPS)", value: antigo.toLocaleString("pt-BR"), icon:"📦",
+      sub: HIST_DIA ? "como estava na base salva desse dia" : (BR_ERRO ? "fim do último dia · total ao vivo indisponível" : "fim do último dia · carregando o total ao vivo…")};
   }
   const n = v => Math.round(v||0).toLocaleString("pt-BR");
   const frentes = (BR_INFO.frentes.length ? BR_INFO.frentes : Object.keys(vivo.porFrente))
@@ -1622,24 +1734,20 @@ function kpiCardBacklog(rows){
 }
 function kpiCardsPrimary(rows){
   const semColetaHoje = rows.filter(d=>!d.statusColeta.toUpperCase().includes("COLETOU")).length;
-  const fifoMedio = rows.length? rows.reduce((s,d)=>s+d.fifoSemana,0)/rows.length : 0;
-  const sdMedio = SD_MAP ? sameDayPonderado(rows,"semana")
-    : (rows.length? rows.reduce((s,d)=>s+d.sameDaySemana,0)/rows.length : 0);
+  // (os cards "% FIFO Médio (semana)" e "% Same Day (semana)" foram
+  // retirados do Resumo Geral a pedido — ficam só os do dia)
   // "Hoje" usa os mesmos flags do dia (FIFO HOJE / SAME DAY) já usados no
   // Detalhe da Agência — aqui só agregamos a média entre as agências.
   const fifoHojeMedio = rows.length? rows.reduce((s,d)=>s+d.fifoHojeFlag,0)/rows.length : 0;
   const sdHojeMedio = SD_MAP ? sameDayPonderado(rows,"dia")
     : (rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0);
-  const sdLabelSem = SD_MAP && SD_INFO && SD_INFO.semana ? "% Same Day (semana "+SD_INFO.semana+")" : "% Same Day Médio (semana)";
   const sdLabelDia = SD_MAP && SD_INFO && SD_INFO.refDia ? "% Same Day ("+fmtDiaBR(SD_INFO.refDia)+")" : "% Same Day Médio (hoje)";
   const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
   const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
   return [
     kpiCardBacklog(rows),
-    {label:"Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
-    {label:"% FIFO Médio (semana)", value: pct0(fifoMedio), icon:"📈"},
-    {label:"% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
-    {label: sdLabelSem, value: SD_MAP ? pct1(sdMedio) : pct0(sdMedio), icon:"⚡"},
+    {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
+    {label: HIST_DIA ? "% FIFO Médio ("+fmtDiaBR(HIST_DIA)+")" : "% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
@@ -2846,6 +2954,6 @@ applyTheme(currentTheme);
 loadData(true);
 loadSameDay();
 loadBacklogResumo();
-setInterval(()=> loadData(false), REFRESH_INTERVAL_MS);
+setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadSameDay(), 30 * 60 * 1000); // base de Same Day muda pouco ao longo do dia
