@@ -67,9 +67,7 @@ if(!document.querySelector(".app")){
       <div class="filter"><label>Sub-Regional</label>
         <select id="f-subreg"><option value="">Todos</option></select>
       </div>
-      <div class="filter"><label>Data</label>
-        <select id="f-data"><option value="">Hoje (ao vivo)</option></select>
-      </div>
+      <div class="filter sd-data"><label>Data</label><input type="date" id="f-data"></div>
       <div class="filter"><label>Estação</label>
         <select id="f-estacao"><option value="">Todas</option></select>
       </div>
@@ -283,15 +281,15 @@ if(!document.querySelector(".app")){
 
       <div class="grid3">
         <div class="card">
-          <div class="card-head"><div class="card-title">Por Regional</div></div>
+          <div class="card-head"><div class="card-title">Total de uploads pendentes por Regional</div></div>
           <div id="nf-rank-regional"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">Por Sub-Regional</div></div>
+          <div class="card-head"><div class="card-title">Total de uploads pendentes por Sub-Regional</div></div>
           <div id="nf-rank-subregional"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">Por Analista</div></div>
+          <div class="card-head"><div class="card-title">Total de uploads pendentes por Analista</div></div>
           <div id="nf-rank-analista"></div>
         </div>
       </div>
@@ -616,22 +614,29 @@ function histHora(iso){
   const d = new Date(iso);
   return (!iso || isNaN(d)) ? "" : d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
 }
-// Preenche o seletor "Data" com os dias gravados (mais novo primeiro).
+let HIST_DIAS = [];       // dias que têm base gravada: ["2026-10-07","2026-10-06",...]
+// Data de hoje no relógio de quem está vendo o painel ("yyyy-MM-dd").
+function histHoje(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+// Campo "Data" (calendário, igual aos de Same Day/Lead Time). Mostra a data
+// de hoje enquanto o painel está ao vivo; escolher outro dia abre a base
+// gravada daquele dia. O calendário fica limitado do dia mais antigo gravado
+// até hoje.
 function histPreencherDias(dias){
-  const sel = document.getElementById("f-data"); if(!sel) return;
-  const lista = Array.isArray(dias) ? dias : [];
-  sel.innerHTML = '<option value="">Hoje (ao vivo)</option>';
-  lista.forEach(x=>{
-    if(!x || !x.dia) return;
-    const o = document.createElement("option");
-    o.value = x.dia; o.textContent = histRotuloDia(x.dia);
-    sel.appendChild(o);
-  });
-  if(HIST_DIA && !lista.some(x=>x && x.dia===HIST_DIA)){
-    const o = document.createElement("option"); o.value = HIST_DIA; o.textContent = histRotuloDia(HIST_DIA); sel.appendChild(o);
-  }
-  sel.value = HIST_DIA;
-  sel.title = lista.length ? "" : "Ainda não há dias gravados — o histórico começa quando o HistoricoBase.gs for ativado no Apps Script.";
+  HIST_DIAS = (Array.isArray(dias) ? dias : []).map(x=>x && x.dia).filter(Boolean).sort().reverse();
+  histAjustarCampo();
+}
+function histAjustarCampo(){
+  const inp = document.getElementById("f-data"); if(!inp) return;
+  const hoje = histHoje();
+  inp.max = hoje;
+  inp.min = HIST_DIAS.length ? HIST_DIAS[HIST_DIAS.length-1] : hoje;
+  inp.value = HIST_DIA || hoje;
+  inp.title = HIST_DIAS.length
+    ? "Dias com base gravada: " + HIST_DIAS.map(fmtDiaBR).join(", ")
+    : "Ainda não há dias gravados — o histórico começa quando o HistoricoBase.gs for ativado no Apps Script.";
 }
 function histFaixa(json){
   const el = document.getElementById("hist-banner"); if(!el) return;
@@ -648,7 +653,15 @@ function histFaixa(json){
 async function loadBaseDia(dia){
   const overlay = document.getElementById("loading-overlay");
   const banner = document.getElementById("error-banner");
-  const sel = document.getElementById("f-data");
+  // Sem base gravada para esse dia: avisa na hora, sem ir ao Apps Script.
+  if(HIST_DIAS.indexOf(dia) === -1){
+    banner.style.display = "block";
+    banner.textContent = HIST_DIAS.length
+      ? "⚠ Não há base gravada para " + histRotuloDia(dia) + ". Dias disponíveis: " + HIST_DIAS.map(fmtDiaBR).join(", ") + "."
+      : "⚠ Ainda não há nenhum dia gravado. O histórico começa quando o hbSalvarBaseDoDia rodar no Apps Script (e a nova versão do Web App for publicada).";
+    histAjustarCampo();
+    return;
+  }
   if(overlay) overlay.style.display = "flex";
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
@@ -677,12 +690,12 @@ async function loadBaseDia(dia){
     const hora = histHora(json.salvoEm);
     setLiveStatus(true, "Base salva de " + fmtDiaBR(dia) + (hora ? " · " + hora : ""));
     histFaixa(json);
-    if(sel) sel.value = dia;
+    histAjustarCampo();
   } catch(err){
     console.error(err);
     banner.style.display = "block";
     banner.textContent = "⚠ Não foi possível abrir a base de " + histRotuloDia(dia) + " (" + err.message + ").";
-    if(sel) sel.value = HIST_DIA; // volta o seletor para o que está de fato na tela
+    histAjustarCampo(); // volta o campo para o que está de fato na tela
   } finally {
     if(overlay) overlay.style.display = "none";
   }
@@ -690,13 +703,20 @@ async function loadBaseDia(dia){
 function histVoltarAoVivo(){
   if(HIST_DIA){ SD_MAP = SD_MAP_VIVO; SD_INFO = SD_INFO_VIVO; }
   HIST_DIA = "";
-  const sel = document.getElementById("f-data"); if(sel) sel.value = "";
+  histAjustarCampo();
   histFaixa(null);
   loadData(true);
 }
 (function(){
-  const sel = document.getElementById("f-data"); if(!sel) return;
-  sel.addEventListener("change", e=>{ const dia = e.target.value; if(dia) loadBaseDia(dia); else histVoltarAoVivo(); });
+  const inp = document.getElementById("f-data"); if(!inp) return;
+  inp.value = histHoje(); inp.max = histHoje();
+  inp.addEventListener("change", e=>{
+    const dia = e.target.value;
+    // campo limpo ou a data de hoje = painel ao vivo
+    if(!dia || dia === histHoje()){ if(HIST_DIA) histVoltarAoVivo(); else histAjustarCampo(); return; }
+    if(dia === HIST_DIA) return;
+    loadBaseDia(dia);
+  });
 })();
 // "Atualizar agora" = recarregar o painel inteiro, como o Ctrl+Shift+R:
 // baixa de novo os arquivos do site (ignorando o cache do navegador) e
