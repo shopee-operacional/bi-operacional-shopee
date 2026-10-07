@@ -277,7 +277,7 @@ if(!document.querySelector(".app")){
           <div class="filter"><label>Sub-Regional</label><select id="nf-f-subregional"><option value="">Todas</option></select></div>
           <div class="filter"><label>Analista</label><select id="nf-f-analista"><option value="">Todos</option></select></div>
         </div>
-        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);" id="nf-kpi-grid"></div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);" id="nf-kpi-grid"></div>
       </div>
 
       <div class="grid3">
@@ -1651,7 +1651,6 @@ function renderNotasFiscais(){
   renderKpis("nf-kpi-grid", [
     {label:"Total Pendentes", value: rows.length, icon:"📄", cls: rows.length>0?"warn":"",
       sub: totalDops ? ("de " + totalDops + " DOPs · " + nfPct(rows.length, totalDops) + " pendente") : ""},
-    {label:"Regionais Afetadas", value: nfUniq(rows,"regional").length, icon:"🗺"},
     {label:"Analistas com Pendência", value: nfUniq(rows,"analista").length, icon:"🧑‍💼"}
   ]);
   nfRenderRankList("nf-rank-regional", nfGroupCount(rows,"regional"));
