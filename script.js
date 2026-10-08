@@ -268,7 +268,7 @@ if(!document.querySelector(".app")){
       <div class="section-title">Pagamentos</div>
       <div class="card">
         <div class="card-head">
-          <div class="card-title">📄 DOPs aguardando validação do analista</div>
+          <div class="card-title">📄 Notas fiscais pendentes de validação</div>
           <div class="card-link" id="nf-refresh">Atualizar</div>
         </div>
         <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
@@ -283,7 +283,7 @@ if(!document.querySelector(".app")){
       <!-- EMISSÕES DE NF (mesma visão do "Emissions Details" do Data Studio) -->
       <div class="card" style="margin-top:14px;">
         <div class="card-head">
-          <div class="card-title">💰 Resumo Financeiro — emissões de NF por Status SVP</div>
+          <div class="card-title">💰 Resumo financeiro por Status SVP</div>
         </div>
         <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
           <div class="filter"><label>Status SVP</label><select id="nf-f-statussvp"><option value="">Todos</option></select></div>
@@ -295,7 +295,7 @@ if(!document.querySelector(".app")){
 
       <div class="card" style="margin-top:14px; margin-bottom:14px;">
         <div class="card-head">
-          <div class="card-title">📊 Monitoramento de Emissões — NFs por Sub-Regional e Status SVP</div>
+          <div class="card-title">📊 Emissões de NF por Sub-Regional</div>
         </div>
         <div id="nf-em-legenda" style="display:flex; flex-wrap:wrap; gap:6px 16px; margin-bottom:10px;"></div>
         <div id="nf-em-chart"></div>
@@ -303,21 +303,21 @@ if(!document.querySelector(".app")){
 
       <div class="grid3">
         <div class="card">
-          <div class="card-head"><div class="card-title">Total de uploads pendentes por Regional</div></div>
+          <div class="card-head"><div class="card-title">Notas pendentes por Regional</div></div>
           <div id="nf-rank-regional"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">Total de uploads pendentes por Sub-Regional</div></div>
+          <div class="card-head"><div class="card-title">Notas pendentes por Sub-Regional</div></div>
           <div id="nf-rank-subregional"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title">Total de uploads pendentes por Analista</div></div>
+          <div class="card-head"><div class="card-title">Notas pendentes por Analista</div></div>
           <div id="nf-rank-analista"></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="card-title">Lista de DOPs pendentes</div></div>
+        <div class="card-head"><div class="card-title">DOPs com nota fiscal pendente</div></div>
         <div class="table-wrap"><table class="data" id="nf-table"></table></div>
       </div>
     </div>
