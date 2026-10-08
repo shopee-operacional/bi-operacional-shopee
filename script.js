@@ -280,6 +280,27 @@ if(!document.querySelector(".app")){
         <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);" id="nf-kpi-grid"></div>
       </div>
 
+      <!-- EMISSÕES DE NF (mesma visão do "Emissions Details" do Data Studio) -->
+      <div class="card" style="margin-top:14px;">
+        <div class="card-head">
+          <div class="card-title">💰 Resumo Financeiro — emissões de NF por Status SVP</div>
+        </div>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+          <div class="filter"><label>Status SVP</label><select id="nf-f-statussvp"><option value="">Todos</option></select></div>
+          <div class="filter"><label>Status Pagamento</label><select id="nf-f-statuspag"><option value="">Todos</option></select></div>
+        </div>
+        <div class="col-head" style="padding:0 0 8px;">Usa também os filtros Mês, Regional, Sub-Regional e Analista aqui de cima</div>
+        <div class="table-wrap" id="nf-em-resumo"><div class="empty-state">Abra esta aba para carregar as emissões.</div></div>
+      </div>
+
+      <div class="card" style="margin-top:14px; margin-bottom:14px;">
+        <div class="card-head">
+          <div class="card-title">📊 Monitoramento de Emissões — NFs por Sub-Regional e Status SVP</div>
+        </div>
+        <div id="nf-em-legenda" style="display:flex; flex-wrap:wrap; gap:6px 16px; margin-bottom:10px;"></div>
+        <div id="nf-em-chart"></div>
+      </div>
+
       <div class="grid3">
         <div class="card">
           <div class="card-head"><div class="card-title">Total de uploads pendentes por Regional</div></div>
@@ -1496,7 +1517,15 @@ let NF_DATA = [];
 // quadro "Por Analista" mostra só a contagem de pendentes, como antes.
 let NF_TOTAIS = [];
 let NF_LOADED = false;
-let nfFilters = { mes:"", regional:"", subregional:"", analista:"" };
+let nfFilters = { mes:"", regional:"", subregional:"", analista:"", statussvp:"", statuspag:"" };
+// Emissões de NF já agregadas pelo Apps Script (campo "emissoes" da resposta
+// de ?tipo=pagamentos): uma linha por mês / regional / sub-regional /
+// analista / status SVP / status de pagamento, com "qtd" (nº de NFs) e
+// "valor" (R$ a pagar). Alimenta o "Resumo Financeiro" e o "Monitoramento
+// de Emissões". Se o Apps Script ainda não devolver "emissoes", os dois
+// quadros mostram um aviso e o resto da aba continua funcionando igual.
+let NF_EMISSOES = [];
+let NF_EMISSOES_OK = false;
 const NF_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 // "2026-08-01T03:00:00.000Z" -> "Agosto/2026". Usa UTC (não o fuso do
 // navegador) pra não "voltar" um mês perto da virada, mesma lógica do
@@ -1533,6 +1562,17 @@ async function loadNotasFiscais(){
       total: Number(t.total) || 0,
       pendentes: Number(t.pendentes) || 0
     }));
+    NF_EMISSOES_OK = !Array.isArray(json) && Array.isArray(json.emissoes);
+    NF_EMISSOES = (NF_EMISSOES_OK ? json.emissoes : []).map(e => ({
+      mes: nfFormatMes(e.mes),
+      regional: nfTxt(e.regional),
+      subRegional: nfTxt(e.subRegional),
+      analista: nfTxt(e.analista),
+      statusSvp: nfTxt(e.statusSvp) || "(vazio)",
+      statusPag: nfTxt(e.statusPagamento),
+      qtd: Number(e.qtd) || 0,
+      valor: Number(e.valor) || 0
+    }));
     NF_LOADED = true;
     populateNfFilters();
     renderNotasFiscais();
@@ -1554,13 +1594,33 @@ function nfFilteredExcept(exceptKey){
     (exceptKey==="analista" || !nfFilters.analista || d.analista===nfFilters.analista)
   );
 }
-function populateNfFilters(){
-  populateSelect("nf-f-mes", nfUniq(nfFilteredExcept("mes"),"mes"));
-  populateSelect("nf-f-regional", nfUniq(nfFilteredExcept("regional"),"regional"));
-  populateSelect("nf-f-subregional", nfUniq(nfFilteredExcept("subregional"),"subRegional"));
-  populateSelect("nf-f-analista", nfUniq(nfFilteredExcept("analista"),"analista"));
+function nfTxt(v){ return String(v==null ? "" : v).trim(); }
+// Mesma ideia do nfFilteredExcept, para as linhas de emissões (que têm dois
+// filtros a mais: Status SVP e Status Pagamento).
+function nfEmFilteredExcept(exceptKey){
+  return NF_EMISSOES.filter(e =>
+    (exceptKey==="mes" || !nfFilters.mes || e.mes===nfFilters.mes) &&
+    (exceptKey==="regional" || !nfFilters.regional || e.regional===nfFilters.regional) &&
+    (exceptKey==="subregional" || !nfFilters.subregional || e.subRegional===nfFilters.subregional) &&
+    (exceptKey==="analista" || !nfFilters.analista || e.analista===nfFilters.analista) &&
+    (exceptKey==="statussvp" || !nfFilters.statussvp || e.statusSvp===nfFilters.statussvp) &&
+    (exceptKey==="statuspag" || !nfFilters.statuspag || e.statusPag===nfFilters.statuspag)
+  );
 }
-["mes","regional","subregional","analista"].forEach(k=>{
+// Opções dos filtros de cima = o que existe nos pendentes + o que existe nas
+// emissões (um mês sem nenhum pendente continua aparecendo no seletor).
+function nfOpcoes(exceptKey, campo){
+  return [...new Set(nfUniq(nfFilteredExcept(exceptKey), campo).concat(nfUniq(nfEmFilteredExcept(exceptKey), campo)))].sort();
+}
+function populateNfFilters(){
+  populateSelect("nf-f-mes", nfOpcoes("mes","mes"));
+  populateSelect("nf-f-regional", nfOpcoes("regional","regional"));
+  populateSelect("nf-f-subregional", nfOpcoes("subregional","subRegional"));
+  populateSelect("nf-f-analista", nfOpcoes("analista","analista"));
+  populateSelect("nf-f-statussvp", nfUniq(nfEmFilteredExcept("statussvp"),"statusSvp"));
+  populateSelect("nf-f-statuspag", nfUniq(nfEmFilteredExcept("statuspag"),"statusPag"));
+}
+["mes","regional","subregional","analista","statussvp","statuspag"].forEach(k=>{
   const elSel = document.getElementById("nf-f-"+k);
   if(elSel) elSel.addEventListener("change", e=>{ nfFilters[k]=e.target.value; populateNfFilters(); renderNotasFiscais(); });
 });
@@ -1642,7 +1702,130 @@ function nfRenderRankList(targetId, groups){
       <div class="hist-rank-val">${g.value}</div>
     </div>`).join("");
 }
+// ---------- Emissões: Resumo Financeiro + Monitoramento ----------
+// Cor segue o STATUS (não a posição): o mesmo status tem sempre a mesma cor,
+// com qualquer filtro. Status fora desta lista entram na sequência extra e,
+// depois dela, em cinza.
+const NF_EM_ORDEM = ["aguardando validacao","upload via svp","upload via forms","w/ cnae","w/o cnae"];
+const NF_EM_CORES = ["var(--series-2)","var(--series-3)","var(--series-1)","var(--series-4)","var(--series-7)"];
+const NF_EM_CORES_EXTRA = ["var(--series-5)"];
+function nfEmKey(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim(); }
+// Lista fixa dos status existentes na base inteira (não só no filtro), na
+// ordem de empilhamento, cada um com a sua cor.
+function nfEmStatusLista(){
+  const nomes = [...new Set(NF_EMISSOES.map(e=>e.statusSvp))];
+  const pos = n => { const i = NF_EM_ORDEM.indexOf(nfEmKey(n)); return i<0 ? 99 : i; };
+  nomes.sort((a,b)=> pos(a)-pos(b) || a.localeCompare(b));
+  let extra = 0;
+  return nomes.map(n=>{
+    const i = NF_EM_ORDEM.indexOf(nfEmKey(n));
+    const cor = i>=0 ? NF_EM_CORES[i] : (NF_EM_CORES_EXTRA[extra++] || "var(--text-muted)");
+    return { nome:n, cor };
+  });
+}
+function nfBRL(v){ return (v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
+function nfInt(v){ return Math.round(v||0).toLocaleString("pt-BR"); }
+function nfPct2(parte, total){ return total ? (parte/total*100).toFixed(2).replace(".",",")+"%" : "—"; }
+function nfEmAviso(){
+  return '<div class="empty-state">Os dados de emissões ainda não chegam do Apps Script. Falta atualizar o Pagamentos.gs para enviar o campo "emissoes".</div>';
+}
+function renderNfEmResumo(){
+  const el = document.getElementById("nf-em-resumo");
+  if(!el) return;
+  if(!NF_EMISSOES_OK){ el.innerHTML = nfEmAviso(); return; }
+  const rows = nfEmFilteredExcept("");
+  const m = {};
+  rows.forEach(e=>{ const o = m[e.statusSvp] || (m[e.statusSvp] = {nome:e.statusSvp, qtd:0, valor:0}); o.qtd += e.qtd; o.valor += e.valor; });
+  const grupos = Object.values(m).sort((a,b)=> b.qtd-a.qtd || b.valor-a.valor);
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Nenhuma emissão para os filtros atuais.</div>'; return; }
+  const totQtd = grupos.reduce((s,g)=>s+g.qtd,0), totValor = grupos.reduce((s,g)=>s+g.valor,0);
+  const cores = {}; nfEmStatusLista().forEach(s=>{ cores[s.nome] = s.cor; });
+  const th = "cursor:default;";
+  const linhas = grupos.map(g=>`<tr style="cursor:default;">
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cores[g.nome]||"var(--text-muted)"};margin-right:8px;vertical-align:-1px;"></span>${esc(g.nome)}</td>
+      <td class="num">${nfInt(g.qtd)}</td>
+      <td class="num">${nfBRL(g.valor)}</td>
+      <td class="num" style="font-weight:700;">${nfPct2(g.valor, totValor)}</td>
+    </tr>`).join("");
+  el.innerHTML = `<table class="data">
+    <thead><tr><th style="${th}">Status SVP</th><th class="num" style="${th}">Qtd. NFe</th><th class="num" style="${th}">Valor a Pagar</th><th class="num" style="${th}">% do Valor</th></tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr style="font-weight:700;">
+      <td style="border-bottom:none;border-top:1px solid var(--border);">Total geral</td>
+      <td class="num" style="border-bottom:none;border-top:1px solid var(--border);">${nfInt(totQtd)}</td>
+      <td class="num" style="border-bottom:none;border-top:1px solid var(--border);">${nfBRL(totValor)}</td>
+      <td class="num" style="border-bottom:none;border-top:1px solid var(--border);">${totValor ? "100,00%" : "—"}</td>
+    </tr></tfoot></table>`;
+}
+// Uma barra empilhada por Sub-Regional (segmento = Status SVP). Ordenado por
+// quem tem mais NF "Aguardando validação"; as duas colunas da direita dão
+// esse número e o total. Clicar numa linha filtra a aba por essa
+// Sub-Regional (clicar de novo tira o filtro).
+function renderNfEmChart(){
+  const el = document.getElementById("nf-em-chart");
+  const leg = document.getElementById("nf-em-legenda");
+  if(!el) return;
+  if(!NF_EMISSOES_OK){ el.innerHTML = nfEmAviso(); if(leg) leg.innerHTML = ""; return; }
+  const status = nfEmStatusLista();
+  // de propósito sem o filtro de Sub-Regional: a escolhida fica destacada e
+  // as outras continuam visíveis pra comparar
+  const rows = nfEmFilteredExcept("subregional");
+  const m = {};
+  rows.forEach(e=>{
+    const k = e.subRegional || "(vazio)";
+    const o = m[k] || (m[k] = {label:k, total:0, por:{}});
+    o.total += e.qtd; o.por[e.statusSvp] = (o.por[e.statusSvp]||0) + e.qtd;
+  });
+  const chaveAguard = (status.find(s=>nfEmKey(s.nome)==="aguardando validacao") || {}).nome;
+  const grupos = Object.values(m).filter(g=>g.total>0)
+    .sort((a,b)=> (chaveAguard ? ((b.por[chaveAguard]||0)-(a.por[chaveAguard]||0)) : 0) || b.total-a.total || a.label.localeCompare(b.label));
+  const usados = status.filter(s=> grupos.some(g=>g.por[s.nome]>0));
+  if(leg){
+    leg.innerHTML = usados.map(s=>{
+      const q = grupos.reduce((t,g)=>t+(g.por[s.nome]||0),0);
+      return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);">
+        <span style="width:10px;height:10px;border-radius:2px;background:${s.cor};"></span>${esc(s.nome)} <b style="color:var(--text-primary);font-variant-numeric:tabular-nums;">${nfInt(q)}</b></span>`;
+    }).join("");
+  }
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Nenhuma emissão para os filtros atuais.</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.total), 1);
+  const sel = nfFilters.subregional;
+  const cols = "display:grid;grid-template-columns:minmax(64px,110px) minmax(0,1fr)" + (chaveAguard ? " 58px" : "") + " 52px;align-items:center;gap:10px;";
+  const numCss = "text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;";
+  const head = `<div class="col-head" style="${cols}padding:2px 8px 8px 6px;">
+      <span>Sub-Regional</span><span></span>${chaveAguard ? `<span style="${numCss}">Aguard.</span>` : ""}<span style="${numCss}">Total</span>
+    </div>`;
+  const linhas = grupos.map((g,i)=>{
+    const segs = usados.filter(s=>g.por[s.nome]>0);
+    const barras = segs.map((s,j)=>`<div style="flex:${g.por[s.nome]} 1 0;min-width:2px;background:${s.cor};${j===segs.length-1 ? "border-radius:0 4px 4px 0;" : ""}"></div>`).join("");
+    const ehSel = g.label===sel;
+    return `<div class="nf-em-row" data-i="${i}" style="${cols}padding:5px 8px 5px 6px;border-radius:6px;cursor:pointer;font-size:12.5px;${ehSel ? "background:var(--brand-bg);" : ""}${sel && !ehSel ? "opacity:.45;" : ""}">
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${ehSel ? "var(--text-primary)" : "var(--text-secondary)"};${ehSel ? "font-weight:700;" : ""}" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div style="height:14px;"><div style="display:flex;gap:2px;height:100%;width:${(g.total/max*100).toFixed(2)}%;min-width:3px;">${barras}</div></div>
+      ${chaveAguard ? `<div style="${numCss}font-weight:700;color:var(--text-primary);">${nfInt(g.por[chaveAguard]||0)}</div>` : ""}
+      <div style="${numCss}color:var(--text-secondary);">${nfInt(g.total)}</div>
+    </div>`;
+  }).join("");
+  el.innerHTML = head + `<div class="hist-rank-rows-scroll">${linhas}</div>`;
+  el.querySelectorAll(".nf-em-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    const tip = `<div class="t">${esc(g.label)}</div>` + usados.filter(s=>g.por[s.nome]>0).map(s=>
+      `<div class="r"><span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${s.cor};margin-right:6px;"></span>${esc(s.nome)}</span><b>${nfInt(g.por[s.nome])} · ${nfPct2(g.por[s.nome], g.total)}</b></div>`).join("") +
+      `<div class="r" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">Total de NFs <b>${nfInt(g.total)}</b></div>`;
+    row.addEventListener("mousemove", ev=> sdTip(tip, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    row.addEventListener("click", ()=>{
+      sdTip(null);
+      nfFilters.subregional = (nfFilters.subregional===g.label) ? "" : g.label;
+      populateNfFilters();
+      const s = document.getElementById("nf-f-subregional"); if(s) s.value = nfFilters.subregional;
+      renderNotasFiscais();
+    });
+  });
+}
 function renderNotasFiscais(){
+  renderNfEmResumo();
+  renderNfEmChart();
   const rows = nfFiltered();
   const totais = nfTotaisFiltered();
   const totalDops = totais.reduce((s,t)=>s+t.total, 0);
