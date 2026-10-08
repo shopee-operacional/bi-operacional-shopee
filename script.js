@@ -271,6 +271,7 @@ if(!document.querySelector(".app")){
           <div class="card-title">📄 Notas fiscais pendentes de validação</div>
           <div class="card-link" id="nf-refresh">Atualizar</div>
         </div>
+        <div id="nf-status" style="font-size:12px; color:var(--text-muted); margin:-4px 0 12px; line-height:1.5;"></div>
         <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
           <div class="filter"><label>Mês</label><select id="nf-f-mes"><option value="">Todos</option></select></div>
           <div class="filter"><label>Regional</label><select id="nf-f-regional"><option value="">Todas</option></select></div>
@@ -1517,6 +1518,18 @@ let NF_DATA = [];
 // quadro "Por Analista" mostra só a contagem de pendentes, como antes.
 let NF_TOTAIS = [];
 let NF_LOADED = false;
+// Controle de "frescor" dos dados da aba Pagamentos:
+//  NF_BASE_EM  -> quando o Apps Script leu a planilha PAYMENTS pela última
+//                 vez (campo "updatedAt" da resposta = hora do PAG_CACHE);
+//  NF_ERRO     -> motivo da última tentativa de atualizar, se falhou. Os
+//                 números da carga anterior continuam na tela, mas com aviso;
+//  NF_LOADING  -> evita duas buscas ao mesmo tempo (botão + automático).
+let NF_BASE_EM = null;
+let NF_ERRO = null;
+let NF_LOADING = false;
+// O gatilho pagAtualizarPainel roda a cada 15 min; passou disso com folga,
+// a base está parada (gatilho inexistente ou falhando).
+const NF_BASE_VELHA_MS = 40 * 60 * 1000;
 let nfFilters = { mes:"", regional:"", subregional:"", analista:"", statussvp:"", statuspag:"" };
 // Emissões de NF já agregadas pelo Apps Script (campo "emissoes" da resposta
 // de ?tipo=pagamentos): uma linha por mês / regional / sub-regional /
@@ -1539,9 +1552,41 @@ function nfFormatMes(v){
   }
   return String(v);
 }
-async function loadNotasFiscais(){
+function nfHoraTxt(d){
+  const hoje = new Date();
+  const mesmoDia = d.getDate()===hoje.getDate() && d.getMonth()===hoje.getMonth() && d.getFullYear()===hoje.getFullYear();
+  const hora = d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  return mesmoDia ? hora : (d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}) + " às " + hora);
+}
+// Linha logo abaixo do título da aba: diz de quando são os números e avisa
+// quando eles estão velhos (atualização falhou ou base parada).
+function renderNfStatus(){
+  const el = document.getElementById("nf-status");
+  if(!el) return;
+  const aviso = t => `<span style="color:var(--critical);font-weight:600;">⚠ ${t}</span>`;
+  const partes = [];
+  const d = NF_BASE_EM ? new Date(NF_BASE_EM) : null;
+  const baseOk = d && !isNaN(d);
+  if(NF_LOADING && !NF_LOADED){ el.innerHTML = ""; return; }
+  if(baseOk) partes.push("Planilha PAYMENTS lida às <b>" + nfHoraTxt(d) + "</b>");
+  if(NF_LOADING) partes.push("atualizando…");
+  if(NF_ERRO && NF_LOADED){
+    partes.push(aviso("Não consegui atualizar agora (" + esc(NF_ERRO) + "). Os números abaixo são da leitura anterior e podem estar desatualizados."));
+  } else if(baseOk && (Date.now() - d.getTime()) > NF_BASE_VELHA_MS){
+    partes.push(aviso("A base não é atualizada há mais de 40 minutos. O gatilho pagAtualizarPainel (Apps Script) pode estar parado — os números podem não bater com a planilha."));
+  }
+  el.innerHTML = partes.join(" · ");
+}
+// "silencioso" = atualização automática: não troca nada na tela por
+// animação de carregamento, só a linha de status.
+async function loadNotasFiscais(silencioso){
+  if(NF_LOADING) return;
+  NF_LOADING = true;
   const el = document.getElementById("nf-rank-regional");
-  if(el) el.innerHTML = loaderHtml('Carregando pendências…');
+  // Só mostra a animação na 1ª carga; nas seguintes os números atuais
+  // ficam na tela até os novos chegarem.
+  if(el && !NF_LOADED) el.innerHTML = loaderHtml('Carregando pendências…');
+  renderNfStatus();
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     // Timeout maior que o padrão: se a aba PAGAMENTOS ainda não tiver sido
@@ -1573,13 +1618,26 @@ async function loadNotasFiscais(){
       qtd: Number(e.qtd) || 0,
       valor: Number(e.valor) || 0
     }));
+    NF_BASE_EM = (!Array.isArray(json) && json.updatedAt) || null;
+    NF_ERRO = null;
     NF_LOADED = true;
+    NF_LOADING = false;
     populateNfFilters();
     renderNotasFiscais();
   } catch(err){
     console.error(err);
-    if(el) el.innerHTML = '<div class="empty-state">Não foi possível carregar as pendências agora (' + err.message + ').</div>';
+    NF_LOADING = false;
+    NF_ERRO = err.message || "erro desconhecido";
+    if(NF_LOADED){
+      // Já havia números na tela: eles ficam, mas a linha de status avisa
+      // que são da leitura anterior (antes o erro aparecia só num quadro e
+      // o resto parecia atualizado).
+      renderNotasFiscais();
+    } else if(el){
+      el.innerHTML = '<div class="empty-state">Não foi possível carregar as pendências agora (' + esc(NF_ERRO) + ').</div>';
+    }
   }
+  renderNfStatus();
 }
 function nfUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
 // Filtra NF_DATA pelos filtros já escolhidos, exceto o campo "exceptKey" —
@@ -3188,4 +3246,7 @@ loadSameDay();
 loadBacklogResumo();
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
+// Pagamentos: só depois que a aba foi aberta pela 1ª vez. A base (PAG_CACHE)
+// muda a cada 15 min; buscar a cada 5 garante pegar a leitura nova logo.
+setInterval(()=>{ if(NF_LOADED) loadNotasFiscais(true); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadSameDay(), 30 * 60 * 1000); // base de Same Day muda pouco ao longo do dia
