@@ -2443,7 +2443,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("sec-"+item.dataset.section).classList.add("active");
     if(item.dataset.section === "historico" && !HIST_LOADED){ loadHistorico(); }
     if(item.dataset.section === "sameday" && SD_ROWS.length){ renderSameDaySection(); }
-    if(item.dataset.section === "leadtime"){ if(!LT_LOADED) loadLeadTime(); else renderLeadTime(); }
+    if(item.dataset.section === "leadtime"){ if(!LT_LOADED || (!LT_BUSCOU && !LT_PENDENTE)) loadLeadTime(); if(LT_LOADED) renderLeadTime(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
   });
@@ -2857,6 +2857,35 @@ function renderSameDaySection(){
 let LT = null;            // { rows, trend, periodoIni, periodoFim, diasDisponiveis... }
 let LT_LOADED = false;
 const LT_CACHE = {};
+// --- Abertura rápida da aba ---
+// 1) A busca padrão (últimos 7 dias) é disparada sozinha logo que o painel
+//    abre, em segundo plano, igual ao Same Day — quando a pessoa clica na
+//    aba, os dados normalmente já chegaram.
+// 2) A última resposta fica guardada no navegador (localStorage). Na próxima
+//    vez que o painel abrir, a aba mostra essa cópia NA HORA e troca pelos
+//    dados novos assim que o Apps Script responder.
+let LT_PENDENTE = null;   // busca padrão em andamento (evita pedir duas vezes)
+let LT_SEQ = 0;           // nº do último pedido; resposta de pedido antigo não troca a tela
+let LT_BUSCOU = false;    // a busca padrão já foi feita nesta sessão?
+let LT_NOTA = "";         // complemento do subtítulo ("atualizando…", aviso de cópia salva)
+let LT_COPIA_EM = null;   // quando a cópia guardada que está na tela foi salva (null = tela com dados novos)
+const LT_LS_KEY = "ltUltimo_v1";
+const LT_LS_MAX_MS = 3 * 24 * 60 * 60 * 1000; // cópia com mais de 3 dias não é usada
+function ltSalvarLocal(json){
+  try{ localStorage.setItem(LT_LS_KEY, JSON.stringify({ salvoEm: Date.now(), json: json })); }
+  catch(e){ /* sem espaço ou navegador sem localStorage: só não guarda */ }
+}
+function ltLerLocal(){
+  try{
+    const p = JSON.parse(localStorage.getItem(LT_LS_KEY) || "null");
+    if(p && p.json && p.json.rows && p.json.cols && (Date.now() - p.salvoEm) < LT_LS_MAX_MS) return p;
+  }catch(e){}
+  return null;
+}
+function ltQuandoTxt(ms){
+  const d = new Date(ms);
+  return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}) + " às " + d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+}
 const ltView = { subreg:"__default__", station:"", canal:"", busca:"", showAll:false, showAllStations:false, sort:{ key:"tempo", dir:-1 } };
 const LT_RANK_PREVIEW = 25, LT_STATION_PREVIEW = 12;
 function ltFmt(v){ return (v||0).toFixed(2).replace(".",","); }
@@ -2916,29 +2945,66 @@ function ltAplicar(json){
   if(a) a.value = LT.periodoIni || ""; if(b) b.value = LT.periodoFim || "";
   if(ltView.subreg==="__default__") ltView.subreg = LT.rows.some(r=>r.subreg==="CO") ? "CO" : "";
 }
-async function loadLeadTime(ini, fim){
-  const sub = document.getElementById("lt-subtitle");
+// Coloca uma resposta na tela (some a animação, mostra o conteúdo).
+function ltMostrar(json, manterLista){
   const load = document.getElementById("lt-loading"), cont = document.getElementById("lt-conteudo");
+  ltAplicar(json);
+  LT_LOADED = true;
+  if(load) load.style.display = "none";
+  if(cont) cont.style.display = "";
+  if(!manterLista){ ltView.showAll = false; ltView.showAllStations = false; }
+  ltAtualizarFiltros();
+  renderLeadTime();
+}
+function loadLeadTime(ini, fim){
   if(ini && fim && ini > fim){ const t = ini; ini = fim; fim = t; }
+  const padrao = !(ini || fim);
+  // busca padrão já em andamento (pré-carga): só espera por ela
+  if(padrao && LT_PENDENTE) return LT_PENDENTE;
+  const p = ltBuscar(ini, fim, padrao);
+  if(padrao){ LT_PENDENTE = p; p.then(()=>{ LT_PENDENTE = null; }); }
+  return p;
+}
+async function ltBuscar(ini, fim, padrao){
+  const sub = document.getElementById("lt-subtitle");
+  const load = document.getElementById("lt-loading");
+  // período escolhido pela pessoa "vence" qualquer busca anterior ainda em andamento
+  const seq = padrao ? LT_SEQ : ++LT_SEQ;
   try{
     let json = (ini && fim) ? LT_CACHE[ini + "_" + fim] : null;
     if(!json){
+      if(!LT && padrao){
+        // nada na tela ainda: mostra a última cópia guardada, se houver
+        const copia = ltLerLocal();
+        if(copia){ LT_COPIA_EM = copia.salvoEm; ltMostrar(copia.json); }
+      }
       if(!LT && load){ load.innerHTML = loaderHtml("Carregando lead time…"); load.style.display = ""; }
-      if(sub) sub.textContent = "— carregando…";
+      if(padrao && LT_COPIA_EM && LT){ LT_NOTA = " · atualizando…"; renderLeadTime(); }
+      else if(sub) sub.textContent = "— carregando…";
       const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
       const q = (ini || fim) ? "&ini=" + encodeURIComponent(ini||fim) + "&fim=" + encodeURIComponent(fim||ini) : "";
       json = await fetchViaIframe(API_URL + sep + "tipo=leadtime" + q, 90000);
       if(!json || !json.rows || !json.cols) throw new Error("resposta sem dados — confira se o LeadTime.gs foi publicado");
+      if(padrao){ LT_BUSCOU = true; ltSalvarLocal(json); }
     }
-    ltAplicar(json);
-    LT_LOADED = true;
-    if(load) load.style.display = "none";
-    if(cont) cont.style.display = "";
-    ltView.showAll = false; ltView.showAllStations = false;
-    ltAtualizarFiltros();
-    renderLeadTime();
+    if(seq !== LT_SEQ){
+      // a pessoa já escolheu outro período enquanto esta busca rodava:
+      // guarda a resposta para depois, sem trocar o que está na tela
+      LT_CACHE[json.periodoIni + "_" + json.periodoFim] = json;
+      return;
+    }
+    const eraCopia = LT_COPIA_EM !== null;
+    LT_NOTA = ""; LT_COPIA_EM = null;
+    ltMostrar(json, eraCopia);
   } catch(err){
     console.error("Lead Time:", err);
+    if(seq !== LT_SEQ) return;
+    if(LT_COPIA_EM && LT){
+      // a cópia guardada continua na tela, com aviso de quando ela é
+      LT_NOTA = " · ⚠ não consegui atualizar agora; dados salvos em " + ltQuandoTxt(LT_COPIA_EM);
+      renderLeadTime();
+      return;
+    }
     if(sub) sub.textContent = "— não foi possível carregar (" + err.message + ")";
     if(load && !LT) load.innerHTML = '<div class="empty-state">Não foi possível carregar o Lead Time agora (' + esc(err.message) + ').</div>';
   }
@@ -3126,7 +3192,7 @@ function renderLtRanking(){
 function renderLeadTime(){
   if(!LT) return;
   const sub = document.getElementById("lt-subtitle");
-  if(sub) sub.textContent = "— " + ltPeriodoTexto() + " · " + ltEscopoTexto();
+  if(sub) sub.textContent = "— " + ltPeriodoTexto() + " · " + ltEscopoTexto() + LT_NOTA;
   // a linha de evolução mostra o período escolhido ou, no mínimo, os últimos 7 dias até o fim dele
   const ate = (LT.diasDisponiveis||[]).filter(d=>d<=LT.periodoFim);
   const ult7 = ate.slice(-7)[0] || LT.periodoIni;
@@ -3244,6 +3310,9 @@ applyTheme(currentTheme);
 loadData(true);
 loadSameDay();
 loadBacklogResumo();
+// Lead Time em segundo plano, um instante depois das cargas principais (pra
+// não disputar com elas): quando a aba for aberta, já está pronto.
+setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 // Pagamentos: só depois que a aba foi aberta pela 1ª vez. A base (PAG_CACHE)
