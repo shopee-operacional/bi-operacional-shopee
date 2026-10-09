@@ -40,6 +40,7 @@ if(!document.querySelector(".app")){
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
     <div class="nav-item" data-section="notasfiscais"><span class="dot"></span>Pagamentos<span class="nav-badge" id="nav-nf-badge">0</span></div>
     <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
+    <div class="nav-item" data-section="crm"><span class="dot"></span>CRM</div>
     <div class="nav-item" data-section="historico"><span class="dot"></span>Histórico Pós-Fechamento</div>
     <div class="sidebar-foot">
       <div class="sfoot-desc">Acompanhamento operacional<br>SVP &amp; FM</div>
@@ -328,6 +329,26 @@ if(!document.querySelector(".app")){
       <div class="section-title">Base de Dados</div>
       <div class="card">
         <div class="table-wrap"><table class="data" id="table-base"></table></div>
+      </div>
+    </div>
+
+    <!-- CRM (planilha da CRM, estilo Excel) -->
+    <div class="section" id="sec-crm">
+      <div class="section-title">CRM <span class="sd-sub" id="crm-subtitle"></span></div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">📇 Base da CRM</div>
+          <div style="display:flex; gap:16px; align-items:center;">
+            <div class="card-link" id="crm-limpar" style="visibility:hidden">Limpar filtros</div>
+            <div class="card-link" id="crm-refresh">Atualizar</div>
+          </div>
+        </div>
+        <div class="search-box"><input type="text" id="crm-busca" placeholder="Buscar em todas as colunas…"></div>
+        <div class="col-head" style="padding:0 0 10px;">Clique no nome da coluna para ordenar · use o botão ▾ de cada coluna para filtrar, como no Excel</div>
+        <div class="crm-chips" id="crm-chips"></div>
+        <div id="crm-loading"></div>
+        <div class="table-wrap crm-wrap"><table class="data crm-table" id="crm-table"></table></div>
+        <div class="card-expand-btn" id="crm-more" style="display:none"></div>
       </div>
     </div>
 
@@ -2446,6 +2467,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "leadtime"){ if(!LT_LOADED || (!LT_BUSCOU && !LT_PENDENTE)) loadLeadTime(); if(LT_LOADED) renderLeadTime(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
+    if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -3321,6 +3343,289 @@ document.querySelectorAll(".table-wrap").forEach(addTopScroll);
   }
 })();
 // theme
+// ==================== ABA CRM (planilha da CRM, estilo Excel) ====================
+// Mostra a planilha da CRM inteira, com todas as colunas, como uma tabela de
+// Excel: cada coluna tem ordenação e filtro por valores (botão ▾ no título),
+// e há uma busca que procura em todas as colunas. Dados via ?tipo=crm
+// (CrmAba.gs). Carrega só quando a aba é aberta. Tem fonte própria: os filtros
+// do topo do painel (Responsável, Sub-Regional...) não valem aqui.
+let CRM = null;            // { cols:[nome], rows:[[texto,...]], tipos:[...], atualizadoEm, aba }
+let CRM_LOADED = false;
+let CRM_LOADING = false;
+const CRM_PASSO = 200;     // linhas desenhadas por vez
+const crmView = { busca:"", filtros:{}, sort:{ i:-1, dir:1 }, limite:CRM_PASSO };
+const CRM_VAZIO = "\u0000vazio"; // marca interna da opção "(Vazias)" do filtro
+(function(){
+  if(document.getElementById("crm-style")) return;
+  const st = document.createElement("style"); st.id = "crm-style";
+  st.textContent = `
+  .crm-wrap { max-height:68vh; overflow:auto; border:1px solid var(--grid); border-radius:6px; }
+  table.crm-table { border-collapse:separate; border-spacing:0; }
+  table.crm-table th { position:sticky; top:0; z-index:2; background:var(--surface-2); padding:0; border-bottom:1px solid var(--border); border-right:1px solid var(--grid); }
+  table.crm-table td { border-right:1px solid var(--grid); max-width:300px; overflow:hidden; text-overflow:ellipsis; }
+  table.crm-table td.crm-n, table.crm-table th.crm-n { text-align:right; color:var(--text-muted); width:1%; padding:8px 10px; cursor:default; }
+  table.crm-table tbody tr:hover { cursor:default; }
+  .crm-th { display:flex; align-items:center; gap:4px; }
+  .crm-th-nome { flex:1; padding:8px 4px 8px 10px; }
+  .crm-th-btn { border:1px solid transparent; background:transparent; color:var(--text-muted); border-radius:4px; font-size:11px; line-height:1; padding:4px 5px; margin-right:5px; cursor:pointer; font-family:inherit; }
+  .crm-th-btn:hover { border-color:var(--border); color:var(--text-primary); }
+  .crm-th-btn.ativo { background:var(--brand); color:var(--brand-ink); border-color:var(--brand); }
+  .crm-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .crm-chips:empty { display:none; }
+  .crm-chip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:4px 9px; border-radius:5px; background:var(--brand-bg); color:var(--brand); font-weight:600; cursor:pointer; }
+  .crm-pop { position:fixed; z-index:1000; width:270px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,.18); padding:10px; font-size:12.5px; color:var(--text-primary); }
+  .crm-pop-acao { padding:6px 8px; border-radius:5px; cursor:pointer; color:var(--text-secondary); }
+  .crm-pop-acao:hover { background:rgba(128,128,128,.10); color:var(--text-primary); }
+  .crm-pop input[type=text] { width:100%; margin:8px 0 6px; padding:7px 9px; border-radius:6px; border:1px solid var(--border); background:var(--surface-1); color:var(--text-primary); font-size:12.5px; outline:none; font-family:inherit; }
+  .crm-pop-lista { max-height:230px; overflow:auto; border:1px solid var(--grid); border-radius:6px; padding:4px; }
+  .crm-pop-lista label { display:flex; align-items:center; gap:7px; padding:3px 4px; border-radius:4px; cursor:pointer; white-space:nowrap; overflow:hidden; }
+  .crm-pop-lista label:hover { background:rgba(128,128,128,.10); }
+  .crm-pop-lista label span.v { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .crm-pop-lista label span.q { color:var(--text-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  .crm-pop-nota { color:var(--text-muted); font-size:11px; padding:5px 2px 0; }
+  .crm-pop-rodape { display:flex; justify-content:space-between; gap:8px; margin-top:10px; }
+  .crm-pop-rodape button { flex:1; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface-1); color:var(--text-primary); font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .crm-pop-rodape button.ok { background:var(--brand); border-color:var(--brand); color:var(--brand-ink); }
+  @media (max-width: 700px){ .crm-wrap { max-height:60vh; } .crm-pop { width:calc(100vw - 24px); left:12px !important; } }
+  `;
+  document.head.appendChild(st);
+})();
+// ---- leitura de número e data em texto (pra ordenar como o Excel) ----
+function crmNumero(s){
+  s = String(s).trim().replace(/^R\$\s*/,"").replace(/%$/,"");
+  if(!/^-?\d[\d.,]*$/.test(s)) return NaN;
+  const p = s.lastIndexOf("."), v = s.lastIndexOf(",");
+  if(p >= 0 && v >= 0) s = p > v ? s.replace(/,/g,"") : s.replace(/\./g,"").replace(",",".");
+  else if(v >= 0) s = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g,"") : s.replace(",",".");
+  else if(p >= 0 && /^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,"");
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+// devolve [a, b, ano, hora, min] de "7/10/2026 13:40" (a e b = dia/mês, na ordem em que estão) ou null
+function crmDataPartes(s){
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{1,2}):(\d{2}))?/);
+  if(m) return { iso:true, ano:+m[1], mes:+m[2], dia:+m[3], h:+(m[4]||0), mi:+(m[5]||0) };
+  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if(m) return { iso:false, a:+m[1], b:+m[2], ano:(+m[3] < 100 ? 2000 + (+m[3]) : +m[3]), h:+(m[4]||0), mi:+(m[5]||0) };
+  return null;
+}
+// Descobre, por coluna, se é número, data ou texto (e se a data é dia/mês ou mês/dia).
+function crmDetectarTipos(){
+  CRM.tipos = CRM.cols.map((_, i)=>{
+    let n = 0, num = 0, dat = 0, mesPrimeiro = false, diaPrimeiro = false;
+    for(let r = 0; r < CRM.rows.length && n < 300; r++){
+      const v = CRM.rows[r][i]; if(v === "") continue;
+      n++;
+      if(!isNaN(crmNumero(v))) num++;
+      else { const d = crmDataPartes(v); if(d){ dat++; if(!d.iso){ if(d.b > 12) mesPrimeiro = true; if(d.a > 12) diaPrimeiro = true; } } }
+    }
+    if(!n) return { t:"txt" };
+    if(num / n >= 0.85) return { t:"num" };
+    if(dat / n >= 0.85) return { t:"data", mesPrimeiro: mesPrimeiro && !diaPrimeiro };
+    return { t:"txt" };
+  });
+}
+// valor usado pra ordenar: número (num/data) ou null se não der pra ler
+function crmChaveOrdem(v, tipo){
+  if(v === "") return null;
+  if(tipo.t === "num"){ const n = crmNumero(v); return isNaN(n) ? null : n; }
+  if(tipo.t === "data"){
+    const d = crmDataPartes(v); if(!d) return null;
+    const dia = d.iso ? d.dia : (tipo.mesPrimeiro ? d.b : d.a), mes = d.iso ? d.mes : (tipo.mesPrimeiro ? d.a : d.b);
+    return Date.UTC(d.ano, mes-1, dia, d.h, d.mi);
+  }
+  return null;
+}
+function crmComparar(a, b, tipo){
+  if(a === b) return 0;
+  if(a === "") return 1;   // vazias sempre no fim
+  if(b === "") return -1;
+  if(tipo.t !== "txt"){
+    const ka = crmChaveOrdem(a, tipo), kb = crmChaveOrdem(b, tipo);
+    if(ka !== null && kb !== null) return ka - kb;
+    if(ka !== null) return -1;
+    if(kb !== null) return 1;
+  }
+  return a.localeCompare(b, "pt-BR", { numeric:true, sensitivity:"base" });
+}
+// ---- filtros ----
+function crmTextoBusca(row){ return row._b || (row._b = row.join(" \u0001 ").toLowerCase()); }
+// linhas que passam em todos os filtros, menos o da coluna "menosCol" (pra lista de valores do filtro)
+function crmFiltrar(menosCol){
+  const termos = crmView.busca.toLowerCase().split(/\s+/).filter(Boolean);
+  const ativos = Object.keys(crmView.filtros).map(Number).filter(i=> i !== menosCol);
+  return CRM.rows.filter(row=>{
+    for(const i of ativos){ if(!crmView.filtros[i].has(row[i] === "" ? CRM_VAZIO : row[i])) return false; }
+    if(termos.length){ const t = crmTextoBusca(row); for(const x of termos){ if(t.indexOf(x) < 0) return false; } }
+    return true;
+  });
+}
+function crmTemFiltro(){ return !!crmView.busca || Object.keys(crmView.filtros).length > 0; }
+function crmLimparFiltros(){
+  crmView.busca = ""; crmView.filtros = {}; crmView.limite = CRM_PASSO;
+  const b = document.getElementById("crm-busca"); if(b) b.value = "";
+  crmFecharPop(); renderCrm();
+}
+// ---- carga ----
+async function loadCrm(){
+  if(CRM_LOADING) return;
+  CRM_LOADING = true;
+  const load = document.getElementById("crm-loading"), sub = document.getElementById("crm-subtitle");
+  if(!CRM && load){ load.innerHTML = loaderHtml("Carregando a CRM…"); load.style.display = ""; }
+  if(sub) sub.textContent = "— " + (CRM ? "atualizando…" : "carregando…");
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=crm", 90000);
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !Array.isArray(json.cols) || !Array.isArray(json.rows) || (json.rows.length && !Array.isArray(json.rows[0])))
+      throw new Error("o Web App ainda não devolve a CRM — confira se o CrmAba.gs e o webapp.gs novos foram salvos e se uma nova versão foi publicada");
+    const n = json.cols.length;
+    CRM = {
+      cols: json.cols.map((c,i)=> String(c == null || c === "" ? "Coluna " + (i+1) : c)),
+      rows: json.rows.map(r=>{ const o = new Array(n); for(let i = 0; i < n; i++){ const v = r[i]; o[i] = (v == null) ? "" : String(v).trim(); } return o; }),
+      atualizadoEm: json.atualizadoEm || null, aba: json.aba || "", planilha: json.planilha || ""
+    };
+    crmDetectarTipos();
+    // filtro de coluna que não existe mais (planilha mudou): descarta
+    Object.keys(crmView.filtros).forEach(i=>{ if(+i >= n) delete crmView.filtros[i]; });
+    if(crmView.sort.i >= n) crmView.sort = { i:-1, dir:1 };
+    CRM_LOADED = true;
+    if(load) load.style.display = "none";
+    renderCrm();
+  } catch(err){
+    console.error("CRM:", err);
+    if(sub) sub.textContent = "— não foi possível " + (CRM ? "atualizar" : "carregar") + " (" + err.message + ")";
+    if(load && !CRM) load.innerHTML = '<div class="empty-state">Não foi possível carregar a CRM agora (' + esc(err.message) + ').</div>';
+  } finally {
+    CRM_LOADING = false;
+  }
+}
+// ---- tabela ----
+function renderCrm(){
+  if(!CRM) return;
+  const el = document.getElementById("crm-table"); if(!el) return;
+  let rows = crmFiltrar(-1);
+  const st = crmView.sort;
+  if(st.i >= 0){
+    const tipo = CRM.tipos[st.i];
+    // vazias ficam no fim nos dois sentidos, como no Excel
+    rows = rows.slice().sort((a,b)=>{ const va = a[st.i], vb = b[st.i]; if(va === "" || vb === "") return crmComparar(va, vb, tipo); return crmComparar(va, vb, tipo) * st.dir; });
+  }
+  const sub = document.getElementById("crm-subtitle");
+  if(sub){
+    const d = CRM.atualizadoEm ? new Date(CRM.atualizadoEm) : null;
+    sub.textContent = "— " + (rows.length === CRM.rows.length ? sdNum(rows.length) + " linhas" : sdNum(rows.length) + " de " + sdNum(CRM.rows.length) + " linhas")
+      + " · " + CRM.cols.length + " colunas"
+      + (d && !isNaN(d) ? " · planilha lida às " + d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "");
+  }
+  const chips = document.getElementById("crm-chips");
+  if(chips){
+    chips.innerHTML = Object.keys(crmView.filtros).map(Number).sort((a,b)=>a-b).map(i=>{
+      const s = crmView.filtros[i]; const um = s.size === 1 ? [...s][0] : null;
+      const txt = um !== null ? (um === CRM_VAZIO ? "(Vazias)" : um) : s.size + " valores";
+      return `<span class="crm-chip" data-i="${i}" title="Tirar este filtro">${esc(CRM.cols[i])}: ${esc(txt.length > 30 ? txt.slice(0,29) + "…" : txt)} ✕</span>`;
+    }).join("");
+    chips.querySelectorAll(".crm-chip").forEach(c=> c.onclick = ()=>{ delete crmView.filtros[+c.dataset.i]; crmView.limite = CRM_PASSO; renderCrm(); });
+  }
+  const limpar = document.getElementById("crm-limpar"); if(limpar) limpar.style.visibility = crmTemFiltro() ? "visible" : "hidden";
+  const vis = rows.slice(0, crmView.limite);
+  const seta = i => st.i === i ? (st.dir > 0 ? " ▲" : " ▼") : "";
+  const cel = (v, i)=>{
+    const cls = CRM.tipos[i].t === "num" ? ' class="num"' : "";
+    return v.length > 40 ? `<td${cls} title="${esc(v)}">${esc(v)}</td>` : `<td${cls}>${esc(v)}</td>`;
+  };
+  el.innerHTML = `<thead><tr><th class="crm-n">#</th>${CRM.cols.map((c,i)=>
+      `<th data-i="${i}"><div class="crm-th"><span class="crm-th-nome" title="Clique para ordenar">${esc(c)}${seta(i)}</span><button type="button" class="crm-th-btn${crmView.filtros[i] ? " ativo" : ""}" data-i="${i}" title="Filtrar ${esc(c)}">▾</button></div></th>`).join("")}</tr></thead>
+    <tbody>${vis.map((r,k)=>`<tr><td class="crm-n">${k+1}</td>${r.map(cel).join("")}</tr>`).join("")
+      || `<tr><td colspan="${CRM.cols.length + 1}"><div class="empty-state">Nenhuma linha para esses filtros.</div></td></tr>`}</tbody>`;
+  el.querySelectorAll(".crm-th-nome").forEach(sp=>{
+    sp.onclick = ()=>{ const i = +sp.parentNode.parentNode.dataset.i; if(st.i === i) st.dir *= -1; else { st.i = i; st.dir = 1; } renderCrm(); };
+  });
+  el.querySelectorAll(".crm-th-btn").forEach(bt=>{
+    bt.onclick = ev=>{ ev.stopPropagation(); crmAbrirPop(+bt.dataset.i, bt); };
+  });
+  const more = document.getElementById("crm-more");
+  if(more){
+    const falta = rows.length - vis.length;
+    more.style.display = falta > 0 ? "" : "none";
+    more.textContent = "+ Mostrar mais " + sdNum(Math.min(falta, CRM_PASSO * 5)) + " (" + sdNum(falta) + " linhas ainda não mostradas)";
+    more.onclick = ()=>{ crmView.limite += CRM_PASSO * 5; renderCrm(); };
+  }
+}
+// ---- janelinha de filtro da coluna (igual à do Excel) ----
+let CRM_POP = null;
+function crmFecharPop(){ if(CRM_POP){ CRM_POP.remove(); CRM_POP = null; } }
+function crmAbrirPop(col, ancora){
+  const mesma = CRM_POP && +CRM_POP.dataset.col === col;
+  crmFecharPop();
+  if(mesma) return;
+  const tipo = CRM.tipos[col];
+  // valores que existem nessa coluna considerando os OUTROS filtros
+  const cont = new Map();
+  crmFiltrar(col).forEach(r=>{ const v = r[col] === "" ? CRM_VAZIO : r[col]; cont.set(v, (cont.get(v) || 0) + 1); });
+  const valores = [...cont.keys()].sort((a,b)=> crmComparar(a === CRM_VAZIO ? "" : a, b === CRM_VAZIO ? "" : b, tipo));
+  const atual = crmView.filtros[col];
+  const marcados = new Set(atual ? valores.filter(v=>atual.has(v)) : valores);
+  const MAX = 400;
+  const pop = document.createElement("div"); pop.className = "crm-pop"; pop.dataset.col = col;
+  pop.innerHTML = `
+    <div class="crm-pop-acao" data-ord="1">↑ Ordenar de A a Z (menor → maior)</div>
+    <div class="crm-pop-acao" data-ord="-1">↓ Ordenar de Z a A (maior → menor)</div>
+    <input type="text" placeholder="Procurar valor em ${esc(CRM.cols[col])}…">
+    <div class="crm-pop-lista"></div>
+    <div class="crm-pop-nota"></div>
+    <div class="crm-pop-rodape"><button type="button" class="limpar">Limpar filtro</button><button type="button" class="ok">Aplicar</button></div>`;
+  document.body.appendChild(pop); CRM_POP = pop;
+  const r = ancora.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 278)) + "px";
+  pop.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - pop.offsetHeight - 8)) + "px";
+  const inp = pop.querySelector("input[type=text]"), lista = pop.querySelector(".crm-pop-lista"), nota = pop.querySelector(".crm-pop-nota");
+  let visiveis = valores;
+  const rot = v => v === CRM_VAZIO ? "(Vazias)" : v;
+  function desenhar(){
+    const t = inp.value.trim().toLowerCase();
+    visiveis = t ? valores.filter(v=> rot(v).toLowerCase().indexOf(t) >= 0) : valores;
+    const todos = visiveis.length > 0 && visiveis.every(v=>marcados.has(v));
+    lista.innerHTML = (visiveis.length ? `<label><input type="checkbox" data-todos="1" ${todos ? "checked" : ""}><span class="v"><b>(Selecionar tudo${t ? " o que apareceu" : ""})</b></span></label>` : `<div class="crm-pop-nota">Nenhum valor encontrado.</div>`)
+      + visiveis.slice(0, MAX).map((v,k)=>`<label title="${esc(rot(v))}"><input type="checkbox" data-k="${k}" ${marcados.has(v) ? "checked" : ""}><span class="v">${esc(rot(v))}</span><span class="q">${sdNum(cont.get(v))}</span></label>`).join("");
+    nota.textContent = visiveis.length > MAX ? "Mostrando " + MAX + " de " + sdNum(visiveis.length) + " valores — use a busca acima para achar os outros." : "";
+    lista.querySelectorAll("input[type=checkbox]").forEach(cb=>{
+      cb.onchange = ()=>{
+        if(cb.dataset.todos){ visiveis.forEach(v=>{ if(cb.checked) marcados.add(v); else marcados.delete(v); }); desenhar(); return; }
+        const v = visiveis[+cb.dataset.k]; if(cb.checked) marcados.add(v); else marcados.delete(v);
+        const t2 = lista.querySelector("input[data-todos]"); if(t2) t2.checked = visiveis.every(x=>marcados.has(x));
+      };
+    });
+  }
+  function aplicar(){
+    // com busca digitada vale só o que está aparecendo e marcado (como no Excel)
+    const escolha = inp.value.trim() ? visiveis.filter(v=>marcados.has(v)) : valores.filter(v=>marcados.has(v));
+    if(!escolha.length){ nota.textContent = "Marque pelo menos um valor."; return; }
+    if(escolha.length === valores.length) delete crmView.filtros[col]; else crmView.filtros[col] = new Set(escolha);
+    crmView.limite = CRM_PASSO;
+    crmFecharPop(); renderCrm();
+  }
+  inp.oninput = desenhar;
+  inp.onkeydown = ev=>{ if(ev.key === "Enter") aplicar(); };
+  pop.querySelector("button.ok").onclick = aplicar;
+  pop.querySelector("button.limpar").onclick = ()=>{ delete crmView.filtros[col]; crmView.limite = CRM_PASSO; crmFecharPop(); renderCrm(); };
+  pop.querySelectorAll(".crm-pop-acao").forEach(a=> a.onclick = ()=>{ crmView.sort = { i:col, dir:+a.dataset.ord }; crmFecharPop(); renderCrm(); });
+  pop.addEventListener("click", ev=> ev.stopPropagation());
+  desenhar();
+  inp.focus();
+}
+document.addEventListener("click", ()=> crmFecharPop());
+document.addEventListener("keydown", ev=>{ if(ev.key === "Escape") crmFecharPop(); });
+window.addEventListener("resize", ()=> crmFecharPop());
+(function(){
+  const busca = document.getElementById("crm-busca");
+  let t = null;
+  if(busca) busca.addEventListener("input", ()=>{ clearTimeout(t); t = setTimeout(()=>{ crmView.busca = busca.value.trim(); crmView.limite = CRM_PASSO; renderCrm(); }, 180); });
+  const limpar = document.getElementById("crm-limpar"); if(limpar) limpar.addEventListener("click", crmLimparFiltros);
+  const refresh = document.getElementById("crm-refresh"); if(refresh) refresh.addEventListener("click", ()=> loadCrm());
+  const wrap = document.querySelector(".crm-wrap"); if(wrap) wrap.addEventListener("scroll", ()=> crmFecharPop());
+})();
 const themeBtn = document.getElementById("theme-toggle");
 function applyTheme(t){
   document.documentElement.setAttribute("data-theme", t);
