@@ -2669,7 +2669,9 @@ function sdAplicarDadosSecao(json){
   SD_SEC_INFO = { refDia: json.refDia, ultimoDia: json.ultimoDia || json.refDia,
     periodoIni: json.periodoIni || json.refDia, periodoFim: fim, diasNoPeriodo: json.diasNoPeriodo || 1,
     semana: json.semana, semanaIni: json.semanaIni, semanaFim: json.semanaFim,
-    dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [], diasPendentes: json.diasPendentes || [] };
+    dias: json.dias || [], diasDisponiveis: json.diasDisponiveis || [], diasPendentes: json.diasPendentes || [],
+    // colunas de "último bip" (horários) que o SameDay.gs achou na planilha: [{k:"bip1", nome:"cabeçalho"}, ...]
+    bips: Array.isArray(json.bips) ? json.bips.filter(b=>b && b.k && json.cols.indexOf(b.k) >= 0) : [] };
   const disp = SD_SEC_INFO.diasDisponiveis;
   ["sd-f-ini","sd-f-fim"].forEach(id=>{
     const inp = document.getElementById(id); if(!inp) return;
@@ -2756,16 +2758,36 @@ const SD_RANK_COLS = [
   {k:"pct", l:"Same Day", num:true}, {k:"fora", l:"Fora do SD", num:true},
   {k:"posCol", l:"Inb. pós-coleta", num:true}, {k:"next", l:"Next day", num:true}, {k:"impacto", l:"% Impacto", num:true}
 ];
+// Colunas de horário ("último bip"), só quando o SameDay.gs manda. O título é
+// o próprio cabeçalho da planilha. Num período de vários dias, o horário é o
+// do dia mais recente do período em que a agência tem horário registrado.
+function sdBipCols(){
+  const bips = (SD_SEC_INFO && SD_SEC_INFO.bips) || [];
+  const variosDias = SD_SEC_INFO && SD_SEC_INFO.periodoIni !== SD_SEC_INFO.periodoFim;
+  return bips.map(b=>{
+    const nome = String(b.nome || b.k);
+    return { k:b.k, l: nome.length>24 ? nome.slice(0,23)+"…" : nome, num:true, hora:true,
+      tip: nome + (variosDias ? " — horário do dia mais recente do período com registro" : "") };
+  });
+}
 function renderSdRanking(){
   const el = document.getElementById("sd-ranking"); if(!el) return;
-  let rows = sdFiltrar(SD_ROWS).filter(r=>sdVal(r,"out")>0).map(r=>({
-    raw:r, dop:"DOP"+r.id, nome:r.nome||"—", station:r.station, resp:r.resp, cidade:r.cidade||"",
-    inb:sdVal(r,"inb"), out:sdVal(r,"out"), sd:sdVal(r,"sd"), next:sdVal(r,"next"), posCol:sdVal(r,"posCol")
-  }));
+  const bipCols = sdBipCols();
+  const COLS = SD_RANK_COLS.concat(bipCols);
+  let rows = sdFiltrar(SD_ROWS).filter(r=>sdVal(r,"out")>0).map(r=>{
+    const o = {
+      raw:r, dop:"DOP"+r.id, nome:r.nome||"—", station:r.station, resp:r.resp, cidade:r.cidade||"",
+      inb:sdVal(r,"inb"), out:sdVal(r,"out"), sd:sdVal(r,"sd"), next:sdVal(r,"next"), posCol:sdVal(r,"posCol")
+    };
+    bipCols.forEach(c=>{ o[c.k] = r[c.k] || ""; });
+    return o;
+  });
   const totPosCol = rows.reduce((s,r)=>s+r.posCol,0);
   rows.forEach(r=>{ r.pct = r.sd/r.out; r.fora = r.out-r.sd; r.impacto = totPosCol ? r.posCol/totPosCol : 0; });
   if(sdView.busca) rows = rows.filter(r=> (r.dop+" "+r.nome+" "+r.cidade+" "+r.station).toLowerCase().includes(sdView.busca));
   const st = sdView.sort;
+  // a coluna de horário ordenada pode ter sumido (ex.: resposta antiga): volta pro padrão
+  if(!COLS.some(c=>c.k===st.key)){ st.key = "fora"; st.dir = -1; }
   rows.sort((a,b)=>{ const va=a[st.key], vb=b[st.key];
     const c = typeof va==="number" ? va-vb : String(va||"").localeCompare(String(vb||""),"pt-BR");
     return c*st.dir || (b.fora-a.fora); });
@@ -2779,17 +2801,17 @@ function renderSdRanking(){
       case "pct": return `<span class="badge ${fifoBadgeClass(r.pct)}"><span class="ic"></span>${sdPct(r.pct)}</span>`;
       case "impacto": return sdPct(r.impacto);
       case "dop": case "station": case "resp": return esc(r[c.k]||"—");
-      default: return sdNum(r[c.k]);
+      default: return c.hora ? esc(r[c.k]||"—") : sdNum(r[c.k]);
     }
   };
-  el.innerHTML = `<thead><tr>${SD_RANK_COLS.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}" ${c.nosort?'style="cursor:default"':""}>${c.l}${seta(c.k)}</th>`).join("")}</tr></thead>
-    <tbody>${vis.map((r,i)=>`<tr data-dop="${esc(r.raw.id)}">${SD_RANK_COLS.map(c=>`<td class="${c.num?"num":""}">${cel(c,r,i)}</td>`).join("")}</tr>`).join("")
-      || `<tr><td colspan="${SD_RANK_COLS.length}"><div class="empty-state">Nenhuma agência para esse filtro.</div></td></tr>`}</tbody>
+  el.innerHTML = `<thead><tr>${COLS.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}" ${c.tip?`title="${esc(c.tip)}"`:""} ${c.nosort?'style="cursor:default"':""}>${esc(c.l)}${seta(c.k)}</th>`).join("")}</tr></thead>
+    <tbody>${vis.map((r,i)=>`<tr data-dop="${esc(r.raw.id)}">${COLS.map(c=>`<td class="${c.num?"num":""}">${cel(c,r,i)}</td>`).join("")}</tr>`).join("")
+      || `<tr><td colspan="${COLS.length}"><div class="empty-state">Nenhuma agência para esse filtro.</div></td></tr>`}</tbody>
     ${rows.length?`<tfoot><tr style="font-weight:700">
       <td></td><td colspan="4">Total (${sdNum(rows.length)} agências)</td>
       <td class="num">${sdNum(tot.inb)}</td><td class="num">${sdNum(tot.out)}</td><td class="num">${sdNum(tot.sd)}</td>
       <td class="num">${sdPct(tot.out?tot.sd/tot.out:0)}</td><td class="num">${sdNum(tot.fora)}</td>
-      <td class="num">${sdNum(tot.posCol)}</td><td class="num">${sdNum(tot.next)}</td><td class="num">100%</td></tr></tfoot>`:""}`;
+      <td class="num">${sdNum(tot.posCol)}</td><td class="num">${sdNum(tot.next)}</td><td class="num">100%</td>${bipCols.map(()=>"<td></td>").join("")}</tr></tfoot>`:""}`;
   el.querySelectorAll("th").forEach(th=>{
     const k = th.dataset.k; if(k==="pos") return;
     th.onclick = ()=>{ if(st.key===k) st.dir*=-1; else { st.key=k; st.dir = (["dop","nome","station","resp","pct"].includes(k)) ? 1 : -1; } renderSdRanking(); };
