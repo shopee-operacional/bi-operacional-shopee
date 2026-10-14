@@ -3597,28 +3597,43 @@ const AL_TIPO_ROTULO = { ROTA_PLAN:"Planejada", ROTA_APOIO:"Apoio", ROTA_EXTRA:"
 const alTipo = t => AL_TIPO_ROTULO[t] || t || "—";
 const alPct = (a,b) => b ? (a/b*100).toFixed(1).replace(".",",")+"%" : "—";
 const alNaoReal = r => r.saida==="Não realizada" || r.saida==="Desativada";
-async function loadAlocacoes(){
+let AL_PROMESSA = null;  // busca em andamento (pra não disparar duas ao mesmo tempo)
+// silencioso = carga em segundo plano (ao abrir o painel / a cada 30 min):
+// não mostra a animação nem mexe na tela se a aba não estiver aberta.
+function loadAlocacoes(silencioso){
   const box = document.getElementById("al-loading");
-  box.innerHTML = loaderHtml("Carregando alocações…");
-  document.getElementById("al-conteudo").style.display = "none";
-  try{
-    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=alocacoes", 120000);
-    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Alocacoes.gs e o webapp.gs novos foram publicados");
-    const cols = json.cols, dic = json.dic || null;
-    AL_ROWS = json.rows.map(l=>{ const o={}; cols.forEach((c,j)=>{ o[c] = (dic && dic[j] && dic[j].length) ? dic[j][l[j]] : l[j]; }); o.alocada = +o.alocada===1; return o; });
-    AL_DIAS = [...new Set(AL_ROWS.map(r=>r.data))].sort();
-    AL_LOADED = true;
-    if(!AL_F.ini) alPreset("dia");
-    alPreencherFiltros();
-    box.innerHTML = "";
-    document.getElementById("al-conteudo").style.display = "";
-    renderAlocacoes();
-  } catch(err){
-    console.error("Alocações:", err);
-    box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar as alocações (' + esc(err.message) + '). <a href="#" id="al-retry">Tentar de novo</a></div>';
-    const a = document.getElementById("al-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadAlocacoes(); };
+  const abaAberta = document.getElementById("sec-alocacoes").classList.contains("active");
+  if(!silencioso && !AL_LOADED){
+    box.innerHTML = loaderHtml("Carregando alocações…");
+    document.getElementById("al-conteudo").style.display = "none";
   }
+  if(AL_PROMESSA) return AL_PROMESSA;
+  AL_PROMESSA = (async ()=>{
+    try{
+      const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+      const json = await fetchViaIframe(API_URL + sep + "tipo=alocacoes", 120000);
+      if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Alocacoes.gs e o webapp.gs novos foram publicados");
+      const cols = json.cols, dic = json.dic || null;
+      AL_ROWS = json.rows.map(l=>{ const o={}; cols.forEach((c,j)=>{ o[c] = (dic && dic[j] && dic[j].length) ? dic[j][l[j]] : l[j]; }); o.alocada = +o.alocada===1; return o; });
+      const ultAntes = AL_DIAS[AL_DIAS.length-1];
+      AL_DIAS = [...new Set(AL_ROWS.map(r=>r.data))].sort();
+      // se estava vendo o "último dia" e chegou um dia novo, acompanha
+      if(!AL_F.ini || (AL_F.ini===ultAntes && AL_F.fim===ultAntes)) alPreset("dia");
+      AL_LOADED = true;
+      box.innerHTML = "";
+      document.getElementById("al-conteudo").style.display = "";
+      if(document.getElementById("sec-alocacoes").classList.contains("active")) renderAlocacoes();
+    } catch(err){
+      console.error("Alocações:", err);
+      if(!AL_LOADED && document.getElementById("sec-alocacoes").classList.contains("active")){
+        box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar as alocações (' + esc(err.message) + '). <a href="#" id="al-retry">Tentar de novo</a></div>';
+        const a = document.getElementById("al-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadAlocacoes(); };
+      }
+    } finally {
+      AL_PROMESSA = null;
+    }
+  })();
+  return AL_PROMESSA;
 }
 function alPreset(p){
   const ult = AL_DIAS[AL_DIAS.length-1] || "";
@@ -4077,6 +4092,9 @@ loadMisScan();
 // Lead Time em segundo plano, um instante depois das cargas principais (pra
 // não disputar com elas): quando a aba for aberta, já está pronto.
 setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
+// Alocações também em segundo plano: quando a aba for aberta, já está pronta.
+setTimeout(()=>{ if(!AL_LOADED) loadAlocacoes(true); }, 3000);
+setInterval(()=> loadAlocacoes(true), 30 * 60 * 1000);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda no máximo 1x por hora
