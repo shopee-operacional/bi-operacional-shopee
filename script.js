@@ -36,6 +36,7 @@ if(!document.querySelector(".app")){
     <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
     <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
     <div class="nav-item" data-section="alocacoes"><span class="dot"></span>Alocações &amp; Rotas extras</div>
+    <div class="nav-item" data-section="loja"><span class="dot"></span>Desempenho por Loja</div>
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
@@ -395,6 +396,67 @@ if(!document.querySelector(".app")){
           </div>
           <div class="table-wrap"><table class="data" id="al-tab-det"></table></div>
           <div class="card-expand-btn" id="al-det-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESEMPENHO POR LOJA (ID da Loja) -->
+    <div class="section" id="sec-loja">
+      <div class="section-title">Desempenho por Loja <span class="sd-sub" id="ld-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="ld-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="ld-f-fim"></div>
+        <div class="sd-seg" id="ld-periodo">
+          <button data-p="dia">Último dia</button>
+          <button data-p="semana">Semana</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="tudo">Tudo</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="ld-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="ld-f-station"></select></div>
+        <div class="filter"><label>Transportadora</label><select id="ld-f-transp"></select></div>
+        <div class="filter"><label>Raio</label><select id="ld-f-raio"></select></div>
+        <button class="theme-btn" id="ld-limpar">Limpar filtros</button>
+      </div>
+      <div id="ld-loading"></div>
+      <div id="ld-conteudo" style="display:none">
+        <div class="kpi-grid" id="ld-kpis"></div>
+        <div class="grid2">
+          <div class="card" style="min-width:0">
+            <div class="card-head"><div class="card-title">Performance por dia</div><div class="sd-hint">clique no dia para filtrar</div></div>
+            <div class="table-wrap"><table class="data" id="ld-tab-dia"></table></div>
+          </div>
+          <div class="card" style="min-width:0">
+            <div class="card-head"><div class="card-title">Performance por semana</div><div class="sd-hint">todas as semanas da base</div></div>
+            <div class="table-wrap"><table class="data" id="ld-tab-semana"></table></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Desempenho por 3PL</div><div class="sd-hint">clique para filtrar</div></div>
+          <div class="table-wrap"><table class="data" id="ld-tab-3pl"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Detalhamento diário de justificativas</div><div class="sd-hint">% sobre as visitas do dia · FP = Full Pickup · NSD = No Show 3PL · NSS = No Show Seller · PP = Partial Pickup</div></div>
+          <div class="table-wrap"><table class="data" id="ld-tab-just"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Performance por Station</div><div class="sd-hint">pior % Full Pickup primeiro · clique para filtrar</div></div>
+          <div class="table-wrap"><table class="data" id="ld-tab-station"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Detalhe por loja</div><div class="losses-total" id="ld-det-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="sd-seg" id="ld-det-seg">
+              <button data-v="todas" class="active">Todas as ocorrências</button>
+              <button data-v="No Show Seller">No Show Seller</button>
+              <button data-v="No Show 3PL">No Show 3PL</button>
+              <button data-v="Partial Pickup">Partial Pickup</button>
+              <button data-v="reinc">Só reincidentes</button>
+            </div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-busca" placeholder="Buscar loja (DOP, Unique, Seller Group), station ou rota…"></div>
+          </div>
+          <div class="table-wrap"><table class="data" id="ld-tab-det"></table></div>
+          <div class="card-expand-btn" id="ld-det-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -2679,7 +2741,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "alocacoes", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -2701,6 +2763,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
     if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
+    if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -3801,6 +3864,254 @@ function renderAlDetalhe(lista){
   }));
   let t; document.getElementById("al-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ AL_F.busca = e.target.value; renderAlDetalhe(alFiltrar()); }, 200); });
 })();
+// ==================== DESEMPENHO POR LOJA (ID da Loja) ====================
+// Base de visitas a lojas/sellers (?tipo=desempenholoja, DesempenhoLoja.gs).
+// "agg" = contagem de visitas por dia/sub/station/3PL/performance/justificativa/raio;
+// "det" = só as visitas com problema (NSS, NS 3PL, PP) para o detalhe por loja.
+// % = performance ÷ (Full Pickup + No Show 3PL + No Show Seller + Partial Pickup),
+// igual ao Data Studio (Disabled, Reassigned e evaluate ficam fora da conta).
+let LD_LOADED = false, LD_PROMESSA = null;
+let LD_AGG = [], LD_DET = [], LD_DIAS = [];
+const LD_F = { ini:"", fim:"", sub:"", station:"", transp:"", raio:"", det:"todas", busca:"" };
+const LD_EXP = { det:false };
+const LD_PERFS = ["Full Pickup", "No Show 3PL", "No Show Seller", "Partial Pickup"];
+const LD_SIGLA = { "Full Pickup":"FP", "No Show 3PL":"NSD", "No Show Seller":"NSS", "Partial Pickup":"PP" };
+const ldPct = (a,b) => b ? (a/b*100).toFixed(2).replace(".",",")+"%" : "—";
+function ldDecode(bloco){
+  const cols = bloco.cols, dic = bloco.dic;
+  return bloco.rows.map((l,i)=>{ const o = {}; cols.forEach((c,j)=>{ o[c] = dic[j][l[j]]; }); if(bloco.qtd) o.n = bloco.qtd[i]; return o; });
+}
+function loadLoja(silencioso){
+  const box = document.getElementById("ld-loading");
+  if(!silencioso && !LD_LOADED){
+    box.innerHTML = loaderHtml("Carregando desempenho por loja…");
+    document.getElementById("ld-conteudo").style.display = "none";
+  }
+  if(LD_PROMESSA) return LD_PROMESSA;
+  LD_PROMESSA = (async ()=>{
+    try{
+      const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+      const json = await fetchViaIframe(API_URL + sep + "tipo=desempenholoja", 120000);
+      if(!json || !json.agg || !json.det) throw new Error("resposta sem dados — confira se o DesempenhoLoja.gs e o webapp.gs novos foram publicados");
+      LD_AGG = ldDecode(json.agg);
+      LD_DET = ldDecode(json.det);
+      const ultAntes = LD_DIAS[LD_DIAS.length-1];
+      LD_DIAS = [...new Set(LD_AGG.map(r=>r.data))].filter(Boolean).sort();
+      if(!LD_F.ini || (LD_F.ini===ultAntes && LD_F.fim===ultAntes)) ldPreset("dia");
+      LD_LOADED = true;
+      box.innerHTML = "";
+      document.getElementById("ld-conteudo").style.display = "";
+      if(document.getElementById("sec-loja").classList.contains("active")) renderLoja();
+    } catch(err){
+      console.error("Desempenho por loja:", err);
+      if(!LD_LOADED && document.getElementById("sec-loja").classList.contains("active")){
+        box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o desempenho por loja (' + esc(err.message) + '). <a href="#" id="ld-retry">Tentar de novo</a></div>';
+        const a = document.getElementById("ld-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadLoja(); };
+      }
+    } finally { LD_PROMESSA = null; }
+  })();
+  return LD_PROMESSA;
+}
+function ldPreset(p){
+  const ult = LD_DIAS[LD_DIAS.length-1] || "";
+  // "Último dia" = último dia FECHADO: hoje ainda está em andamento (quase sem visitas avaliadas)
+  const hoje = new Date(Date.now() - 3*3600e3).toISOString().slice(0,10);
+  const ultFechado = (ult===hoje && LD_DIAS.length>1) ? LD_DIAS[LD_DIAS.length-2] : ult;
+  if(p==="dia"){ LD_F.ini = ultFechado; LD_F.fim = ultFechado; }
+  else if(p==="7d"){ const ds = LD_DIAS.slice(-7); LD_F.ini = ds[0]||ult; LD_F.fim = ult; }
+  else if(p==="semana"){
+    const q = ult.split("-"); const d = new Date(Date.UTC(+q[0], +q[1]-1, +q[2]));
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay()+6)%7));
+    LD_F.ini = d.toISOString().slice(0,10); LD_F.fim = ult;
+  }
+  else { LD_F.ini = LD_DIAS[0]||""; LD_F.fim = ult; }
+}
+function ldPresetAtual(){
+  for(const p of ["dia","semana","7d","tudo"]){
+    const salvo = {ini:LD_F.ini, fim:LD_F.fim}; ldPreset(p);
+    const igual = LD_F.ini===salvo.ini && LD_F.fim===salvo.fim;
+    LD_F.ini = salvo.ini; LD_F.fim = salvo.fim;
+    if(igual) return p;
+  }
+  return "";
+}
+function ldPassa(r, ignorar, semPeriodo){
+  return (semPeriodo || ((!LD_F.ini || r.data>=LD_F.ini) && (!LD_F.fim || r.data<=LD_F.fim)))
+    && (ignorar==="sub" || !LD_F.sub || r.sub===LD_F.sub)
+    && (ignorar==="station" || !LD_F.station || r.station===LD_F.station)
+    && (ignorar==="transp" || !LD_F.transp || r.transp===LD_F.transp)
+    && (ignorar==="raio" || !LD_F.raio || r.raio===LD_F.raio);
+}
+// soma visitas por performance (+ NSS fora do raio) numa lista de linhas agregadas
+function ldConta(lista){
+  const o = { fp:0, nsd:0, nss:0, pp:0, nssFora:0, outros:0, den:0 };
+  lista.forEach(r=>{
+    if(r.perf==="Full Pickup") o.fp += r.n;
+    else if(r.perf==="No Show 3PL") o.nsd += r.n;
+    else if(r.perf==="No Show Seller"){ o.nss += r.n; if(r.raio==="Fora do raio") o.nssFora += r.n; }
+    else if(r.perf==="Partial Pickup") o.pp += r.n;
+    else o.outros += r.n;
+  });
+  o.den = o.fp + o.nsd + o.nss + o.pp;
+  return o;
+}
+function ldAgrupar(lista, chaveFn){
+  const m = {};
+  lista.forEach(r=>{ const k = chaveFn(r); (m[k] || (m[k] = [])).push(r); });
+  return Object.keys(m).map(k=>{ const o = ldConta(m[k]); o.label = k; return o; });
+}
+function ldPreencherFiltros(){
+  const opcoes = (id, valores, atual, vazio) => {
+    document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join("");
+  };
+  opcoes("ld-f-sub", [...new Set(LD_AGG.map(r=>r.sub).filter(Boolean))].sort(), LD_F.sub, "Todas");
+  opcoes("ld-f-station", [...new Set(LD_AGG.filter(r=>ldPassa(r,"station",true)).map(r=>r.station).filter(Boolean))].sort(), LD_F.station, "Todas");
+  opcoes("ld-f-transp", [...new Set(LD_AGG.map(r=>r.transp).filter(Boolean))].sort(), LD_F.transp, "Todas");
+  opcoes("ld-f-raio", [...new Set(LD_AGG.map(r=>r.raio).filter(Boolean))].sort(), LD_F.raio, "Todos");
+  ["ld-f-ini","ld-f-fim"].forEach(id=>{ const el = document.getElementById(id); el.value = id==="ld-f-ini" ? LD_F.ini : LD_F.fim; if(LD_DIAS.length){ el.min = LD_DIAS[0]; el.max = LD_DIAS[LD_DIAS.length-1]; } });
+  const pa = ldPresetAtual();
+  document.querySelectorAll("#ld-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===pa));
+}
+// célula de % com cor (FP: quanto maior melhor; demais: quanto menor melhor)
+function ldCel(v, den, tipo){
+  if(!den) return "<td>—</td>";
+  const p = v/den;
+  let cls = "";
+  if(tipo==="fp") cls = p>=0.9 ? "good" : p>=0.8 ? "warning" : "critical";
+  else if(tipo==="nss") cls = p<=0.08 ? "good" : p<=0.12 ? "warning" : "critical";
+  else cls = p<=0.01 ? "good" : p<=0.02 ? "warning" : "critical";
+  return `<td><span class="badge ${cls}">${ldPct(v, den)}</span></td>`;
+}
+function ldLinhaPerf(o){ return ldCel(o.fp,o.den,"fp") + ldCel(o.nsd,o.den,"nsd") + ldCel(o.nss,o.den,"nss") + ldCel(o.pp,o.den,"pp"); }
+const LD_CAB_PERF = "<th>Full Pickup</th><th>No Show 3PL</th><th>No Show Seller</th><th>Partial Pickup</th>";
+function renderLoja(){
+  if(!LD_LOADED) return;
+  ldPreencherFiltros();
+  const lista = LD_AGG.filter(r=>ldPassa(r));
+  const t = ldConta(lista);
+  const n = v => (v||0).toLocaleString("pt-BR");
+  const per = LD_F.ini===LD_F.fim ? histRotuloDia(LD_F.ini) : fmtDiaBR(LD_F.ini) + " a " + fmtDiaBR(LD_F.fim);
+  document.getElementById("ld-subtitle").textContent = "— " + per + (LD_F.fim===LD_DIAS[LD_DIAS.length-1] ? " (último dia pode estar em andamento)" : "");
+  // reincidentes: loja com No Show Seller em 2 dias ou mais no período
+  const detPer = LD_DET.filter(r=>ldPassa(r));
+  const diasNss = {};
+  detPer.forEach(r=>{ if(r.perf==="No Show Seller"){ (diasNss[r.loja] || (diasNss[r.loja] = new Set())).add(r.data); } });
+  const reinc = Object.values(diasNss).filter(s=>s.size>=2).length;
+  renderKpis("ld-kpis", [
+    {label:"Visitas", value:n(t.den), icon:"🏪", sub: n(t.outros) + " desativadas/reatribuídas fora da conta"},
+    {label:"% Full Pickup", value: ldPct(t.fp, t.den), icon:"✅", cls: t.den && t.fp/t.den < 0.85 ? "warn" : ""},
+    {label:"% No Show Seller", value: ldPct(t.nss, t.den), icon:"🙅", cls: t.den && t.nss/t.den > 0.1 ? "crit" : "warn", sub: n(t.nss) + " visitas · " + ldPct(t.nssFora, t.den) + " fora do raio"},
+    {label:"% No Show 3PL", value: ldPct(t.nsd, t.den), icon:"🚚", cls: t.nsd>0 ? "warn" : "", sub: n(t.nsd) + " visitas"},
+    {label:"% Partial Pickup", value: ldPct(t.pp, t.den), icon:"📦", sub: n(t.pp) + " visitas"},
+    {label:"Lojas reincidentes", value:n(reinc), icon:"🔁", cls: reinc>0 ? "warn" : "", sub:"No Show Seller em 2+ dias do período"},
+  ]);
+  // por dia
+  const dias = ldAgrupar(lista, r=>r.data).sort((a,b)=>b.label.localeCompare(a.label));
+  const tot = ldConta(lista);
+  document.getElementById("ld-tab-dia").innerHTML = "<thead><tr><th>Dia</th><th>Visitas</th>" + LD_CAB_PERF + "</tr></thead><tbody>"
+    + dias.map(d=>`<tr data-dia="${d.label}"><td>${esc(histRotuloDia(d.label))}</td><td>${n(d.den)}</td>${ldLinhaPerf(d)}</tr>`).join("")
+    + (dias.length>1 ? `<tr style="font-weight:700"><td>Total</td><td>${n(tot.den)}</td>${ldLinhaPerf(tot)}</tr>` : "")
+    + (dias.length ? "" : '<tr><td colspan="6"><div class="empty-state">Sem visitas nesse filtro.</div></td></tr>') + "</tbody>";
+  document.querySelectorAll("#ld-tab-dia tbody tr[data-dia]").forEach(tr=> tr.onclick = ()=>{ LD_F.ini = LD_F.fim = tr.dataset.dia; renderLoja(); });
+  // por semana (sempre usa todos os dias da base, respeitando os outros filtros)
+  const semanas = ldAgrupar(LD_AGG.filter(r=>ldPassa(r,null,true)), r=>String(msSemanaIso(r.data))).sort((a,b)=>+b.label - +a.label);
+  document.getElementById("ld-tab-semana").innerHTML = "<thead><tr><th>Semana</th><th>Visitas</th>" + LD_CAB_PERF + "</tr></thead><tbody>"
+    + semanas.map(s=>`<tr><td>Week ${esc(s.label)}</td><td>${n(s.den)}</td>${ldLinhaPerf(s)}</tr>`).join("") + "</tbody>";
+  // por 3PL (ignora o próprio filtro de transportadora pra comparar)
+  const lista3 = LD_AGG.filter(r=>ldPassa(r,"transp"));
+  const t3 = ldConta(lista3);
+  const tps = ldAgrupar(lista3, r=>r.transp || "Sem transportadora").filter(x=>x.den>0).sort((a,b)=>b.den-a.den);
+  document.getElementById("ld-tab-3pl").innerHTML = "<thead><tr><th>3PL</th><th>Representatividade</th>" + LD_CAB_PERF + "<th>% NSS fora do raio</th></tr></thead><tbody>"
+    + tps.map(x=>`<tr data-tp="${esc(x.label)}"${x.label===LD_F.transp?' class="row-selected"':""}><td><b>${esc(x.label)}</b></td><td>${ldPct(x.den, t3.den)}</td>${ldLinhaPerf(x)}<td>${ldPct(x.nssFora, x.den)}</td></tr>`).join("")
+    + `<tr style="font-weight:700"><td>Total</td><td>100%</td>${ldLinhaPerf(t3)}<td>${ldPct(t3.nssFora, t3.den)}</td></tr></tbody>`;
+  document.querySelectorAll("#ld-tab-3pl tbody tr[data-tp]").forEach(tr=> tr.onclick = ()=>{ const v = tr.dataset.tp==="Sem transportadora" ? "" : tr.dataset.tp; LD_F.transp = LD_F.transp===v ? "" : v; renderLoja(); });
+  // justificativas por dia: colunas = (performance, justificativa) que aparecem no período
+  const justTxt = (perf, j) => {
+    if(!j) return perf==="Full Pickup" ? "Sem justificativa" : "Não justificado";
+    return j.replace("Não havia pacotes para coletar","Sem pacotes").replace("Não tenho mais espaço no baú","Sem espaço")
+      .replace("Não localizei o endereço","Não achei o local").replace("Não passei pelo endereço","Não passei no local");
+  };
+  const colsJ = {};
+  lista.forEach(r=>{ if(LD_PERFS.includes(r.perf)){ const k = r.perf + "|" + r.just; colsJ[k] = (colsJ[k]||0) + r.n; } });
+  const ordemPerf = p => LD_PERFS.indexOf(p);
+  const chavesJ = Object.keys(colsJ).sort((a,b)=>{ const [pa,ja]=a.split("|"), [pb,jb]=b.split("|"); return (ordemPerf(pa)-ordemPerf(pb)) || (colsJ[b]-colsJ[a]); });
+  const porDiaJ = {};
+  lista.forEach(r=>{
+    const d = porDiaJ[r.data] || (porDiaJ[r.data] = {den:0});
+    if(LD_PERFS.includes(r.perf)){ d.den += r.n; const k = r.perf + "|" + r.just; d[k] = (d[k]||0) + r.n; }
+  });
+  document.getElementById("ld-tab-just").innerHTML = "<thead><tr><th>Dia</th>"
+    + chavesJ.map(k=>{ const [p,j] = k.split("|"); return `<th title="${esc(p + " — " + (j||"sem justificativa"))}">${LD_SIGLA[p]} - ${esc(justTxt(p,j))}</th>`; }).join("") + "</tr></thead><tbody>"
+    + Object.keys(porDiaJ).sort().reverse().map(dia=>{
+        const d = porDiaJ[dia];
+        return `<tr><td>${fmtDiaBR(dia)}</td>` + chavesJ.map(k=>{
+          const v = d[k] || 0;
+          if(!v) return "<td></td>";
+          const ruim = !k.startsWith("Full Pickup");
+          return `<td${ruim && v/d.den>=0.05 ? ' style="color:var(--critical);font-weight:700"' : ""}>${ldPct(v, d.den)}</td>`;
+        }).join("") + "</tr>";
+      }).join("") + "</tbody>";
+  // por station
+  const listaSt = LD_AGG.filter(r=>ldPassa(r,"station"));
+  const sts = ldAgrupar(listaSt, r=>r.station).filter(x=>x.den>0).sort((a,b)=>(a.fp/a.den)-(b.fp/b.den));
+  const subDe = {}; listaSt.forEach(r=>{ subDe[r.station] = r.sub; });
+  document.getElementById("ld-tab-station").innerHTML = "<thead><tr><th>Station</th><th>Sub-regional</th><th>Visitas</th>" + LD_CAB_PERF + "<th>% NSS fora do raio</th></tr></thead><tbody>"
+    + sts.map(x=>`<tr data-st="${esc(x.label)}"${x.label===LD_F.station?' class="row-selected"':""}><td><b>${esc(x.label)}</b></td><td>${esc(subDe[x.label]||"")}</td><td>${n(x.den)}</td>${ldLinhaPerf(x)}<td>${ldPct(x.nssFora, x.den)}</td></tr>`).join("") + "</tbody>";
+  document.querySelectorAll("#ld-tab-station tbody tr[data-st]").forEach(tr=> tr.onclick = ()=>{ LD_F.station = LD_F.station===tr.dataset.st ? "" : tr.dataset.st; renderLoja(); });
+  renderLojaDetalhe(detPer, diasNss);
+}
+function renderLojaDetalhe(detPer, diasNss){
+  if(!detPer){
+    detPer = LD_DET.filter(r=>ldPassa(r));
+    diasNss = {};
+    detPer.forEach(r=>{ if(r.perf==="No Show Seller"){ (diasNss[r.loja] || (diasNss[r.loja] = new Set())).add(r.data); } });
+  }
+  const q = LD_F.busca.trim().toLowerCase();
+  const porLoja = {};
+  detPer.forEach(r=>{
+    if(LD_F.det!=="todas" && LD_F.det!=="reinc" && r.perf!==LD_F.det) return;
+    const o = porLoja[r.loja] || (porLoja[r.loja] = { loja:r.loja, station:r.station, sub:r.sub, nss:0, nsd:0, pp:0, fora:0, dias:new Set(), ult:"", rota:"", transp:"", just:{} });
+    if(r.perf==="No Show Seller") o.nss++; else if(r.perf==="No Show 3PL") o.nsd++; else o.pp++;
+    if(r.raio==="Fora do raio") o.fora++;
+    o.dias.add(r.data);
+    if(r.data >= o.ult){ o.ult = r.data; o.rota = r.rota; o.transp = r.transp; o.station = r.station; }
+    const j = r.just || "Sem justificativa"; o.just[j] = (o.just[j]||0) + 1;
+  });
+  let lojas = Object.values(porLoja).map(o=>{ o.total = o.nss + o.nsd + o.pp; o.reinc = (diasNss[o.loja] ? diasNss[o.loja].size : 0) >= 2; return o; });
+  if(LD_F.det==="reinc") lojas = lojas.filter(o=>o.reinc);
+  if(q) lojas = lojas.filter(o=>[o.loja, o.station, o.sub, o.rota, o.transp].join(" ").toLowerCase().includes(q));
+  lojas.sort((a,b)=>(b.total-a.total) || (b.dias.size-a.dias.size) || b.ult.localeCompare(a.ult));
+  const LIM = 50;
+  const vis = LD_EXP.det ? lojas.slice(0, 2000) : lojas.slice(0, LIM);
+  document.getElementById("ld-det-total").innerHTML = `<b>${lojas.length.toLocaleString("pt-BR")}</b> ${lojas.length===1?"loja":"lojas"} com ocorrência`;
+  document.getElementById("ld-tab-det").innerHTML =
+    "<thead><tr><th>Loja</th><th>Station</th><th>Ocorrências</th><th>No Show Seller</th><th>No Show 3PL</th><th>Partial Pickup</th><th>Dias</th><th>Fora do raio</th><th>Justificativa mais comum</th><th>Última</th><th>Rota (última)</th><th>3PL</th></tr></thead><tbody>"
+    + (vis.map(o=>{
+        const jTop = Object.entries(o.just).sort((a,b)=>b[1]-a[1])[0];
+        return `<tr><td><b>${esc(o.loja)}</b>${o.reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias">reincidente</span>':""}</td><td>${esc(o.station)}</td><td><b>${o.total}</b></td><td>${o.nss||""}</td><td>${o.nsd||""}</td><td>${o.pp||""}</td><td>${o.dias.size}</td><td>${o.fora||""}</td><td>${jTop?esc(jTop[0]):""}</td><td>${fmtDiaBR(o.ult)}</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis" title="${esc(o.rota)}">${esc(o.rota)}</td><td>${esc(o.transp||"—")}</td></tr>`;
+      }).join("") || '<tr><td colspan="12"><div class="empty-state">Nenhuma loja com ocorrência nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("ld-det-more");
+  more.style.display = lojas.length > LIM ? "" : "none";
+  more.textContent = LD_EXP.det ? "− Mostrar só as " + LIM + " primeiras" : "+ Ver todas as " + lojas.length.toLocaleString("pt-BR") + " lojas" + (lojas.length>2000 ? " (até 2.000)" : "");
+}
+(function(){
+  const recarregar = ()=> renderLoja();
+  document.querySelectorAll("#ld-periodo button").forEach(b=> b.addEventListener("click", ()=>{ ldPreset(b.dataset.p); recarregar(); }));
+  document.getElementById("ld-f-ini").addEventListener("change", e=>{ LD_F.ini = e.target.value; if(LD_F.fim && LD_F.ini > LD_F.fim) LD_F.fim = LD_F.ini; recarregar(); });
+  document.getElementById("ld-f-fim").addEventListener("change", e=>{ LD_F.fim = e.target.value; if(LD_F.ini && LD_F.fim < LD_F.ini) LD_F.ini = LD_F.fim; recarregar(); });
+  document.getElementById("ld-f-sub").addEventListener("change", e=>{ LD_F.sub = e.target.value; LD_F.station = ""; recarregar(); });
+  document.getElementById("ld-f-station").addEventListener("change", e=>{ LD_F.station = e.target.value; recarregar(); });
+  document.getElementById("ld-f-transp").addEventListener("change", e=>{ LD_F.transp = e.target.value; recarregar(); });
+  document.getElementById("ld-f-raio").addEventListener("change", e=>{ LD_F.raio = e.target.value; recarregar(); });
+  document.getElementById("ld-limpar").addEventListener("click", ()=>{ LD_F.sub = LD_F.station = LD_F.transp = LD_F.raio = LD_F.busca = ""; document.getElementById("ld-busca").value = ""; ldPreset("dia"); recarregar(); });
+  document.getElementById("ld-det-more").addEventListener("click", ()=>{ LD_EXP.det = !LD_EXP.det; renderLojaDetalhe(); });
+  document.querySelectorAll("#ld-det-seg button").forEach(b=> b.addEventListener("click", ()=>{
+    LD_F.det = b.dataset.v; LD_EXP.det = false;
+    document.querySelectorAll("#ld-det-seg button").forEach(x=>x.classList.toggle("active", x===b));
+    renderLojaDetalhe();
+  }));
+  let t; document.getElementById("ld-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ LD_F.busca = e.target.value; renderLojaDetalhe(); }, 200); });
+})();
 let CRM_LOADED = false;
 let CRM_LOADING = false;
 const CRM_PASSO = 200;     // linhas desenhadas por vez
@@ -4095,6 +4406,9 @@ setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
 // Alocações também em segundo plano: quando a aba for aberta, já está pronta.
 setTimeout(()=>{ if(!AL_LOADED) loadAlocacoes(true); }, 3000);
 setInterval(()=> loadAlocacoes(true), 30 * 60 * 1000);
+// Desempenho por Loja também em segundo plano (depois das alocações, pra não disputar)
+setTimeout(()=>{ if(!LD_LOADED) loadLoja(true); }, 6000);
+setInterval(()=> loadLoja(true), 30 * 60 * 1000);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda no máximo 1x por hora
