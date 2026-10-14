@@ -131,6 +131,13 @@ if(!document.querySelector(".app")){
         <div id="rank-losses"></div>
         <div class="card-expand-btn" id="losses-toggle-bottom" style="display:none"></div>
       </div>
+
+      <div class="card" id="card-misscan" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">🔍 Maiores Ofensores — Mis Scan</div><div class="losses-total" id="misscan-total"></div></div>
+        <div id="misscan-ctrl" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px;"></div>
+        <div id="rank-misscan"></div>
+        <div class="card-expand-btn" id="misscan-toggle-bottom" style="display:none"></div>
+      </div>
     </div>
 
     <!-- SAME DAY -->
@@ -437,7 +444,7 @@ const FILTROS_TOPO = ["resp","subreg","estacao","statuscoleta","risco"];
 // Geral — cada card colapsa para um preview curto por padrão e expande pra
 // lista completa quando o link/botão é clicado (some ao clicar de novo).
 let CURRENT_ROWS = [];
-const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false, semColeta:false, posColeta:false };
+const expandState = { alerts:false, fifoResumo:false, sdResumo:false, losses:false, semColeta:false, posColeta:false, misScan:false };
 function wireExpandToggle(topId, bottomId, stateKey, onToggle){
   const top = document.getElementById(topId), bottom = document.getElementById(bottomId);
   const handler = ()=>{ expandState[stateKey] = !expandState[stateKey]; onToggle(); };
@@ -1982,7 +1989,7 @@ async function loadBacklogResumo(){
 // Resumo Geral: total do dia (o mais recente da base, ou o dia escolhido
 // no filtro "Data"), respeitando os filtros do topo.
 // Detalhe da Agência: total histórico do DOP + último dia com mis scan.
-let MS_ROWS = null;   // [{data, dop, agencia, resp, cidade, estacao, inbound, mis}]
+let MS_ROWS = null;   // [{data, semana, dop, agencia, resp, cidade, estacao, inbound, mis}]
 let MS_ERRO = false;
 async function loadMisScan(){
   try{
@@ -2023,16 +2030,115 @@ function kpiCardMisScan(rows){
       : "nenhum pacote com mis scan",
     title: "Pacotes com mis scan no dia (aba Operação por DOP (DIA)), gravados no histórico HISTORICO_MIS_SCAN."};
 }
+// ---------- filtro Dia / Semana (card do Resumo e quadro do Detalhe) ----------
+const MS_VIEW = { resumo:{modo:"dia", per:""}, det:{modo:"dia", per:""} };
+let MS_DET_DOP = null;
+// Semana Shopee = semana ISO (seg–dom), igual à coluna WEEK da base
+function msSemanaIso(iso){
+  const p = String(iso).split("-");
+  const d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+  const dia = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dia);
+  const ini = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - ini) / 864e5 + 1) / 7);
+}
+function msSemana(r){ return String(r.semana!=null && r.semana!=="" ? r.semana : msSemanaIso(r.data)); }
+function msChave(r, modo){ return modo==="semana" ? r.data.slice(0,4) + "-S" + msSemana(r) : r.data; }
+function msRotulo(chave, modo){
+  if(modo==="semana"){
+    const dias = MS_ROWS.filter(r=>msChave(r,"semana")===chave).map(r=>r.data).sort();
+    return "Semana " + chave.split("-S")[1] + (dias.length ? " (" + fmtDiaBR(dias[0]) + " a " + fmtDiaBR(dias[dias.length-1]) + ")" : "");
+  }
+  return histRotuloDia(chave);
+}
+function msPeriodos(modo){
+  return [...new Set((MS_ROWS||[]).map(r=>msChave(r,modo)).filter(Boolean))].sort().reverse();
+}
+function msPeriodoAtual(key){
+  const v = MS_VIEW[key], lista = msPeriodos(v.modo);
+  if(!lista.includes(v.per)){
+    // sem escolha: no modo dia segue o filtro "Data" do topo (se tiver esse dia), senão o mais recente
+    v.per = (v.modo==="dia" && HIST_DIA && lista.includes(HIST_DIA)) ? HIST_DIA : (lista[0] || "");
+  }
+  return v.per;
+}
+function msControlesHtml(key, compacto){
+  const v = MS_VIEW[key], per = msPeriodoAtual(key);
+  const bt = compacto ? "padding:4px 10px; font-size:11.5px;" : "";
+  const opts = msPeriodos(v.modo).map(p=>`<option value="${p}"${p===per?" selected":""}>${esc(msRotulo(p, v.modo))}</option>`).join("");
+  return `<div class="sd-seg">
+      <button style="${bt}" class="${v.modo==="dia"?"active":""}" onclick="msSetModo('${key}','dia')">Dia</button>
+      <button style="${bt}" class="${v.modo==="semana"?"active":""}" onclick="msSetModo('${key}','semana')">Semana</button>
+    </div>
+    <select onchange="msSetPer('${key}',this.value)" style="${compacto?"font-size:11.5px; padding:3px 6px; max-width:100%;":"padding:7px 8px; font-size:12.5px;"} border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text-primary); font-family:inherit;">${opts}</select>`;
+}
+function msSetModo(key, modo){ MS_VIEW[key].modo = modo; MS_VIEW[key].per = ""; msAtualizarVisao(key); }
+function msSetPer(key, per){ MS_VIEW[key].per = per; msAtualizarVisao(key); }
+function msAtualizarVisao(key){
+  if(key==="resumo") renderMisScanRanking(CURRENT_ROWS);
+  else { const box = document.getElementById("ms-det-box"); if(box) box.innerHTML = msDetalheInner(MS_DET_DOP); }
+}
+// ---------- Resumo Geral: ranking por DOP ----------
+function renderMisScanRanking(rows){
+  const ctrl = document.getElementById("misscan-ctrl");
+  const lista = document.getElementById("rank-misscan");
+  const totEl = document.getElementById("misscan-total");
+  const btn = document.getElementById("misscan-toggle-bottom");
+  if(!lista) return;
+  if(!MS_ROWS){
+    ctrl.innerHTML = "";
+    totEl.innerHTML = MS_ERRO ? "histórico indisponível" : "carregando…";
+    lista.innerHTML = '<div class="empty-state">' + (MS_ERRO ? "Não foi possível ler o histórico de mis scan (confira a rota ?tipo=misscan no WebApp.gs)." : "Carregando histórico de mis scan…") + '</div>';
+    if(btn) btn.style.display = "none";
+    return;
+  }
+  ctrl.innerHTML = msControlesHtml("resumo");
+  const v = MS_VIEW.resumo, per = msPeriodoAtual("resumo");
+  const porDop = new Map((rows||[]).map(d=>[dopKey(d.dop), d]));
+  const soma = {};
+  MS_ROWS.forEach(r=>{
+    if(r.mis<=0 || msChave(r, v.modo)!==per) return;
+    const k = dopKey(r.dop);
+    if(!porDop.has(k)) return;              // respeita os filtros do topo
+    if(!soma[k]) soma[k] = {mis:0, inb:0, dias:0};
+    soma[k].mis += r.mis; soma[k].inb += r.inbound; soma[k].dias++;
+  });
+  const todos = Object.keys(soma).map(k=>({d:porDop.get(k), ...soma[k]})).sort((a,b)=>b.mis-a.mis);
+  const vis = expandState.misScan ? todos : todos.slice(0, 8);
+  const tot = todos.reduce((s,x)=>s+x.mis,0);
+  totEl.innerHTML = `${esc(per ? msRotulo(per, v.modo) : "—")}: <b>${tot.toLocaleString("pt-BR")}</b> ${tot===1?"pacote":"pacotes"}<span class="sep">·</span>${todos.length} ${todos.length===1?"DOP":"DOPs"}`;
+  lista.innerHTML = vis.map((x,i)=>{
+    const extra = (x.inb ? (x.mis/x.inb*100).toFixed(0) + "% do inbound" : "")
+      + (v.modo==="semana" ? (x.inb ? " · " : "") + x.dias + (x.dias===1?" dia":" dias") : "");
+    return rankRow(i, x.d, x.mis.toLocaleString("pt-BR") + (x.mis===1?" pacote":" pacotes"), x.mis>=50?"critical":"warning", extra);
+  }).join("") || '<div class="empty-state">Nenhum pacote com mis scan nesse período.</div>';
+  if(btn){
+    btn.style.display = (todos.length > 8 || expandState.misScan) ? "" : "none";
+    btn.textContent = expandState.misScan ? "− Mostrar só os 8 maiores" : "+ Ver todos os " + todos.length + " DOPs com mis scan";
+    btn.classList.toggle("is-open", !!expandState.misScan);
+  }
+}
+// ---------- Detalhe da Agência ----------
 function misScanDetalheHtml(dop){
-  const l = '<div class="l">Mis Scan (total histórico)</div>';
-  if(!MS_ROWS) return `<div class="detail-item">${l}<div class="v">—</div><div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${MS_ERRO ? "histórico indisponível" : "carregando…"}</div></div>`;
+  MS_DET_DOP = dop;
+  return `<div class="detail-item" id="ms-det-box">${msDetalheInner(dop)}</div>`;
+}
+function msDetalheInner(dop){
+  const nota = t => `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${t}</div>`;
+  if(!MS_ROWS) return `<div class="l">Mis Scan</div><div class="v">—</div>${nota(MS_ERRO ? "histórico indisponível" : "carregando…")}`;
+  const v = MS_VIEW.det, per = msPeriodoAtual("det");
   const k = dopKey(dop);
-  const hist = MS_ROWS.filter(r => dopKey(r.dop)===k && r.mis>0).sort((a,b)=>b.data.localeCompare(a.data));
-  const total = hist.reduce((s,r)=>s+r.mis,0);
-  const sub = hist.length
-    ? hist.length + (hist.length===1 ? " dia" : " dias") + " com mis scan · último: " + fmtDiaBR(hist[0].data) + "/" + hist[0].data.slice(0,4) + " (" + hist[0].mis.toLocaleString("pt-BR") + ")"
-    : "nenhum mis scan no histórico";
-  return `<div class="detail-item">${l}<div class="v">${total.toLocaleString("pt-BR")}</div><div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${sub}</div></div>`;
+  const doDop = MS_ROWS.filter(r=>dopKey(r.dop)===k && r.mis>0);
+  const noPer = doDop.filter(r=>msChave(r, v.modo)===per);
+  const qtd = noPer.reduce((s,r)=>s+r.mis,0);
+  const inb = noPer.reduce((s,r)=>s+r.inbound,0);
+  const totHist = doDop.reduce((s,r)=>s+r.mis,0);
+  const linha = (inb ? (qtd/inb*100).toFixed(1).replace(".",",") + "% do inbound · " : "")
+    + "total histórico: <b>" + totHist.toLocaleString("pt-BR") + "</b>"
+    + (doDop.length ? " em " + doDop.length + (doDop.length===1?" dia":" dias") : "");
+  return `<div class="l">Mis Scan</div>
+    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:6px 0;">${msControlesHtml("det", true)}</div>
+    <div class="v">${qtd.toLocaleString("pt-BR")}${qtd ? (qtd===1?" pacote":" pacotes") : ""}</div>${nota(linha)}`;
 }
 // Soma o backlog ao vivo respeitando os filtros do topo. Sem filtro de
 // sub-regional, vale o escopo do painel (as sub-regionais da BASE_TRATADA).
@@ -2495,6 +2601,7 @@ function renderAll(){
   renderAlerts(rows);
   // (gráficos de rosca de Risco, Status de Coleta e Cidade removidos do Resumo Geral)
   renderRankLists(rows);
+  renderMisScanRanking(rows);
   renderSemColetaTable(rows);
   renderTable("table-desempenho", rows, TABLE_COLS, sortState);
   renderTable("table-base", rows, BASE_COLS, baseSortState);
@@ -2538,6 +2645,7 @@ wireExpandToggle("sameday-resumo-toggle-top","sameday-resumo-toggle-bottom","sdR
 wireExpandToggle("losses-toggle-top","losses-toggle-bottom","losses", ()=> renderRankLists(CURRENT_ROWS));
 wireExpandToggle("semcoleta-toggle-top","semcoleta-toggle-bottom","semColeta", ()=> renderSemColetaTable(CURRENT_ROWS));
 wireExpandToggle("poscoleta-toggle-top","poscoleta-toggle-bottom","posColeta", ()=> renderRankLists(CURRENT_ROWS));
+wireExpandToggle("misscan-toggle-top","misscan-toggle-bottom","misScan", ()=> renderMisScanRanking(CURRENT_ROWS));
 // ==================== ABA SAME DAY (gráficos + ranking por agência) ====================
 // Tudo aqui vem da base do Data Studio (SD_ROWS / SD_TREND) e tem filtros
 // próprios (Sub-regional / Station / Responsável), pra poder comparar todas
