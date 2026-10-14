@@ -35,6 +35,7 @@ if(!document.querySelector(".app")){
     <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
     <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
     <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
+    <div class="nav-item" data-section="alocacoes"><span class="dot"></span>Alocações &amp; Rotas extras</div>
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
@@ -340,6 +341,64 @@ if(!document.querySelector(".app")){
     </div>
 
     <!-- CRM (planilha da CRM, estilo Excel) -->
+    <!-- ALOCAÇÕES & ROTAS EXTRAS -->
+    <div class="section" id="sec-alocacoes">
+      <div class="section-title">Alocações &amp; Rotas extras <span class="sd-sub" id="al-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="al-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="al-f-fim"></div>
+        <div class="sd-seg" id="al-periodo">
+          <button data-p="dia">Último dia</button>
+          <button data-p="semana">Semana</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="tudo">Tudo</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="al-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="al-f-station"></select></div>
+        <div class="filter"><label>Tipo de rota</label><select id="al-f-tipo"></select></div>
+        <button class="theme-btn" id="al-limpar">Limpar filtros</button>
+      </div>
+      <div id="al-loading"></div>
+      <div id="al-conteudo" style="display:none">
+        <div class="kpi-grid" id="al-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">% Alocação por Sub-regional</div><div class="sd-hint">linha tracejada = média · clique para filtrar</div></div>
+            <div id="al-chart-sub" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">% Alocação por Station</div><div class="sd-hint">pior primeiro · clique para filtrar</div></div>
+            <div id="al-chart-station" class="sd-bars"></div>
+            <div class="card-expand-btn" id="al-station-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Rotas por dia</div><div class="sd-hint">rotas únicas (duplicidades fora)</div></div>
+          <div class="table-wrap"><table class="data" id="al-tab-dia"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Rotas extras e de apoio por Station</div><div class="sd-hint">% = (extras + apoio) ÷ rotas planejadas</div></div>
+          <div class="table-wrap"><table class="data" id="al-tab-station"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Detalhe das rotas</div><div class="losses-total" id="al-det-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="sd-seg" id="al-det-seg">
+              <button data-v="naoaloc" class="active">Não alocadas</button>
+              <button data-v="extra">Extras</button>
+              <button data-v="apoio">Apoio</button>
+              <button data-v="naoreal">Não realizadas</button>
+              <button data-v="inferior">Veículo inferior</button>
+              <button data-v="todas">Todas</button>
+            </div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="al-busca" placeholder="Buscar rota, station, transportadora…"></div>
+          </div>
+          <div class="table-wrap"><table class="data" id="al-tab-det"></table></div>
+          <div class="card-expand-btn" id="al-det-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="section" id="sec-crm">
       <div class="section-title">CRM <span class="sd-sub" id="crm-subtitle"></span></div>
       <div class="card">
@@ -2627,6 +2686,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
     if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
+    if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -3510,6 +3570,208 @@ document.querySelectorAll(".table-wrap").forEach(addTopScroll);
 // (CrmAba.gs). Carrega só quando a aba é aberta. Tem fonte própria: os filtros
 // do topo do painel (Responsável, Sub-Regional...) não valem aqui.
 let CRM = null;            // { cols:[nome], rows:[[texto,...]], tipos:[...], atualizadoEm, aba }
+// ==================== ALOCAÇÕES & ROTAS EXTRAS ====================
+// Base de rotas FM da Regional 4 (?tipo=alocacoes, Alocacoes.gs). Uma linha
+// por rota/dia, duplicidades já removidas no Apps Script. Filtros próprios
+// (período, sub-regional, station, tipo de rota), como Same Day e Lead Time.
+let AL_LOADED = false;
+let AL_ROWS = [];        // [{data, sub, station, rota, tipo, plano, vPlan, vReal, aderencia, saida, status, alocada, transp}]
+let AL_DIAS = [];
+const AL_F = { ini:"", fim:"", sub:"", station:"", tipo:"", det:"naoaloc", busca:"" };
+const AL_EXP = { station:false, det:false };
+const AL_TIPO_ROTULO = { ROTA_PLAN:"Planejada", ROTA_APOIO:"Apoio", ROTA_EXTRA:"Extra", ROTA_PS:"PS" };
+const alTipo = t => AL_TIPO_ROTULO[t] || t || "—";
+const alPct = (a,b) => b ? (a/b*100).toFixed(1).replace(".",",")+"%" : "—";
+const alNaoReal = r => r.saida==="Não realizada" || r.saida==="Desativada";
+async function loadAlocacoes(){
+  const box = document.getElementById("al-loading");
+  box.innerHTML = loaderHtml("Carregando alocações…");
+  document.getElementById("al-conteudo").style.display = "none";
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=alocacoes", 120000);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Alocacoes.gs e o webapp.gs novos foram publicados");
+    const cols = json.cols, dic = json.dic || null;
+    AL_ROWS = json.rows.map(l=>{ const o={}; cols.forEach((c,j)=>{ o[c] = (dic && dic[j] && dic[j].length) ? dic[j][l[j]] : l[j]; }); o.alocada = +o.alocada===1; return o; });
+    AL_DIAS = [...new Set(AL_ROWS.map(r=>r.data))].sort();
+    AL_LOADED = true;
+    if(!AL_F.ini) alPreset("dia");
+    alPreencherFiltros();
+    box.innerHTML = "";
+    document.getElementById("al-conteudo").style.display = "";
+    renderAlocacoes();
+  } catch(err){
+    console.error("Alocações:", err);
+    box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar as alocações (' + esc(err.message) + '). <a href="#" id="al-retry">Tentar de novo</a></div>';
+    const a = document.getElementById("al-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadAlocacoes(); };
+  }
+}
+function alPreset(p){
+  const ult = AL_DIAS[AL_DIAS.length-1] || "";
+  if(p==="dia"){ AL_F.ini = ult; AL_F.fim = ult; }
+  else if(p==="7d"){ const ds = AL_DIAS.slice(-7); AL_F.ini = ds[0]||ult; AL_F.fim = ult; }
+  else if(p==="semana"){
+    // semana seg–dom do último dia da base
+    const q = ult.split("-"); const d = new Date(Date.UTC(+q[0], +q[1]-1, +q[2]));
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay()+6)%7));
+    AL_F.ini = d.toISOString().slice(0,10); AL_F.fim = ult;
+  }
+  else { AL_F.ini = AL_DIAS[0]||""; AL_F.fim = ult; }
+}
+function alPresetAtual(){
+  const ult = AL_DIAS[AL_DIAS.length-1];
+  for(const p of ["dia","semana","7d","tudo"]){
+    const salvo = {ini:AL_F.ini, fim:AL_F.fim}; alPreset(p);
+    const igual = AL_F.ini===salvo.ini && AL_F.fim===salvo.fim;
+    AL_F.ini = salvo.ini; AL_F.fim = salvo.fim;
+    if(igual && ult) return p;
+  }
+  return "";
+}
+function alNoPeriodo(r){ return (!AL_F.ini || r.data>=AL_F.ini) && (!AL_F.fim || r.data<=AL_F.fim); }
+// filtra tudo menos a dimensão "ignorar" (pra montar as opções / os gráficos de cada dimensão)
+function alFiltrar(ignorar){
+  return AL_ROWS.filter(r => alNoPeriodo(r)
+    && (ignorar==="sub" || !AL_F.sub || r.sub===AL_F.sub)
+    && (ignorar==="station" || !AL_F.station || r.station===AL_F.station)
+    && (ignorar==="tipo" || !AL_F.tipo || r.tipo===AL_F.tipo));
+}
+function alPreencherFiltros(){
+  const opcoes = (id, valores, atual, vazio, rotulo) => {
+    const el = document.getElementById(id);
+    el.innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(rotulo?rotulo(v):v)}</option>`).join("");
+  };
+  opcoes("al-f-sub", [...new Set(AL_ROWS.map(r=>r.sub).filter(Boolean))].sort(), AL_F.sub, "Todas");
+  opcoes("al-f-station", [...new Set(alFiltrar("station").map(r=>r.station).filter(Boolean))].sort(), AL_F.station, "Todas");
+  opcoes("al-f-tipo", [...new Set(AL_ROWS.map(r=>r.tipo).filter(Boolean))].sort(), AL_F.tipo, "Todos", alTipo);
+  document.getElementById("al-f-ini").value = AL_F.ini;
+  document.getElementById("al-f-fim").value = AL_F.fim;
+  if(AL_DIAS.length){
+    ["al-f-ini","al-f-fim"].forEach(id=>{ const el=document.getElementById(id); el.min = AL_DIAS[0]; el.max = AL_DIAS[AL_DIAS.length-1]; });
+  }
+  const pa = alPresetAtual();
+  document.querySelectorAll("#al-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===pa));
+}
+function alResumo(lista){
+  const o = { total:lista.length, aloc:0, naoAloc:0, extra:0, apoio:0, plan:0, seg:0, naoReal:0, exp:0, comPerfil:0, ader:0, inf:0, sup:0 };
+  lista.forEach(r=>{
+    if(r.alocada) o.aloc++; else o.naoAloc++;
+    if(r.tipo==="ROTA_EXTRA") o.extra++;
+    else if(r.tipo==="ROTA_APOIO") o.apoio++;
+    else o.plan++;
+    if(r.saida==="Segunda saida") o.seg++;
+    if(alNaoReal(r)) o.naoReal++;
+    if(r.status==="Expirada") o.exp++;
+    if(r.aderencia){ o.comPerfil++; if(r.aderencia==="Aderente") o.ader++; else if(r.aderencia==="Inferior") o.inf++; else if(r.aderencia==="Superior") o.sup++; }
+  });
+  return o;
+}
+function alBarras(elId, grupos, selecionado, onClick, ref){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = g.label===selecionado ? "sel" : (selecionado ? "dim" : "");
+    const tip = `${g.label}: ${g.aloc.toLocaleString("pt-BR")} de ${g.total.toLocaleString("pt-BR")} rotas alocadas · ${g.naoAloc} não alocadas · ${g.extra} extras · ${g.apoio} apoio`;
+    return `<div class="sd-bar-row ${cls}" data-i="${i}" title="${esc(tip)}">
+      <div class="sd-bar-label">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.pct*100).toFixed(2)}%"></div>
+        ${ref!=null?`<div class="sd-bar-ref" style="left:${(ref*100).toFixed(2)}%"></div>`:""}</div>
+      <div class="sd-bar-val">${alPct(g.aloc, g.total)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=> row.addEventListener("click", ()=> onClick(grupos[+row.dataset.i].label)));
+}
+function alAgrupar(lista, chave){
+  const m = {};
+  lista.forEach(r=>{ const k = r[chave] || "—"; (m[k] || (m[k] = [])).push(r); });
+  return Object.keys(m).map(k=>{ const o = alResumo(m[k]); o.label = k; o.pct = o.total ? o.aloc/o.total : 0; return o; });
+}
+function renderAlocacoes(){
+  if(!AL_LOADED) return;
+  alPreencherFiltros();
+  const lista = alFiltrar();
+  const t = alResumo(lista);
+  const per = AL_F.ini===AL_F.fim ? histRotuloDia(AL_F.ini) : fmtDiaBR(AL_F.ini) + " a " + fmtDiaBR(AL_F.fim);
+  document.getElementById("al-subtitle").textContent = "— " + per + (AL_F.fim===AL_DIAS[AL_DIAS.length-1] ? " (último dia pode estar em andamento)" : "");
+  const n = v => (v||0).toLocaleString("pt-BR");
+  renderKpis("al-kpis", [
+    {label:"Rotas", value:n(t.total), icon:"🚚", sub: n(t.plan) + " planejadas/PS · " + n(t.extra+t.apoio) + " extras+apoio"},
+    {label:"% Alocação", value: alPct(t.aloc, t.total), icon:"✅", cls: t.total && t.aloc/t.total < 0.97 ? "warn" : "", sub: n(t.aloc) + " alocadas"},
+    {label:"Não alocadas", value:n(t.naoAloc), icon:"⛔", cls: t.naoAloc>0?"crit":""},
+    {label:"Rotas extras", value:n(t.extra), icon:"➕", cls: t.extra>0?"warn":"", sub: alPct(t.extra, t.plan) + " das planejadas"},
+    {label:"Rotas de apoio", value:n(t.apoio), icon:"🤝", cls: t.apoio>0?"warn":"", sub: alPct(t.apoio, t.plan) + " das planejadas"},
+    {label:"Segunda saída", value:n(t.seg), icon:"🔁", sub: alPct(t.seg, t.total) + " das rotas"},
+    {label:"Não realizadas / desativadas", value:n(t.naoReal), icon:"🚫", cls: t.naoReal>0?"warn":""},
+    {label:"Expiradas", value:n(t.exp), icon:"⌛", cls: t.exp>0?"warn":""},
+    {label:"Aderência de veículo", value: alPct(t.ader, t.comPerfil), icon:"🚐", sub: n(t.inf) + " com veículo inferior · " + n(t.sup) + " superior"},
+  ]);
+  // gráficos: cada um ignora o próprio filtro, pra dar pra comparar e clicar
+  const subs = alAgrupar(alFiltrar("sub"), "sub").sort((a,b)=>a.label.localeCompare(b.label));
+  const subRef = alResumo(alFiltrar("sub"));
+  alBarras("al-chart-sub", subs, AL_F.sub, lab=>{ AL_F.sub = AL_F.sub===lab ? "" : lab; AL_F.station = ""; renderAlocacoes(); }, subRef.total ? subRef.aloc/subRef.total : null);
+  const sts = alAgrupar(alFiltrar("station"), "station").sort((a,b)=>(a.pct-b.pct) || (b.total-a.total));
+  const stRef = alResumo(alFiltrar("station"));
+  const stVis = AL_EXP.station ? sts : sts.slice(0, 12);
+  alBarras("al-chart-station", stVis, AL_F.station, lab=>{ AL_F.station = AL_F.station===lab ? "" : lab; renderAlocacoes(); }, stRef.total ? stRef.aloc/stRef.total : null);
+  const stMore = document.getElementById("al-station-more");
+  stMore.style.display = sts.length > 12 ? "" : "none";
+  stMore.textContent = AL_EXP.station ? "− Mostrar só as 12 piores" : "+ Ver todas as " + sts.length + " stations";
+  // por dia
+  const dias = alAgrupar(lista, "data").sort((a,b)=>b.label.localeCompare(a.label));
+  document.getElementById("al-tab-dia").innerHTML =
+    "<thead><tr><th>Dia</th><th>Rotas</th><th>Alocadas</th><th>% Alocação</th><th>Não alocadas</th><th>Extras</th><th>Apoio</th><th>2ª saída</th><th>Não realizadas</th><th>Expiradas</th></tr></thead><tbody>"
+    + (dias.map(d=>`<tr data-dia="${d.label}"><td>${esc(histRotuloDia(d.label))}</td><td>${n(d.total)}</td><td>${n(d.aloc)}</td><td><span class="badge ${d.pct<0.97?"warning":"good"}">${alPct(d.aloc,d.total)}</span></td><td>${d.naoAloc?`<b style="color:var(--critical)">${n(d.naoAloc)}</b>`:"0"}</td><td>${n(d.extra)}</td><td>${n(d.apoio)}</td><td>${n(d.seg)}</td><td>${n(d.naoReal)}</td><td>${n(d.exp)}</td></tr>`).join("")
+      || '<tr><td colspan="10"><div class="empty-state">Sem rotas nesse filtro.</div></td></tr>') + "</tbody>";
+  document.querySelectorAll("#al-tab-dia tbody tr[data-dia]").forEach(tr=> tr.onclick = ()=>{ AL_F.ini = AL_F.fim = tr.dataset.dia; renderAlocacoes(); });
+  // extras/apoio por station
+  const ea = alAgrupar(lista, "station").filter(s=>s.extra+s.apoio>0).sort((a,b)=>(b.extra+b.apoio)-(a.extra+a.apoio));
+  const subDe = {}; lista.forEach(r=>{ subDe[r.station] = r.sub; });
+  document.getElementById("al-tab-station").innerHTML =
+    "<thead><tr><th>Station</th><th>Sub-regional</th><th>Rotas planejadas</th><th>Extras</th><th>Apoio</th><th>% extra + apoio</th><th>Não alocadas</th></tr></thead><tbody>"
+    + (ea.map(s=>`<tr data-st="${esc(s.label)}"><td><b>${esc(s.label)}</b></td><td>${esc(subDe[s.label]||"")}</td><td>${n(s.plan)}</td><td>${n(s.extra)}</td><td>${n(s.apoio)}</td><td><span class="badge ${(s.extra+s.apoio)/(s.plan||1)>=0.1?"critical":"warning"}">${alPct(s.extra+s.apoio, s.plan)}</span></td><td>${n(s.naoAloc)}</td></tr>`).join("")
+      || '<tr><td colspan="7"><div class="empty-state">Nenhuma rota extra ou de apoio nesse filtro.</div></td></tr>') + "</tbody>";
+  document.querySelectorAll("#al-tab-station tbody tr[data-st]").forEach(tr=> tr.onclick = ()=>{ AL_F.station = tr.dataset.st; renderAlocacoes(); });
+  renderAlDetalhe(lista);
+}
+function renderAlDetalhe(lista){
+  const filtros = {
+    naoaloc: r=>!r.alocada, extra: r=>r.tipo==="ROTA_EXTRA", apoio: r=>r.tipo==="ROTA_APOIO",
+    naoreal: r=>alNaoReal(r) || r.status==="Expirada", inferior: r=>r.aderencia==="Inferior", todas: ()=>true
+  };
+  const q = AL_F.busca.trim().toLowerCase();
+  const det = lista.filter(filtros[AL_F.det] || filtros.todas)
+    .filter(r=> !q || [r.rota, r.station, r.sub, r.transp, r.vPlan, r.vReal].join(" ").toLowerCase().includes(q))
+    .sort((a,b)=> b.data.localeCompare(a.data) || a.station.localeCompare(b.station) || a.rota.localeCompare(b.rota));
+  const LIM = 50;
+  const vis = AL_EXP.det ? det.slice(0, 2000) : det.slice(0, LIM);
+  document.getElementById("al-det-total").innerHTML = `<b>${det.length.toLocaleString("pt-BR")}</b> ${det.length===1?"rota":"rotas"}`;
+  const statusCls = s => s==="Finalizadas" ? "good" : (s==="Expirada" || s==="Parcialmente feita") ? "critical" : "warning";
+  document.getElementById("al-tab-det").innerHTML =
+    "<thead><tr><th>Dia</th><th>Station</th><th>Rota</th><th>Tipo</th><th>Veículo (plano → real)</th><th>Aderência</th><th>Saída</th><th>Status</th><th>Alocação</th><th>Transportadora</th></tr></thead><tbody>"
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.data)}</td><td>${esc(r.station)}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(alTipo(r.tipo))}</td><td>${esc(r.vPlan||"—")} → ${esc(r.vReal||"—")}</td><td>${r.aderencia?`<span class="badge ${r.aderencia==="Aderente"?"good":r.aderencia==="Inferior"?"critical":"warning"}">${esc(r.aderencia)}</span>`:"—"}</td><td>${esc(r.saida||"—")}</td><td><span class="badge ${statusCls(r.status)}">${esc(r.status||"—")}</span></td><td>${r.alocada?"Alocada":'<b style="color:var(--critical)">Não alocada</b>'}</td><td>${esc(r.transp||"—")}</td></tr>`).join("")
+      || '<tr><td colspan="10"><div class="empty-state">Nenhuma rota nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("al-det-more");
+  more.style.display = det.length > LIM ? "" : "none";
+  more.textContent = AL_EXP.det ? "− Mostrar só as " + LIM + " primeiras" : "+ Ver todas as " + det.length.toLocaleString("pt-BR") + " rotas" + (det.length>2000 ? " (até 2.000)" : "");
+}
+(function(){
+  const recarregar = ()=> renderAlocacoes();
+  document.querySelectorAll("#al-periodo button").forEach(b=> b.addEventListener("click", ()=>{ alPreset(b.dataset.p); recarregar(); }));
+  document.getElementById("al-f-ini").addEventListener("change", e=>{ AL_F.ini = e.target.value; if(AL_F.fim && AL_F.ini > AL_F.fim) AL_F.fim = AL_F.ini; recarregar(); });
+  document.getElementById("al-f-fim").addEventListener("change", e=>{ AL_F.fim = e.target.value; if(AL_F.ini && AL_F.fim < AL_F.ini) AL_F.ini = AL_F.fim; recarregar(); });
+  document.getElementById("al-f-sub").addEventListener("change", e=>{ AL_F.sub = e.target.value; AL_F.station = ""; recarregar(); });
+  document.getElementById("al-f-station").addEventListener("change", e=>{ AL_F.station = e.target.value; recarregar(); });
+  document.getElementById("al-f-tipo").addEventListener("change", e=>{ AL_F.tipo = e.target.value; recarregar(); });
+  document.getElementById("al-limpar").addEventListener("click", ()=>{ AL_F.sub = AL_F.station = AL_F.tipo = AL_F.busca = ""; document.getElementById("al-busca").value = ""; alPreset("dia"); recarregar(); });
+  document.getElementById("al-station-more").addEventListener("click", ()=>{ AL_EXP.station = !AL_EXP.station; recarregar(); });
+  document.getElementById("al-det-more").addEventListener("click", ()=>{ AL_EXP.det = !AL_EXP.det; renderAlDetalhe(alFiltrar()); });
+  document.querySelectorAll("#al-det-seg button").forEach(b=> b.addEventListener("click", ()=>{
+    AL_F.det = b.dataset.v; AL_EXP.det = false;
+    document.querySelectorAll("#al-det-seg button").forEach(x=>x.classList.toggle("active", x===b));
+    renderAlDetalhe(alFiltrar());
+  }));
+  let t; document.getElementById("al-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ AL_F.busca = e.target.value; renderAlDetalhe(alFiltrar()); }, 200); });
+})();
 let CRM_LOADED = false;
 let CRM_LOADING = false;
 const CRM_PASSO = 200;     // linhas desenhadas por vez
