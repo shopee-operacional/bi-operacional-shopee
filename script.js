@@ -2569,8 +2569,6 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">Status Coleta</div><div class="v" style="font-size:13px">${d.statusColeta}</div></div>
       <div class="detail-item"><div class="l">Horas sem coleta</div><div class="v">${d.horasSemColeta.toFixed(1)}h</div></div>
       <div class="detail-item"><div class="l">Última Coleta</div><div class="v" style="font-size:13px">${fmtDate(d.ultimaColeta)}</div></div>
-      <div class="detail-item"><div class="l">Maturação</div><div class="v" style="font-size:13px">${d.maturacao}</div></div>
-      <div class="detail-item"><div class="l">Teve coleta</div><div class="v" style="font-size:13px">${d.tevecoleta}</div></div>
       <div class="detail-item"><div class="l">Atualizado em</div><div class="v" style="font-size:13px">${fmtDate(d.data)}</div></div>
       ${misScanDetalheHtml(d.dop)}
     </div>`;
