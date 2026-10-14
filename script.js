@@ -421,19 +421,35 @@ if(!document.querySelector(".app")){
       <div id="ld-loading"></div>
       <div id="ld-conteudo" style="display:none">
         <div class="kpi-grid" id="ld-kpis"></div>
+        <div class="card" style="margin-bottom:14px" id="ld-card-vis">
+          <div class="card-head"><div class="card-title">🔎 Detalhes gerais — visita por visita</div><div class="losses-total" id="ld-vis-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="sd-seg" id="ld-vis-seg">
+              <button data-v="" class="active">Todas</button>
+              <button data-v="Full Pickup">Full Pickup</button>
+              <button data-v="No Show Seller">No Show Seller</button>
+              <button data-v="No Show 3PL">No Show 3PL</button>
+              <button data-v="Partial Pickup">Partial Pickup</button>
+            </div>
+            <div class="filter"><label>Justificativa</label><select id="ld-vis-just"></select></div>
+            <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-secondary); cursor:pointer;"><input type="checkbox" id="ld-vis-reinc"> Só reincidentes</label>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-vis-busca" placeholder="Buscar Shop ID (DOP, Unique, Seller Group), station ou rota…"></div>
+          </div>
+          <div class="alert-sub" id="ld-vis-nota" style="display:none; margin:-4px 0 8px;"></div>
+          <div class="table-wrap" style="max-height:460px; overflow:auto;"><table class="data" id="ld-tab-vis"></table></div>
+          <div class="card-expand-btn" id="ld-vis-more" style="display:none"></div>
+        </div>
         <div class="grid2">
           <div class="card" style="min-width:0">
             <div class="card-head"><div class="card-title">Performance por dia</div><div class="sd-hint">clique no dia para filtrar</div></div>
             <div class="table-wrap"><table class="data" id="ld-tab-dia"></table></div>
-          </div>
-          <div class="card" style="min-width:0">
-            <div class="card-head"><div class="card-title">Performance por semana</div><div class="sd-hint">todas as semanas da base</div></div>
+            <div class="card-head" style="margin-top:16px"><div class="card-title">Performance por semana</div><div class="sd-hint">todas as semanas da base</div></div>
             <div class="table-wrap"><table class="data" id="ld-tab-semana"></table></div>
           </div>
-        </div>
-        <div class="card" style="margin-bottom:14px">
-          <div class="card-head"><div class="card-title">Desempenho por 3PL</div><div class="sd-hint">clique para filtrar</div></div>
-          <div class="table-wrap"><table class="data" id="ld-tab-3pl"></table></div>
+          <div class="card" style="min-width:0">
+            <div class="card-head"><div class="card-title">Desempenho por 3PL</div><div class="sd-hint">clique para filtrar</div></div>
+            <div class="table-wrap"><table class="data" id="ld-tab-3pl"></table></div>
+          </div>
         </div>
         <div class="card" style="margin-bottom:14px">
           <div class="card-head"><div class="card-title">Detalhamento diário de justificativas</div><div class="sd-hint">% sobre as visitas do dia · FP = Full Pickup · NSD = No Show 3PL · NSS = No Show Seller · PP = Partial Pickup</div></div>
@@ -3872,8 +3888,9 @@ function renderAlDetalhe(lista){
 // igual ao Data Studio (Disabled, Reassigned e evaluate ficam fora da conta).
 let LD_LOADED = false, LD_PROMESSA = null;
 let LD_AGG = [], LD_DET = [], LD_DIAS = [];
-const LD_F = { ini:"", fim:"", sub:"", station:"", transp:"", raio:"", det:"todas", busca:"" };
-const LD_EXP = { det:false };
+const LD_F = { ini:"", fim:"", sub:"", station:"", transp:"", raio:"", det:"todas", busca:"", vPerf:"", vJust:"", vReinc:false, vBusca:"" };
+const LD_EXP = { det:false, vis:false };
+let LD_VIS = [], LD_VIS_DIAS = [];
 const LD_PERFS = ["Full Pickup", "No Show 3PL", "No Show Seller", "Partial Pickup"];
 const LD_SIGLA = { "Full Pickup":"FP", "No Show 3PL":"NSD", "No Show Seller":"NSS", "Partial Pickup":"PP" };
 const ldPct = (a,b) => b ? (a/b*100).toFixed(2).replace(".",",")+"%" : "—";
@@ -3895,6 +3912,8 @@ function loadLoja(silencioso){
       if(!json || !json.agg || !json.det) throw new Error("resposta sem dados — confira se o DesempenhoLoja.gs e o webapp.gs novos foram publicados");
       LD_AGG = ldDecode(json.agg);
       LD_DET = ldDecode(json.det);
+      LD_VIS = json.vis ? ldDecode(json.vis) : [];
+      LD_VIS_DIAS = (json.vis && json.vis.dias) || [];
       const ultAntes = LD_DIAS[LD_DIAS.length-1];
       LD_DIAS = [...new Set(LD_AGG.map(r=>r.data))].filter(Boolean).sort();
       if(!LD_F.ini || (LD_F.ini===ultAntes && LD_F.fim===ultAntes)) ldPreset("dia");
@@ -4059,6 +4078,7 @@ function renderLoja(){
     + sts.map(x=>`<tr data-st="${esc(x.label)}"${x.label===LD_F.station?' class="row-selected"':""}><td><b>${esc(x.label)}</b></td><td>${esc(subDe[x.label]||"")}</td><td>${n(x.den)}</td>${ldLinhaPerf(x)}<td>${ldPct(x.nssFora, x.den)}</td></tr>`).join("") + "</tbody>";
   document.querySelectorAll("#ld-tab-station tbody tr[data-st]").forEach(tr=> tr.onclick = ()=>{ LD_F.station = LD_F.station===tr.dataset.st ? "" : tr.dataset.st; renderLoja(); });
   renderLojaDetalhe(detPer, diasNss);
+  renderLojaVisitas(diasNss);
 }
 function renderLojaDetalhe(detPer, diasNss){
   if(!detPer){
@@ -4111,6 +4131,60 @@ function renderLojaDetalhe(detPer, diasNss){
     renderLojaDetalhe();
   }));
   let t; document.getElementById("ld-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ LD_F.busca = e.target.value; renderLojaDetalhe(); }, 200); });
+})();
+
+// ---- Detalhes gerais: uma linha por visita (como o quadro do Data Studio) ----
+// Últimos 7 dias: todas as visitas (inclusive Full Pickup). Antes disso, só as
+// visitas com problema (NSS, NS 3PL, PP) — a base completa seria grande demais.
+function renderLojaVisitas(diasNss){
+  if(!diasNss){
+    diasNss = {};
+    LD_DET.filter(r=>ldPassa(r)).forEach(r=>{ if(r.perf==="No Show Seller"){ (diasNss[r.loja] || (diasNss[r.loja] = new Set())).add(r.data); } });
+  }
+  const cobreTudo = LD_VIS_DIAS.length && LD_F.ini >= LD_VIS_DIAS[0];
+  const fonte = cobreTudo ? LD_VIS : LD_DET.concat(LD_VIS.filter(r=>!["No Show Seller","No Show 3PL","Partial Pickup"].includes(r.perf)));
+  const nota = document.getElementById("ld-vis-nota");
+  nota.style.display = cobreTudo ? "none" : "";
+  nota.textContent = cobreTudo ? "" : "Visitas Full Pickup só ficam guardadas para os últimos 7 dias (" + fmtDiaBR(LD_VIS_DIAS[0]||"") + " em diante). Antes disso aparecem só No Show e Partial Pickup.";
+  const base = fonte.filter(r=>ldPassa(r));
+  // opções de justificativa conforme o que existe no recorte
+  const selJ = document.getElementById("ld-vis-just");
+  const justs = [...new Set(base.filter(r=>!LD_F.vPerf || r.perf===LD_F.vPerf).map(r=>r.just||"(sem justificativa)"))].sort();
+  if(LD_F.vJust && !justs.includes(LD_F.vJust)) LD_F.vJust = "";
+  selJ.innerHTML = '<option value="">Todas</option>' + justs.map(j=>`<option value="${esc(j)}"${j===LD_F.vJust?" selected":""}>${esc(j)}</option>`).join("");
+  const q = LD_F.vBusca.trim().toLowerCase();
+  const lista = base.filter(r=>
+    (!LD_F.vPerf || r.perf===LD_F.vPerf) &&
+    (!LD_F.vJust || (r.just||"(sem justificativa)")===LD_F.vJust) &&
+    (!LD_F.vReinc || (diasNss[r.loja] && diasNss[r.loja].size>=2)) &&
+    (!q || [r.loja, r.station, r.rota, r.transp, r.sub].join(" ").toLowerCase().includes(q))
+  ).sort((a,b)=> b.data.localeCompare(a.data) || a.station.localeCompare(b.station) || a.loja.localeCompare(b.loja));
+  const LIM = 100;
+  const vis = LD_EXP.vis ? lista.slice(0, 3000) : lista.slice(0, LIM);
+  document.getElementById("ld-vis-total").innerHTML = `<b>${lista.length.toLocaleString("pt-BR")}</b> ${lista.length===1?"visita":"visitas"}`;
+  const perfCls = p => p==="Full Pickup" ? "good" : p==="No Show Seller" ? "critical" : (p==="No Show 3PL" || p==="Partial Pickup") ? "warning" : "";
+  document.getElementById("ld-tab-vis").innerHTML =
+    '<thead style="position:sticky; top:0; background:var(--surface); z-index:1"><tr><th>Data</th><th>Shop ID</th><th>Station</th><th>Performance</th><th>Justificativa</th><th>Raio</th><th>Rota</th><th>Transportadora</th><th>Hora</th></tr></thead><tbody>'
+    + (vis.map(r=>{
+        const reinc = diasNss[r.loja] && diasNss[r.loja].size>=2;
+        const fora = r.raio==="Fora do raio";
+        return `<tr><td>${fmtDiaBR(r.data)}</td><td><b>${esc(r.loja)}</b>${reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias do período">reincidente</span>':""}</td><td>${esc(r.station)}</td><td><span class="badge ${perfCls(r.perf)}">${esc(r.perf||"—")}</span></td><td>${esc(r.just||"—")}</td><td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.raio||"—")}${fora && r.dist ? " (" + esc(r.dist.replace(".",",")) + " km)" : ""}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(r.transp||"—")}</td><td>${r.hora!=="" ? esc(r.hora)+"h" : ""}</td></tr>`;
+      }).join("") || '<tr><td colspan="9"><div class="empty-state">Nenhuma visita nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("ld-vis-more");
+  more.style.display = lista.length > LIM ? "" : "none";
+  more.textContent = LD_EXP.vis ? "− Mostrar só as " + LIM + " primeiras" : "+ Ver todas as " + lista.length.toLocaleString("pt-BR") + " visitas" + (lista.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const re = ()=>{ LD_EXP.vis = false; renderLojaVisitas(); };
+  document.querySelectorAll("#ld-vis-seg button").forEach(b=> b.addEventListener("click", ()=>{
+    LD_F.vPerf = b.dataset.v;
+    document.querySelectorAll("#ld-vis-seg button").forEach(x=>x.classList.toggle("active", x===b));
+    re();
+  }));
+  document.getElementById("ld-vis-just").addEventListener("change", e=>{ LD_F.vJust = e.target.value; re(); });
+  document.getElementById("ld-vis-reinc").addEventListener("change", e=>{ LD_F.vReinc = e.target.checked; re(); });
+  document.getElementById("ld-vis-more").addEventListener("click", ()=>{ LD_EXP.vis = !LD_EXP.vis; renderLojaVisitas(); });
+  let t; document.getElementById("ld-vis-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ LD_F.vBusca = e.target.value; re(); }, 200); });
 })();
 let CRM_LOADED = false;
 let CRM_LOADING = false;
