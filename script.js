@@ -2579,6 +2579,7 @@ function openDetail(dop){
   document.querySelector('.nav-item[data-section="detalhe"]').classList.add("active");
   document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
   document.getElementById("sec-detalhe").classList.add("active");
+  atualizarFiltrosTopo("detalhe");
   document.getElementById("detail-search").value = d ? d.agencia : "";
   renderDetail(d);
 }
@@ -2674,8 +2675,21 @@ function renderAll(){
   if(BACKLOG_LOADED) renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
 }
 // nav
+// Filtros do topo (Responsável, Sub-Regional, Data, Estação, Status Coleta,
+// Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
+// Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
+// (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
+const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "alocacoes", "notasfiscais", "crm"];
+function atualizarFiltrosTopo(secao){
+  const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
+  document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
+  const mb = document.getElementById("mobile-filter-btn");
+  if(mb) mb.style.display = esconder ? "none" : "";
+  if(esconder) document.body.classList.remove("filtros-abertos");
+}
 document.querySelectorAll(".nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
+    atualizarFiltrosTopo(item.dataset.section);
     document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
     item.classList.add("active");
     document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
