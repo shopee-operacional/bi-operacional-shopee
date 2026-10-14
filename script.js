@@ -1976,6 +1976,64 @@ async function loadBacklogResumo(){
     if(DATA.length) renderAll();
   }
 }
+// ==================== MIS SCAN (histórico) ====================
+// Pacotes com mis scan por DOP/dia, gravados para sempre na aba
+// HISTORICO_MIS_SCAN (MisScan.gs) e servidos por ?tipo=misscan.
+// Resumo Geral: total do dia (o mais recente da base, ou o dia escolhido
+// no filtro "Data"), respeitando os filtros do topo.
+// Detalhe da Agência: total histórico do DOP + último dia com mis scan.
+let MS_ROWS = null;   // [{data, dop, agencia, resp, cidade, estacao, inbound, mis}]
+let MS_ERRO = false;
+async function loadMisScan(){
+  try{
+    const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+    const json = await fetchViaIframe(API_URL + sep + "tipo=misscan", 60000);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o MisScan.gs e o WebApp.gs novos foram publicados");
+    MS_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); o.mis=+o.mis||0; o.inbound=+o.inbound||0; return o; });
+    MS_ERRO = false;
+  } catch(err){
+    console.error("Mis scan:", err);
+    MS_ERRO = true;
+  }
+  if(DATA.length) renderAll();
+  // se o Detalhe da Agência já estiver aberto, atualiza o card de mis scan dele
+  const busca = document.getElementById("detail-search");
+  if(busca && busca.value.trim()) busca.dispatchEvent(new Event("input"));
+}
+// Dia de referência: o escolhido no filtro "Data" ou o mais recente da base de mis scan
+function misScanDiaRef(){
+  if(!MS_ROWS || !MS_ROWS.length) return "";
+  const dias = MS_ROWS.map(r=>r.data).filter(Boolean).sort();
+  if(HIST_DIA){ const ate = dias.filter(d=>d<=HIST_DIA); return ate.length ? ate[ate.length-1] : ""; }
+  return dias[dias.length-1];
+}
+function kpiCardMisScan(rows){
+  if(!MS_ROWS) return {label:"Mis Scan", value:"—", icon:"🔍", sub: MS_ERRO ? "histórico indisponível" : "carregando…"};
+  const dia = misScanDiaRef();
+  const dops = new Set(rows.map(d=>dopKey(d.dop)));
+  const lista = MS_ROWS.filter(r => r.data===dia && r.mis>0 && dops.has(dopKey(r.dop)));
+  const total = lista.reduce((s,r)=>s+r.mis,0);
+  const inb = lista.reduce((s,r)=>s+r.inbound,0);
+  const pior = lista.slice().sort((a,b)=>b.mis-a.mis)[0];
+  const n = v => Math.round(v||0).toLocaleString("pt-BR");
+  return {label:"Mis Scan" + (dia ? " ("+fmtDiaBR(dia)+")" : ""), value: n(total), icon:"🔍", cls: total>0?"warn":"",
+    sub: total
+      ? lista.length + (lista.length===1?" DOP":" DOPs") + (inb ? " · " + (total/inb*100).toFixed(1).replace(".",",") + "% do inbound" : "")
+        + "<br>maior: DOP " + esc(pior.dop) + " <b>" + n(pior.mis) + "</b>"
+      : "nenhum pacote com mis scan",
+    title: "Pacotes com mis scan no dia (aba Operação por DOP (DIA)), gravados no histórico HISTORICO_MIS_SCAN."};
+}
+function misScanDetalheHtml(dop){
+  const l = '<div class="l">Mis Scan (total histórico)</div>';
+  if(!MS_ROWS) return `<div class="detail-item">${l}<div class="v">—</div><div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${MS_ERRO ? "histórico indisponível" : "carregando…"}</div></div>`;
+  const k = dopKey(dop);
+  const hist = MS_ROWS.filter(r => dopKey(r.dop)===k && r.mis>0).sort((a,b)=>b.data.localeCompare(a.data));
+  const total = hist.reduce((s,r)=>s+r.mis,0);
+  const sub = hist.length
+    ? hist.length + (hist.length===1 ? " dia" : " dias") + " com mis scan · último: " + fmtDiaBR(hist[0].data) + "/" + hist[0].data.slice(0,4) + " (" + hist[0].mis.toLocaleString("pt-BR") + ")"
+    : "nenhum mis scan no histórico";
+  return `<div class="detail-item">${l}<div class="v">${total.toLocaleString("pt-BR")}</div><div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${sub}</div></div>`;
+}
 // Soma o backlog ao vivo respeitando os filtros do topo. Sem filtro de
 // sub-regional, vale o escopo do painel (as sub-regionais da BASE_TRATADA).
 function backlogAoVivo(rows){
@@ -2039,15 +2097,10 @@ function kpiCardsPrimary(rows){
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
-  ].concat(SD_MAP && SD_INFO && SD_INFO.refDia ? (()=>{
-    // Pacotes que chegaram no DOP depois da última coleta do dia (ficam pro dia seguinte)
-    const pos = rows.reduce((s,d)=>s+(d.sdPosColDia||0),0);
-    const inb = rows.reduce((s,d)=>s+(d.sdInbDia||0),0);
-    const dops = rows.filter(d=>(d.sdPosColDia||0)>0).length;
-    return [{label:"Recebidos pós-coleta ("+fmtDiaBR(SD_INFO.refDia)+")", value: pos.toLocaleString("pt-BR"), icon:"📥",
-      cls: pos>0?"warn":"", sub: (inb? (pos/inb*100).toFixed(1).replace(".",",")+"% do inbound · " : "") + dops + " DOPs" + (dops ? " · ver por DOP ↓" : ""),
-      goto: "card-poscoleta"}];
-  })() : []);
+    kpiCardMisScan(rows),
+  ];
+  // (card "Recebidos pós-coleta" retirado do Resumo Geral a pedido — o
+  // ranking por DOP continua no card "Recebidos pós-coleta por DOP" e na aba Same Day)
 }
 // Cards extras — indicadores próprios deste painel operacional (risco,
 // atrasados), que não existem no painel de agências.
@@ -2413,6 +2466,7 @@ function renderDetail(d){
       <div class="detail-item"><div class="l">Maturação</div><div class="v" style="font-size:13px">${d.maturacao}</div></div>
       <div class="detail-item"><div class="l">Teve coleta</div><div class="v" style="font-size:13px">${d.tevecoleta}</div></div>
       <div class="detail-item"><div class="l">Atualizado em</div><div class="v" style="font-size:13px">${fmtDate(d.data)}</div></div>
+      ${misScanDetalheHtml(d.dop)}
     </div>`;
 }
 document.getElementById("detail-search").addEventListener("input", e=>{
@@ -3637,11 +3691,13 @@ applyTheme(currentTheme);
 loadData(true);
 loadSameDay();
 loadBacklogResumo();
+loadMisScan();
 // Lead Time em segundo plano, um instante depois das cargas principais (pra
 // não disputar com elas): quando a aba for aberta, já está pronto.
 setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
+setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda no máximo 1x por hora
 // Pagamentos: só depois que a aba foi aberta pela 1ª vez. A base (PAG_CACHE)
 // muda a cada 15 min; buscar a cada 5 garante pegar a leitura nova logo.
 setInterval(()=>{ if(NF_LOADED) loadNotasFiscais(true); }, REFRESH_INTERVAL_MS);
