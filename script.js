@@ -3898,6 +3898,42 @@ function ldDecode(bloco){
   const cols = bloco.cols, dic = bloco.dic;
   return bloco.rows.map((l,i)=>{ const o = {}; cols.forEach((c,j)=>{ o[c] = dic[j][l[j]]; }); if(bloco.qtd) o.n = bloco.qtd[i]; return o; });
 }
+// Cache no navegador (IndexedDB — a resposta é grande demais pro localStorage).
+// Ao abrir o painel, mostra na hora a última base guardada e busca a nova
+// em segundo plano; quando chega, troca sem piscar a tela.
+const LD_IDB = { db:"bi-operacional-shopee", store:"cache", chave:"desempenholoja" };
+function ldIdb(modo, fn){
+  return new Promise((resolve, reject)=>{
+    try{
+      const req = indexedDB.open(LD_IDB.db, 1);
+      req.onupgradeneeded = ()=> req.result.createObjectStore(LD_IDB.store);
+      req.onerror = ()=> reject(req.error);
+      req.onsuccess = ()=>{
+        const db = req.result;
+        const tx = db.transaction(LD_IDB.store, modo);
+        const r = fn(tx.objectStore(LD_IDB.store));
+        tx.oncomplete = ()=>{ db.close(); resolve(r && r.result); };
+        tx.onerror = ()=>{ db.close(); reject(tx.error); };
+      };
+    } catch(e){ reject(e); }
+  });
+}
+const ldCacheLer = ()=> ldIdb("readonly", st=> st.get(LD_IDB.chave)).catch(()=>null);
+const ldCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, LD_IDB.chave)).catch(()=>{});
+let LD_CACHE_EM = 0;
+function ldAplicar(json){
+  LD_AGG = ldDecode(json.agg);
+  LD_DET = ldDecode(json.det);
+  LD_VIS = json.vis ? ldDecode(json.vis) : [];
+  LD_VIS_DIAS = (json.vis && json.vis.dias) || [];
+  const ultAntes = LD_DIAS[LD_DIAS.length-1];
+  LD_DIAS = [...new Set(LD_AGG.map(r=>r.data))].filter(Boolean).sort();
+  if(!LD_F.ini || (LD_F.ini===ultAntes && LD_F.fim===ultAntes)) ldPreset("dia");
+  LD_LOADED = true;
+  document.getElementById("ld-loading").innerHTML = "";
+  document.getElementById("ld-conteudo").style.display = "";
+  if(document.getElementById("sec-loja").classList.contains("active")) renderLoja();
+}
 function loadLoja(silencioso){
   const box = document.getElementById("ld-loading");
   if(!silencioso && !LD_LOADED){
@@ -3907,20 +3943,18 @@ function loadLoja(silencioso){
   if(LD_PROMESSA) return LD_PROMESSA;
   LD_PROMESSA = (async ()=>{
     try{
+      // 1) se ainda não tem nada na tela, usa a cópia guardada (abre na hora)
+      if(!LD_LOADED){
+        const c = await ldCacheLer();
+        if(c && c.json && c.json.agg && c.json.det && !LD_LOADED){ LD_CACHE_EM = c.salvoEm; ldAplicar(c.json); }
+      }
+      // 2) busca a versão nova no Apps Script
       const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
       const json = await fetchViaIframe(API_URL + sep + "tipo=desempenholoja", 120000);
       if(!json || !json.agg || !json.det) throw new Error("resposta sem dados — confira se o DesempenhoLoja.gs e o webapp.gs novos foram publicados");
-      LD_AGG = ldDecode(json.agg);
-      LD_DET = ldDecode(json.det);
-      LD_VIS = json.vis ? ldDecode(json.vis) : [];
-      LD_VIS_DIAS = (json.vis && json.vis.dias) || [];
-      const ultAntes = LD_DIAS[LD_DIAS.length-1];
-      LD_DIAS = [...new Set(LD_AGG.map(r=>r.data))].filter(Boolean).sort();
-      if(!LD_F.ini || (LD_F.ini===ultAntes && LD_F.fim===ultAntes)) ldPreset("dia");
-      LD_LOADED = true;
-      box.innerHTML = "";
-      document.getElementById("ld-conteudo").style.display = "";
-      if(document.getElementById("sec-loja").classList.contains("active")) renderLoja();
+      LD_CACHE_EM = 0;
+      ldAplicar(json);
+      ldCacheSalvar(json);
     } catch(err){
       console.error("Desempenho por loja:", err);
       if(!LD_LOADED && document.getElementById("sec-loja").classList.contains("active")){
@@ -4010,7 +4044,7 @@ function renderLoja(){
   const t = ldConta(lista);
   const n = v => (v||0).toLocaleString("pt-BR");
   const per = LD_F.ini===LD_F.fim ? histRotuloDia(LD_F.ini) : fmtDiaBR(LD_F.ini) + " a " + fmtDiaBR(LD_F.fim);
-  document.getElementById("ld-subtitle").textContent = "— " + per + (LD_F.fim===LD_DIAS[LD_DIAS.length-1] ? " (último dia pode estar em andamento)" : "");
+  document.getElementById("ld-subtitle").textContent = "— " + per + (LD_F.fim===LD_DIAS[LD_DIAS.length-1] ? " (último dia pode estar em andamento)" : "") + (LD_CACHE_EM ? " · cópia salva às " + new Date(LD_CACHE_EM).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) + ", atualizando…" : "");
   // reincidentes: loja com No Show Seller em 2 dias ou mais no período
   const detPer = LD_DET.filter(r=>ldPassa(r));
   const diasNss = {};
@@ -4481,7 +4515,7 @@ setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
 setTimeout(()=>{ if(!AL_LOADED) loadAlocacoes(true); }, 3000);
 setInterval(()=> loadAlocacoes(true), 30 * 60 * 1000);
 // Desempenho por Loja também em segundo plano (depois das alocações, pra não disputar)
-setTimeout(()=>{ if(!LD_LOADED) loadLoja(true); }, 6000);
+setTimeout(()=>{ if(!LD_LOADED) loadLoja(true); }, 1000);
 setInterval(()=> loadLoja(true), 30 * 60 * 1000);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
