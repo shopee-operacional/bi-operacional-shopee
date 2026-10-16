@@ -41,6 +41,7 @@ if(!document.querySelector(".app")){
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
     <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
     <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
+    <div class="nav-item" data-section="backlogloja"><span class="dot"></span>Backlog Seller &amp; PUDO</div>
     <div class="nav-item" data-section="notasfiscais"><span class="dot"></span>Pagamentos<span class="nav-badge" id="nav-nf-badge">0</span></div>
     <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
     <div class="nav-item" data-section="crm"><span class="dot"></span>CRM</div>
@@ -443,6 +444,57 @@ if(!document.querySelector(".app")){
           <div class="sd-hint" id="vc-lojas-aviso" style="margin-bottom:8px"></div>
           <div class="table-wrap"><table class="data" id="vc-tab-lojas"></table></div>
           <div class="card-expand-btn" id="vc-lojas-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKLOG SELLER & PUDO -->
+    <div class="section" id="sec-backlogloja">
+      <div class="section-title">Backlog Seller &amp; PUDO <span class="sd-sub" id="bl-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Sub-regional</label><select id="bl-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="bl-f-station"></select></div>
+        <div class="filter"><label>Canal</label><select id="bl-f-canal"></select></div>
+        <div class="filter"><label>Rota MPU</label><select id="bl-f-mpu"></select></div>
+        <button class="theme-btn" id="bl-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="bl-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="bl-loading"></div>
+      <div id="bl-conteudo" style="display:none">
+        <div class="kpi-grid" id="bl-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Backlog por aging</div><div class="sd-hint">pacotes</div></div>
+            <div id="bl-chart-aging" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Backlog por Sub-regional</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="bl-chart-sub" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Backlog por Station</div><div class="sd-hint">maior primeiro · clique para filtrar</div></div>
+          <div id="bl-chart-station" class="sd-bars"></div>
+          <div class="card-expand-btn" id="bl-station-more" style="display:none"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Lojas com backlog</div><div class="losses-total" id="bl-lojas-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="sd-seg" id="bl-seg">
+              <button data-v="todas" class="active">Todas</button>
+              <button data-v="d2p">Com D2+</button>
+              <button data-v="semcoleta">Sem coleta hoje</button>
+              <button data-v="occ">Com ocorrência</button>
+              <button data-v="fora">Fora do raio</button>
+            </div>
+            <div class="filter" style="margin:0"><label>Ordenar por</label><select id="bl-ordem">
+              <option value="total">Total</option><option value="d2p">D2+</option><option value="d2">D-2</option>
+              <option value="d1">D-1</option><option value="d0">D0</option><option value="onhold">On hold</option><option value="col0">Coletado D0</option>
+            </select></div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="bl-busca" placeholder="Buscar loja (ID / nome), station, cidade, ocorrência…"></div>
+          </div>
+          <div class="table-wrap"><table class="data" id="bl-tab"></table></div>
+          <div class="card-expand-btn" id="bl-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -2804,7 +2856,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -2827,6 +2879,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
+    if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
   });
 });
@@ -3928,6 +3981,151 @@ function renderAlDetalhe(lista){
   }));
   let t; document.getElementById("al-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ AL_F.busca = e.target.value; renderAlDetalhe(alFiltrar()); }, 200); });
 })();
+// ==================== BACKLOG SELLER & PUDO ====================
+// ?tipo=backlogloja (BacklogLoja.gs) — planilha "backlog_regional4", aba "backlog overall".
+// Foto atual por loja (Seller e PUDO). Filtros próprios.
+let BL_ROWS = [], BL_LOADED = false, BL_PEND = null, BL_META = {};
+const BL_F = { sub:"", station:"", canal:"", mpu:"", seg:"todas", ordem:"total", busca:"" };
+const BL_EXP = { station:false, lojas:false };
+const BL_LIM_ST = 15, BL_LIM = 50;
+function loadBacklogLoja(silencioso){
+  const box = document.getElementById("bl-loading");
+  if(!silencioso && !BL_LOADED){ box.innerHTML = loaderHtml("Carregando backlog de sellers e PUDOs…"); document.getElementById("bl-conteudo").style.display = "none"; }
+  if(BL_PEND) return BL_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  BL_PEND = fetchViaIframe(API_URL + sep + "tipo=backlogloja", 120000).then(json=>{
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o BacklogLoja.gs e a rota ?tipo=backlogloja do webapp.gs foram publicados");
+    const num = new Set(json.num || []);
+    BL_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+    BL_META = { planilha: json.atualizadoPlanilha || "", em: json.atualizadoEm || "" };
+    BL_LOADED = true;
+    box.innerHTML = "";
+    document.getElementById("bl-conteudo").style.display = "";
+    if(document.getElementById("sec-backlogloja").classList.contains("active")) renderBacklogLoja();
+  }).catch(err=>{
+    console.error("Backlog Seller & PUDO:", err);
+    if(!BL_LOADED && document.getElementById("sec-backlogloja").classList.contains("active")){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o backlog (' + esc(err.message) + '). <a href="#" id="bl-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("bl-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadBacklogLoja(); };
+    }
+  }).finally(()=>{ BL_PEND = null; });
+  return BL_PEND;
+}
+function blPassa(r, ignorar){
+  return (ignorar==="sub" || !BL_F.sub || r.sub===BL_F.sub)
+    && (ignorar==="station" || !BL_F.station || r.station===BL_F.station)
+    && (ignorar==="canal" || !BL_F.canal || r.canal===BL_F.canal)
+    && (ignorar==="mpu" || !BL_F.mpu || (r.mpu||"—")===BL_F.mpu);
+}
+function blSoma(lista, k){ return lista.reduce((t,r)=>t+(r[k]||0),0); }
+function blAgrupar(lista, campo){
+  const m = {};
+  lista.forEach(r=>{ const k = r[campo] || "—"; const o = m[k] || (m[k] = {label:k, volume:0, d2p:0, lojas:0}); o.volume += r.total; o.d2p += r.d2p; o.lojas++; });
+  return Object.values(m).sort((a,b)=>b.volume-a.volume);
+}
+function blBarras(elId, grupos, sel, onClick){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Sem backlog nesse filtro.</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.volume)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = sel && g.label===sel ? "sel" : (sel ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}" ${onClick?"":'style="cursor:default"'}>
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.volume/max*100).toFixed(2)}%${g.cor?";background:"+g.cor:""}"></div></div>
+      <div class="sd-bar-val">${sdNum(g.volume)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div><div class="r">Backlog <b>${sdNum(g.volume)}</b></div>`
+      + (g.d2p!=null ? `<div class="r">D2+ <b>${sdNum(g.d2p)}</b></div>` : "") + (g.lojas ? `<div class="r">Lojas <b>${sdNum(g.lojas)}</b></div>` : ""), ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+function renderBacklogLoja(){
+  if(!BL_LOADED) return;
+  const opcoes = (id, valores, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("bl-f-sub", [...new Set(BL_ROWS.map(r=>r.sub).filter(Boolean))].sort(), BL_F.sub, "Todas");
+  opcoes("bl-f-station", [...new Set(BL_ROWS.filter(r=>blPassa(r,"station")).map(r=>r.station).filter(Boolean))].sort(), BL_F.station, "Todas");
+  opcoes("bl-f-canal", [...new Set(BL_ROWS.map(r=>r.canal).filter(Boolean))].sort(), BL_F.canal, "Todos");
+  opcoes("bl-f-mpu", [...new Set(BL_ROWS.map(r=>r.mpu||"—"))].sort(), BL_F.mpu, "Todas");
+  document.getElementById("bl-subtitle").textContent = BL_META.planilha ? "— planilha atualizada em " + BL_META.planilha : "";
+
+  const lista = BL_ROWS.filter(r=>blPassa(r));
+  const comBacklog = lista.filter(r=>r.total>0);
+  const tot = blSoma(lista,"total"), d2p = blSoma(lista,"d2p");
+  const semColeta = comBacklog.filter(r=>!r.col0);
+  const n = sdNum;
+  renderKpis("bl-kpis", [
+    {label:"Backlog total", value:n(tot), icon:"📦", sub: n(comBacklog.length) + " lojas com backlog"},
+    {label:"D2+ (mais antigo)", value:n(d2p), icon:"⏳", cls: d2p>0?"warn":"", sub: tot ? (d2p/tot*100).toFixed(1).replace(".",",") + "% do backlog" : ""},
+    {label:"Coletado hoje (D0)", value:n(blSoma(lista,"col0")), icon:"🚚", sub: n(blSoma(lista,"trips")) + " viagens concluídas"},
+    {label:"Lojas sem coleta hoje", value:n(semColeta.length), icon:"⛔", cls: semColeta.length?"crit":"", sub: n(blSoma(semColeta,"total")) + " pacotes parados"},
+    {label:"On hold (D0)", value:n(blSoma(lista,"onhold")), icon:"✋", sub: n(lista.filter(r=>r.occ).length) + " lojas com ocorrência"}
+  ]);
+  blBarras("bl-chart-aging", [
+    {label:"D0", volume:blSoma(lista,"d0"), cor:"var(--text-muted)"},
+    {label:"D-1", volume:blSoma(lista,"d1")},
+    {label:"D-2", volume:blSoma(lista,"d2")},
+    {label:"D2+", volume:d2p, cor:"var(--critical)"}
+  ], "", null);
+  blBarras("bl-chart-sub", blAgrupar(BL_ROWS.filter(r=>blPassa(r,"sub") && r.total>0), "sub"), BL_F.sub,
+    v=>{ BL_F.sub = BL_F.sub===v ? "" : v; BL_F.station = ""; BL_EXP.lojas = false; renderBacklogLoja(); });
+  const st = blAgrupar(BL_ROWS.filter(r=>blPassa(r,"station") && r.total>0), "station");
+  blBarras("bl-chart-station", BL_EXP.station ? st : st.slice(0, BL_LIM_ST), BL_F.station,
+    v=>{ BL_F.station = BL_F.station===v ? "" : v; BL_EXP.lojas = false; renderBacklogLoja(); });
+  const more = document.getElementById("bl-station-more");
+  more.style.display = st.length > BL_LIM_ST ? "" : "none";
+  more.textContent = BL_EXP.station ? "− Mostrar só as " + BL_LIM_ST + " maiores" : "+ Ver todas as " + st.length + " stations";
+  renderBacklogLojaTabela();
+}
+function renderBacklogLojaTabela(){
+  const q = BL_F.busca.trim().toLowerCase();
+  const segs = {
+    todas: r=>r.total>0, d2p: r=>r.d2p>0, semcoleta: r=>r.total>0 && !r.col0,
+    occ: r=>!!r.occ, fora: r=>/fora/i.test(r.raio||"")
+  };
+  let lojas = BL_ROWS.filter(r=>blPassa(r) && segs[BL_F.seg](r));
+  if(q) lojas = lojas.filter(r=>[r.id, r.nome, r.station, r.sub, r.cidade, r.occ, r.canal].join(" ").toLowerCase().includes(q));
+  const k = BL_F.ordem;
+  lojas.sort((a,b)=>(b[k]-a[k]) || (b.total-a.total));
+  document.getElementById("bl-lojas-total").innerHTML = `<b>${lojas.length.toLocaleString("pt-BR")}</b> ${lojas.length===1?"loja":"lojas"} · <b>${sdNum(blSoma(lojas,"total"))}</b> pacotes`;
+  const vis = BL_EXP.lojas ? lojas.slice(0, 3000) : lojas.slice(0, BL_LIM);
+  const cel = v => v ? sdNum(v) : '<span style="opacity:.35">0</span>';
+  document.getElementById("bl-tab").innerHTML =
+    "<thead><tr><th>#</th><th>Loja</th><th>Nome</th><th>Station</th><th>Sub</th><th>Canal</th><th>Total</th><th>D0</th><th>D-1</th><th>D-2</th><th>D2+</th><th>Coletado D0</th><th>Viagens</th><th>Ocorrência</th><th>On hold</th><th>Raio</th><th>Último done</th><th>Cidade</th><th>Rota MPU</th></tr></thead><tbody>"
+    + (vis.map((r,i)=>{
+      const fora = /fora/i.test(r.raio||"");
+      return `<tr><td>${i+1}</td><td><b>${esc(r.id)}</b></td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.nome)}">${esc(r.nome)}</td><td>${esc(r.station)}</td><td>${esc(r.sub)}</td><td>${esc(r.canal)}</td>`
+        + `<td><b>${sdNum(r.total)}</b></td><td>${cel(r.d0)}</td><td>${cel(r.d1)}</td><td>${cel(r.d2)}</td><td>${r.d2p?`<span class="badge critical">${sdNum(r.d2p)}</span>`:cel(0)}</td>`
+        + `<td>${r.col0?sdNum(r.col0):(r.total?'<b style="color:var(--critical)">0</b>':cel(0))}</td><td>${cel(r.trips)}</td>`
+        + `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.occ)}">${esc(r.occ||"—")}</td><td>${cel(r.onhold)}</td>`
+        + `<td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.raio||"—")}</td><td>${esc(r.lastDone||"—")}</td><td>${esc(r.cidade||"—")}</td><td>${esc(r.mpu||"—")}</td></tr>`;
+    }).join("") || '<tr><td colspan="19"><div class="empty-state">Nenhuma loja nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("bl-more");
+  more.style.display = lojas.length > BL_LIM ? "" : "none";
+  more.textContent = BL_EXP.lojas ? "− Mostrar só as " + BL_LIM + " primeiras" : "+ Ver todas as " + lojas.length.toLocaleString("pt-BR") + " lojas" + (lojas.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("bl-f-sub")) return;
+  const re = ()=>{ BL_EXP.lojas = false; renderBacklogLoja(); };
+  $("bl-f-sub").addEventListener("change", e=>{ BL_F.sub = e.target.value; BL_F.station = ""; re(); });
+  $("bl-f-station").addEventListener("change", e=>{ BL_F.station = e.target.value; re(); });
+  $("bl-f-canal").addEventListener("change", e=>{ BL_F.canal = e.target.value; re(); });
+  $("bl-f-mpu").addEventListener("change", e=>{ BL_F.mpu = e.target.value; re(); });
+  $("bl-limpar").addEventListener("click", ()=>{ Object.assign(BL_F, {sub:"", station:"", canal:"", mpu:"", seg:"todas", busca:""}); $("bl-busca").value = ""; document.querySelectorAll("#bl-seg button").forEach(b=>b.classList.toggle("active", b.dataset.v==="todas")); re(); });
+  $("bl-refresh").addEventListener("click", ()=> loadBacklogLoja(true));
+  $("bl-station-more").addEventListener("click", ()=>{ BL_EXP.station = !BL_EXP.station; renderBacklogLoja(); });
+  $("bl-more").addEventListener("click", ()=>{ BL_EXP.lojas = !BL_EXP.lojas; renderBacklogLojaTabela(); });
+  $("bl-ordem").addEventListener("change", e=>{ BL_F.ordem = e.target.value; BL_EXP.lojas = false; renderBacklogLojaTabela(); });
+  document.querySelectorAll("#bl-seg button").forEach(b=> b.addEventListener("click", ()=>{
+    BL_F.seg = b.dataset.v; document.querySelectorAll("#bl-seg button").forEach(x=>x.classList.toggle("active", x===b)); BL_EXP.lojas = false; renderBacklogLojaTabela();
+  }));
+  let t; $("bl-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ BL_F.busca = e.target.value; BL_EXP.lojas = false; renderBacklogLojaTabela(); }, 200); });
+})();
+
 // ==================== VOLUME COLETADO ====================
 // ?tipo=volume[&ini&fim] (VolumeColetado.gs). Histórico gravado pelo Apps Script
 // (por station: para sempre; por loja: ~6 meses). Filtros próprios.
@@ -4785,6 +4983,9 @@ setInterval(()=> loadAlocacoes(true), 30 * 60 * 1000);
 // Desempenho por Loja também em segundo plano (depois das alocações, pra não disputar)
 setTimeout(()=>{ if(!LD_LOADED) loadLoja(true); }, 1000);
 setInterval(()=> loadLoja(true), 30 * 60 * 1000);
+// Backlog Seller & PUDO em segundo plano e a cada 15 min
+setTimeout(()=>{ if(!BL_LOADED) loadBacklogLoja(true); }, 7000);
+setInterval(()=> loadBacklogLoja(true), 15 * 60 * 1000);
 // Volume Coletado em segundo plano; a cada 30 min relê (o histórico é atualizado de hora em hora)
 setTimeout(()=>{ if(!VC_LOADED && !VC_PEND) loadVolume(); }, 9000);
 setInterval(()=>{ if(VC_LOADED && !VC_PEND) { if(VC_PADRAO) loadVolume(); else loadVolume(VC_F.ini, VC_F.fim); } }, 30 * 60 * 1000);
