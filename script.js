@@ -35,6 +35,7 @@ if(!document.querySelector(".app")){
     <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
     <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
     <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
+    <div class="nav-item" data-section="volume"><span class="dot"></span>Volume Coletado</div>
     <div class="nav-item" data-section="alocacoes"><span class="dot"></span>Alocações &amp; Rotas extras</div>
     <div class="nav-item" data-section="loja"><span class="dot"></span>Desempenho por Loja</div>
     <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
@@ -400,6 +401,52 @@ if(!document.querySelector(".app")){
       </div>
     </div>
 
+    <!-- VOLUME COLETADO -->
+    <div class="section" id="sec-volume">
+      <div class="section-title">Volume Coletado <span class="sd-sub" id="vc-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="vc-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="vc-f-fim"></div>
+        <div class="sd-seg" id="vc-periodo">
+          <button data-p="dia">Último dia</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="30d">30 dias</button>
+          <button data-p="hoje">Hoje (parcial)</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="vc-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="vc-f-station"></select></div>
+        <button class="theme-btn" id="vc-limpar">Limpar filtros</button>
+      </div>
+      <div id="vc-loading"></div>
+      <div id="vc-conteudo" style="display:none">
+        <div class="kpi-grid" id="vc-kpis"></div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Volume por dia</div><div class="sd-hint" id="vc-trend-hint">laranja = período escolhido</div></div>
+          <div id="vc-chart-trend" class="sd-trend"></div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Volume por Sub-regional</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="vc-chart-sub" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Volume por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="vc-chart-station" class="sd-bars"></div>
+            <div class="card-expand-btn" id="vc-station-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Volume por loja</div><div class="losses-total" id="vc-lojas-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="vc-busca" placeholder="Buscar loja (Shop ID / DOP), nome ou station…"></div>
+          </div>
+          <div class="sd-hint" id="vc-lojas-aviso" style="margin-bottom:8px"></div>
+          <div class="table-wrap"><table class="data" id="vc-tab-lojas"></table></div>
+          <div class="card-expand-btn" id="vc-lojas-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- DESEMPENHO POR LOJA (ID da Loja) -->
     <div class="section" id="sec-loja">
       <div class="section-title">Desempenho por Loja <span class="sd-sub" id="ld-subtitle"></span></div>
@@ -422,7 +469,7 @@ if(!document.querySelector(".app")){
       <div id="ld-conteudo" style="display:none">
         <div class="kpi-grid" id="ld-kpis"></div>
         <div class="card" style="margin-bottom:14px" id="ld-card-vis">
-          <div class="card-head"><div class="card-title">🔎 Detalhes gerais — visita por visita</div><div class="losses-total" id="ld-vis-total"></div></div>
+          <div class="card-head"><div class="card-title">🔎 Detalhes gerais</div><div class="losses-total" id="ld-vis-total"></div></div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
             <div class="sd-seg" id="ld-vis-seg">
               <button data-v="" class="active">Todas</button>
@@ -2757,7 +2804,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -2780,6 +2827,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
+    if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -3880,6 +3928,226 @@ function renderAlDetalhe(lista){
   }));
   let t; document.getElementById("al-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ AL_F.busca = e.target.value; renderAlDetalhe(alFiltrar()); }, 200); });
 })();
+// ==================== VOLUME COLETADO ====================
+// ?tipo=volume[&ini&fim] (VolumeColetado.gs). Histórico gravado pelo Apps Script
+// (por station: para sempre; por loja: ~6 meses). Filtros próprios.
+let VC = null, VC_LOADED = false, VC_PEND = null, VC_PADRAO = true;
+const VC_F = { ini:"", fim:"", sub:"", station:"", busca:"" };
+const VC_EXP = { station:false, lojas:false };
+const VC_LIM_STATION = 12, VC_LIM_LOJAS = 50;
+function vcDecode(cols, rows){ return (rows||[]).map(r=>{ const o = {}; cols.forEach((c,i)=>o[c]=r[i]); return o; }); }
+function vcAdd(iso, n){ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); }
+function vcDiff(a, b){ const f = s=>{ const p = s.split("-"); return Date.UTC(+p[0], +p[1]-1, +p[2]); }; return Math.round((f(b)-f(a))/864e5); }
+function vcPct(v){ return (v>0?"▲ ":v<0?"▼ ":"") + Math.abs(v*100).toFixed(1).replace(".",",") + "%"; }
+function loadVolume(ini, fim){
+  const box = document.getElementById("vc-loading");
+  VC_PADRAO = !ini;
+  if(!VC_LOADED){ box.innerHTML = loaderHtml("Carregando volume coletado…"); document.getElementById("vc-conteudo").style.display = "none"; }
+  else document.getElementById("vc-subtitle").textContent = "— atualizando…";
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  const req = VC_PEND = fetchViaIframe(API_URL + sep + "tipo=volume" + (ini ? "&ini=" + ini + "&fim=" + fim : ""), 180000);
+  req.then(json=>{
+    if(req !== VC_PEND) return;
+    if(!json || !Array.isArray(json.serie)) throw new Error("resposta sem dados — confira se o VolumeColetado.gs e a rota ?tipo=volume do webapp.gs foram publicados");
+    if(!json.serie.length) throw new Error(json.aviso || "histórico vazio");
+    VC = json;
+    VC.serieO = vcDecode(json.serieCols, json.serie);
+    VC.lojasO = vcDecode(json.lojaCols, json.lojas);
+    VC_F.ini = json.periodoIni; VC_F.fim = json.periodoFim;
+    VC_LOADED = true; VC_PEND = null;
+    box.innerHTML = "";
+    document.getElementById("vc-conteudo").style.display = "";
+    renderVolume();
+  }).catch(err=>{
+    if(req !== VC_PEND) return;
+    VC_PEND = null;
+    console.error("Volume coletado:", err);
+    if(!VC_LOADED){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o volume coletado (' + esc(err.message) + '). <a href="#" id="vc-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("vc-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadVolume(); };
+    } else document.getElementById("vc-subtitle").textContent = "— não foi possível atualizar (" + err.message + ")";
+  });
+}
+function vcPeriodo(ini, fim){
+  if(!ini || !fim) return;
+  if(ini > fim){ const t = ini; ini = fim; fim = t; }
+  VC_EXP.lojas = false;
+  loadVolume(ini, fim);
+}
+function vcPreset(p){
+  if(!VC) return;
+  const ult = VC.ultimoFechado;
+  if(p==="dia") vcPeriodo(ult, ult);
+  else if(p==="7d") vcPeriodo(vcAdd(ult,-6), ult);
+  else if(p==="30d") vcPeriodo(vcAdd(ult,-29), ult);
+  else if(p==="hoje") vcPeriodo(VC.hoje, VC.hoje);
+}
+function vcPresetAtual(){
+  if(!VC) return "";
+  const ult = VC.ultimoFechado, a = VC_F.ini, b = VC_F.fim;
+  if(a===VC.hoje && b===VC.hoje) return "hoje";
+  if(b!==ult) return "";
+  if(a===ult) return "dia";
+  if(a===vcAdd(ult,-6)) return "7d";
+  if(a===vcAdd(ult,-29)) return "30d";
+  return "";
+}
+function vcPassa(r, ignorar){
+  return (ignorar==="sub" || !VC_F.sub || r.sub===VC_F.sub) && (ignorar==="station" || !VC_F.station || r.station===VC_F.station);
+}
+function vcSoma(lista){ return lista.reduce((t,r)=>t+(+r.volume||0),0); }
+function vcAgrupar(lista, campo){
+  const m = {};
+  lista.forEach(r=>{ const k = r[campo] || "—"; const o = m[k] || (m[k] = {label:k, volume:0, sub:r.sub}); o.volume += +r.volume||0; });
+  return Object.values(m).sort((a,b)=>b.volume-a.volume);
+}
+function vcBarras(elId, grupos, selecionado, onClick, totalRef){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.volume)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = g.label===selecionado ? "sel" : (selecionado ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}">
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.volume/max*100).toFixed(2)}%"></div></div>
+      <div class="sd-bar-val">${sdNum(g.volume)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div>
+      <div class="r">Volume <b>${sdNum(g.volume)}</b></div>
+      ${totalRef ? `<div class="r">% do total <b>${(g.volume/totalRef*100).toFixed(1).replace(".",",")}%</b></div>` : ""}`, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+// colunas por dia: período escolhido em laranja, dias anteriores em cinza, hoje (parcial) mais claro
+function vcTrend(){
+  const el = document.getElementById("vc-chart-trend"); if(!el || !VC) return;
+  const ini = [vcAdd(VC_F.fim, -29), VC_F.ini].sort()[0];
+  const porDia = {};
+  VC.serieO.forEach(r=>{ if(r.dia>=ini && r.dia<=VC_F.fim && vcPassa(r)) porDia[r.dia] = (porDia[r.dia]||0) + (+r.volume||0); });
+  const dias = []; for(let d=ini; d<=VC_F.fim; d=vcAdd(d,1)) dias.push(d);
+  const vals = dias.map(d=>porDia[d]||0);
+  if(!vals.some(Boolean)){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  const W = Math.max(320, el.clientWidth || 600), H = el.clientHeight || 220;
+  const m = {l:52, r:10, t:16, b:26}, iw = W-m.l-m.r, ih = H-m.t-m.b;
+  const max = Math.max(...vals) * 1.1 || 1;
+  const bw = iw / dias.length, gap = Math.min(4, bw*0.25);
+  const y = v => m.t + ih - v/max*ih;
+  const fmtK = v => v>=1e6 ? (v/1e6).toFixed(1).replace(".",",")+"M" : v>=1e3 ? Math.round(v/1e3)+"k" : String(Math.round(v));
+  const ticks = [0, max/1.1/2, max/1.1].map(Math.round);
+  const passoX = Math.ceil(dias.length/10);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Volume coletado por dia">
+    ${ticks.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${fmtK(v)}</text>`).join("")}
+    ${dias.map((d,i)=>{
+      const v = vals[i], noPer = d>=VC_F.ini && d<=VC_F.fim, parcial = d===VC.hoje;
+      const cor = noPer ? "var(--brand)" : "var(--text-muted)";
+      const op = parcial ? 0.45 : (noPer ? 1 : 0.35);
+      return `<rect class="vc-col" data-i="${i}" x="${(m.l+i*bw+gap/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${Math.max(1,bw-gap).toFixed(1)}" height="${(m.t+ih-y(v)).toFixed(1)}" rx="2" fill="${cor}" opacity="${op}"/>`
+        + ((i%passoX===0 || i===dias.length-1) ? `<text x="${(m.l+i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle">${fmtDiaBR(d)}</text>` : "");
+    }).join("")}
+  </svg>`;
+  el.querySelectorAll(".vc-col").forEach(c=>{
+    const i = +c.dataset.i, d = dias[i];
+    c.style.cursor = "pointer";
+    c.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(histRotuloDia(d))}${d===VC.hoje?" (parcial)":""}</div><div class="r">Volume <b>${sdNum(vals[i])}</b></div><div class="r" style="opacity:.7">clique para ver só esse dia</div>`, ev));
+    c.addEventListener("mouseleave", ()=> sdTip(null));
+    c.addEventListener("click", ()=>{ sdTip(null); vcPeriodo(d, d); });
+  });
+}
+function vcNomes(){
+  const m = {};
+  (DATA||[]).forEach(d=>{ const k = dopKey(d.dop); if(k && d.agencia && d.agencia!=="—") m[k] = d.agencia; });
+  return m;
+}
+function renderVolume(){
+  if(!VC) return;
+  const nDias = vcDiff(VC_F.ini, VC_F.fim) + 1;
+  const per = VC_F.ini===VC_F.fim ? histRotuloDia(VC_F.ini) : fmtDiaBR(VC_F.ini) + " a " + fmtDiaBR(VC_F.fim) + " (" + nDias + " dias)";
+  document.getElementById("vc-subtitle").textContent = "— " + per + (VC_F.fim===VC.hoje ? " · hoje ainda em andamento" : "");
+
+  // filtros
+  const opcoes = (id, valores, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("vc-f-sub", [...new Set(VC.serieO.map(r=>r.sub).filter(Boolean))].sort(), VC_F.sub, "Todas");
+  opcoes("vc-f-station", [...new Set(VC.serieO.filter(r=>vcPassa(r,"station")).map(r=>r.station).filter(Boolean))].sort(), VC_F.station, "Todas");
+  ["vc-f-ini","vc-f-fim"].forEach(id=>{ const el = document.getElementById(id); el.value = id==="vc-f-ini" ? VC_F.ini : VC_F.fim; el.min = VC.dias[0]; el.max = VC.dias[VC.dias.length-1]; });
+  const pa = vcPresetAtual();
+  document.querySelectorAll("#vc-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===pa));
+
+  // números
+  const cur = VC.serieO.filter(r=>r.dia>=VC_F.ini && r.dia<=VC_F.fim && vcPassa(r));
+  const ant = VC.serieO.filter(r=>r.dia>=VC.anteriorIni && r.dia<=VC.anteriorFim && vcPassa(r));
+  const tot = vcSoma(cur), totAnt = vcSoma(ant);
+  const diasComDado = new Set(cur.map(r=>r.dia)).size || 1;
+  const temAnterior = VC.dias.includes(VC.anteriorIni) && VC.dias.includes(VC.anteriorFim) && VC_F.fim!==VC.hoje;
+  const lojas = VC.lojasO.filter(r=>vcPassa(r));
+  const nLojas = lojas.filter(r=>+r.volume>0).length;
+  const stations = vcAgrupar(cur, "station");
+  const n = v => sdNum(v);
+  renderKpis("vc-kpis", [
+    {label:"Volume coletado", value:n(tot), icon:"📦", sub: nDias===1 ? (VC_F.fim===VC.hoje ? "parcial do dia" : "no dia") : nDias + " dias"},
+    {label:"Média por dia", value:n(tot/diasComDado), icon:"📅", sub: diasComDado + (diasComDado===1?" dia com coleta":" dias com coleta")},
+    {label:"Vs período anterior", value: temAnterior && totAnt ? vcPct(tot/totAnt-1) : "—", icon:"↕️",
+      cls: temAnterior && totAnt ? (tot<totAnt ? "warn" : "") : "",
+      sub: temAnterior ? (fmtDiaBR(VC.anteriorIni) + (VC.anteriorIni!==VC.anteriorFim ? " a " + fmtDiaBR(VC.anteriorFim) : "") + ": " + n(totAnt)) : "sem histórico do período anterior"},
+    {label:"Lojas com coleta", value:n(nLojas), icon:"🏪", sub: nLojas ? "média " + n(tot/nLojas) + " pacotes/loja" : ""},
+    {label:"Maior station", value: stations[0] ? esc(stations[0].label) : "—", icon:"🏭", sub: stations[0] ? n(stations[0].volume) + " (" + (stations[0].volume/(tot||1)*100).toFixed(1).replace(".",",") + "%)" : ""}
+  ]);
+
+  vcTrend();
+  vcBarras("vc-chart-sub", vcAgrupar(VC.serieO.filter(r=>r.dia>=VC_F.ini && r.dia<=VC_F.fim && vcPassa(r,"sub") && (!VC_F.station || r.station===VC_F.station)), "sub"), VC_F.sub,
+    v=>{ VC_F.sub = VC_F.sub===v ? "" : v; VC_F.station = ""; VC_EXP.lojas = false; renderVolume(); }, tot);
+  const stG = vcAgrupar(VC.serieO.filter(r=>r.dia>=VC_F.ini && r.dia<=VC_F.fim && vcPassa(r,"station")), "station");
+  vcBarras("vc-chart-station", VC_EXP.station ? stG : stG.slice(0, VC_LIM_STATION), VC_F.station,
+    v=>{ VC_F.station = VC_F.station===v ? "" : v; VC_EXP.lojas = false; renderVolume(); }, tot);
+  const more = document.getElementById("vc-station-more");
+  more.style.display = stG.length > VC_LIM_STATION ? "" : "none";
+  more.textContent = VC_EXP.station ? "− Mostrar só as " + VC_LIM_STATION + " maiores" : "+ Ver todas as " + stG.length + " stations";
+
+  renderVolumeLojas();
+}
+function renderVolumeLojas(){
+  if(!VC) return;
+  const nomes = vcNomes();
+  const q = VC_F.busca.trim().toLowerCase();
+  let lojas = VC.lojasO.filter(r=>vcPassa(r) && +r.volume>0).map(r=>{
+    const shop = String(r.shop), nome = /^dop/i.test(shop) ? (nomes[dopKey(shop)] || "") : "";
+    return {shop, nome, station:r.station, sub:r.sub, volume:+r.volume||0, dias:+r.dias||0};
+  });
+  if(q) lojas = lojas.filter(o=>[o.shop, o.nome, o.station, o.sub].join(" ").toLowerCase().includes(q));
+  lojas.sort((a,b)=>b.volume-a.volume);
+  const tot = lojas.reduce((t,o)=>t+o.volume,0) || 1;
+  document.getElementById("vc-lojas-total").innerHTML = `<b>${lojas.length.toLocaleString("pt-BR")}</b> ${lojas.length===1?"loja":"lojas"}`;
+  const aviso = [];
+  if(VC.lojaAviso) aviso.push(VC.lojaAviso);
+  aviso.push("Nome aparece só para DOPs que estão na base do painel; sellers aparecem pelo Shop ID.");
+  document.getElementById("vc-lojas-aviso").textContent = aviso.join(" ");
+  const vis = VC_EXP.lojas ? lojas.slice(0, 3000) : lojas.slice(0, VC_LIM_LOJAS);
+  document.getElementById("vc-tab-lojas").innerHTML =
+    "<thead><tr><th>#</th><th>Loja</th><th>Nome</th><th>Station</th><th>Sub-regional</th><th>Volume</th><th>Dias com coleta</th><th>Média por dia</th><th>% do total</th></tr></thead><tbody>"
+    + (vis.map((o,i)=>`<tr><td>${i+1}</td><td><b>${esc(o.shop)}</b></td><td>${esc(o.nome||"—")}</td><td>${esc(o.station)}</td><td>${esc(o.sub)}</td><td><b>${sdNum(o.volume)}</b></td><td>${o.dias}</td><td>${sdNum(o.volume/(o.dias||1))}</td><td>${(o.volume/tot*100).toFixed(2).replace(".",",")}%</td></tr>`).join("")
+      || '<tr><td colspan="9"><div class="empty-state">Nenhuma loja com coleta nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("vc-lojas-more");
+  more.style.display = lojas.length > VC_LIM_LOJAS ? "" : "none";
+  more.textContent = VC_EXP.lojas ? "− Mostrar só as " + VC_LIM_LOJAS + " maiores" : "+ Ver todas as " + lojas.length.toLocaleString("pt-BR") + " lojas" + (lojas.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("vc-f-ini")) return;
+  $("vc-f-ini").addEventListener("change", e=>{ if(e.target.value) vcPeriodo(e.target.value, VC_F.fim && VC_F.fim>=e.target.value ? VC_F.fim : e.target.value); });
+  $("vc-f-fim").addEventListener("change", e=>{ if(e.target.value) vcPeriodo(VC_F.ini && VC_F.ini<=e.target.value ? VC_F.ini : e.target.value, e.target.value); });
+  document.querySelectorAll("#vc-periodo button").forEach(b=> b.addEventListener("click", ()=> vcPreset(b.dataset.p)));
+  $("vc-f-sub").addEventListener("change", e=>{ VC_F.sub = e.target.value; VC_F.station = ""; VC_EXP.lojas = false; renderVolume(); });
+  $("vc-f-station").addEventListener("change", e=>{ VC_F.station = e.target.value; VC_EXP.lojas = false; renderVolume(); });
+  $("vc-limpar").addEventListener("click", ()=>{ VC_F.sub = ""; VC_F.station = ""; VC_F.busca = ""; $("vc-busca").value = ""; VC_EXP.station = VC_EXP.lojas = false; if(VC && VC_F.ini===VC.ultimoFechado && VC_F.fim===VC.ultimoFechado) renderVolume(); else loadVolume(); });
+  $("vc-station-more").addEventListener("click", ()=>{ VC_EXP.station = !VC_EXP.station; renderVolume(); });
+  $("vc-lojas-more").addEventListener("click", ()=>{ VC_EXP.lojas = !VC_EXP.lojas; renderVolumeLojas(); });
+  let t; $("vc-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ VC_F.busca = e.target.value; VC_EXP.lojas = false; renderVolumeLojas(); }, 200); });
+  window.addEventListener("resize", ()=>{ if(VC_LOADED && document.getElementById("sec-volume").classList.contains("active")) vcTrend(); });
+})();
+
 // ==================== DESEMPENHO POR LOJA (ID da Loja) ====================
 // Base de visitas a lojas/sellers (?tipo=desempenholoja, DesempenhoLoja.gs).
 // "agg" = contagem de visitas por dia/sub/station/3PL/performance/justificativa/raio;
@@ -4517,6 +4785,9 @@ setInterval(()=> loadAlocacoes(true), 30 * 60 * 1000);
 // Desempenho por Loja também em segundo plano (depois das alocações, pra não disputar)
 setTimeout(()=>{ if(!LD_LOADED) loadLoja(true); }, 1000);
 setInterval(()=> loadLoja(true), 30 * 60 * 1000);
+// Volume Coletado em segundo plano; a cada 30 min relê (o histórico é atualizado de hora em hora)
+setTimeout(()=>{ if(!VC_LOADED && !VC_PEND) loadVolume(); }, 9000);
+setInterval(()=>{ if(VC_LOADED && !VC_PEND) { if(VC_PADRAO) loadVolume(); else loadVolume(VC_F.ini, VC_F.fim); } }, 30 * 60 * 1000);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda no máximo 1x por hora
