@@ -393,7 +393,7 @@ if(!document.querySelector(".app")){
               <button data-v="inferior">Veículo inferior</button>
               <button data-v="todas">Todas</button>
             </div>
-            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="al-busca" placeholder="Buscar rota, station, transportadora…"></div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="al-busca" placeholder="Buscar rota, station, motorista, transportadora…"></div>
           </div>
           <div class="table-wrap"><table class="data" id="al-tab-det"></table></div>
           <div class="card-expand-btn" id="al-det-more" style="display:none"></div>
@@ -3896,16 +3896,16 @@ function renderAlDetalhe(lista){
   };
   const q = AL_F.busca.trim().toLowerCase();
   const det = lista.filter(filtros[AL_F.det] || filtros.todas)
-    .filter(r=> !q || [r.rota, r.station, r.sub, r.transp, r.vPlan, r.vReal].join(" ").toLowerCase().includes(q))
+    .filter(r=> !q || [r.rota, r.station, r.sub, r.transp, r.vPlan, r.vReal, r.driver].join(" ").toLowerCase().includes(q))
     .sort((a,b)=> b.data.localeCompare(a.data) || a.station.localeCompare(b.station) || a.rota.localeCompare(b.rota));
   const LIM = 50;
   const vis = AL_EXP.det ? det.slice(0, 2000) : det.slice(0, LIM);
   document.getElementById("al-det-total").innerHTML = `<b>${det.length.toLocaleString("pt-BR")}</b> ${det.length===1?"rota":"rotas"}`;
   const statusCls = s => s==="Finalizadas" ? "good" : (s==="Expirada" || s==="Parcialmente feita") ? "critical" : "warning";
   document.getElementById("al-tab-det").innerHTML =
-    "<thead><tr><th>Dia</th><th>Station</th><th>Rota</th><th>Tipo</th><th>Veículo (plano → real)</th><th>Aderência</th><th>Saída</th><th>Status</th><th>Alocação</th><th>Transportadora</th></tr></thead><tbody>"
-    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.data)}</td><td>${esc(r.station)}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(alTipo(r.tipo))}</td><td>${esc(r.vPlan||"—")} → ${esc(r.vReal||"—")}</td><td>${r.aderencia?`<span class="badge ${r.aderencia==="Aderente"?"good":r.aderencia==="Inferior"?"critical":"warning"}">${esc(r.aderencia)}</span>`:"—"}</td><td>${esc(r.saida||"—")}</td><td><span class="badge ${statusCls(r.status)}">${esc(r.status||"—")}</span></td><td>${r.alocada?"Alocada":'<b style="color:var(--critical)">Não alocada</b>'}</td><td>${esc(r.transp||"—")}</td></tr>`).join("")
-      || '<tr><td colspan="10"><div class="empty-state">Nenhuma rota nesse recorte.</div></td></tr>') + "</tbody>";
+    "<thead><tr><th>Dia</th><th>Station</th><th>Rota</th><th>Tipo</th><th>Veículo (plano → real)</th><th>Aderência</th><th>Saída</th><th>Status</th><th>Alocação</th><th>Motorista</th><th>Transportadora</th></tr></thead><tbody>"
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.data)}</td><td>${esc(r.station)}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(alTipo(r.tipo))}</td><td>${esc(r.vPlan||"—")} → ${esc(r.vReal||"—")}</td><td>${r.aderencia?`<span class="badge ${r.aderencia==="Aderente"?"good":r.aderencia==="Inferior"?"critical":"warning"}">${esc(r.aderencia)}</span>`:"—"}</td><td>${esc(r.saida||"—")}</td><td><span class="badge ${statusCls(r.status)}">${esc(r.status||"—")}</span></td><td>${r.alocada?"Alocada":'<b style="color:var(--critical)">Não alocada</b>'}</td><td>${esc(r.driver||"—")}</td><td>${esc(r.transp||"—")}</td></tr>`).join("")
+      || '<tr><td colspan="11"><div class="empty-state">Nenhuma rota nesse recorte.</div></td></tr>') + "</tbody>";
   const more = document.getElementById("al-det-more");
   more.style.display = det.length > LIM ? "" : "none";
   more.textContent = AL_EXP.det ? "− Mostrar só as " + LIM + " primeiras" : "+ Ver todas as " + det.length.toLocaleString("pt-BR") + " rotas" + (det.length>2000 ? " (até 2.000)" : "");
