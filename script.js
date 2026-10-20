@@ -32,20 +32,42 @@ if(!document.querySelector(".app")){
         <div class="t2">Shopee</div>
       </div>
     </div>
-    <div class="nav-item active" data-section="resumo"><span class="dot"></span>Resumo Geral</div>
-    <div class="nav-item" data-section="sameday"><span class="dot"></span>Same Day</div>
-    <div class="nav-item" data-section="leadtime"><span class="dot"></span>Lead Time</div>
-    <div class="nav-item" data-section="volume"><span class="dot"></span>Volume Coletado</div>
-    <div class="nav-item" data-section="alocacoes"><span class="dot"></span>Alocações &amp; Rotas extras</div>
-    <div class="nav-item" data-section="loja"><span class="dot"></span>Desempenho por Loja</div>
-    <div class="nav-item" data-section="desempenho"><span class="dot"></span>Desempenho por Agência</div>
-    <div class="nav-item" data-section="detalhe"><span class="dot"></span>Detalhe da Agência</div>
-    <div class="nav-item" data-section="backlog"><span class="dot"></span>Análise de Backlog<span class="nav-badge" id="nav-backlog-badge">0</span></div>
-    <div class="nav-item" data-section="backlogloja"><span class="dot"></span>Backlog Seller &amp; PUDO</div>
-    <div class="nav-item" data-section="notasfiscais"><span class="dot"></span>Pagamentos<span class="nav-badge" id="nav-nf-badge">0</span></div>
-    <div class="nav-item" data-section="base"><span class="dot"></span>Base de Dados</div>
-    <div class="nav-item" data-section="crm"><span class="dot"></span>CRM</div>
-    <div class="nav-item" data-section="historico"><span class="dot"></span>Histórico Pós-Fechamento</div>
+    <label class="nav-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="nav-search" placeholder="Menu de pesquisa" autocomplete="off"></label>
+    <div class="nav-group" data-group="painel">
+      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-group-name">Visão Geral<small class="nav-group-sub">SVP + FM</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="nav-group-items">
+        <div class="nav-item active" data-section="resumo"><span class="nav-txt">Resumo Geral</span></div>
+      </div>
+    </div>
+    <div class="nav-group" data-group="svp">
+      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l1.5-5h13L20 10"/><path d="M4 10h16v1.5a2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg><span class="nav-group-name">SVP<small class="nav-group-sub">Agências &amp; PUDO</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="nav-group-items">
+        <div class="nav-item" data-section="desempenho"><span class="nav-txt">Desempenho por Agência</span></div>
+        <div class="nav-item" data-section="detalhe"><span class="nav-txt">Detalhe da Agência</span></div>
+        <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
+        <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
+        <div class="nav-item" data-section="backlog"><span class="nav-txt">Análise de Backlog</span><span class="nav-badge" id="nav-backlog-badge">0</span></div>
+        <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
+        <div class="nav-item" data-section="notasfiscais"><span class="nav-txt">Pagamentos</span><span class="nav-badge" id="nav-nf-badge">0</span></div>
+        <div class="nav-item" data-section="crm"><span class="nav-txt">CRM</span></div>
+      </div>
+    </div>
+    <div class="nav-group" data-group="fm">
+      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="nav-group-items">
+        <div class="nav-item" data-section="volume"><span class="nav-txt">Volume Coletado</span></div>
+        <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
+        <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
+      </div>
+    </div>
+    <div class="nav-group" data-group="dados">
+      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/><path d="M4 11.5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></svg><span class="nav-group-name">Dados</span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="nav-group-items">
+        <div class="nav-item" data-section="base"><span class="nav-txt">Base de Dados</span></div>
+        <div class="nav-item" data-section="historico"><span class="nav-txt">Histórico Pós-Fechamento</span></div>
+      </div>
+    </div>
+    <div class="nav-empty" id="nav-empty">Nenhuma aba encontrada</div>
     <div class="sidebar-foot">
       <div class="sfoot-desc">Acompanhamento operacional<br>SVP &amp; FM</div>
       <div class="sfoot-line">Desenvolvido por <b>Hellen Mirla</b></div>
@@ -2888,6 +2910,68 @@ document.querySelectorAll("[data-goto]").forEach(el=>{
     document.querySelector('.nav-item[data-section="'+el.dataset.goto+'"]').click();
   });
 });
+// ==================== MENU LATERAL EM GRUPOS ====================
+// Grupos abrem/fecham pela seta; o grupo da aba ativa fica sempre aberto.
+// O estado (abertos/fechados) fica guardado no navegador.
+(function(){
+  const CHAVE = "bi-menu-grupos";
+  let salvo = {};
+  try{ salvo = JSON.parse(localStorage.getItem(CHAVE) || "{}") || {}; }catch(e){}
+  const grupos = [...document.querySelectorAll(".nav-group")];
+  const guardar = ()=>{ try{ localStorage.setItem(CHAVE, JSON.stringify(salvo)); }catch(e){} };
+  const abrir = (g, sim)=> g.classList.toggle("open", sim);
+  grupos.forEach(g=>{
+    const temAtivo = !!g.querySelector(".nav-item.active");
+    const padrao = ["painel","svp","fm"].includes(g.dataset.group);
+    abrir(g, temAtivo || (g.dataset.group in salvo ? salvo[g.dataset.group] : padrao));
+    g.querySelector(".nav-group-head").addEventListener("click", ()=>{
+      const novo = !g.classList.contains("open");
+      abrir(g, novo); salvo[g.dataset.group] = novo; guardar();
+    });
+  });
+  // ao trocar de aba (pelo menu ou por um atalho do painel) marca e abre o grupo dela
+  const marcar = ()=> grupos.forEach(g=>{
+    const ativo = !!g.querySelector(".nav-item.active");
+    g.classList.toggle("has-active", ativo);
+    if(ativo) abrir(g, true);
+  });
+  document.querySelectorAll(".nav-item").forEach(n=> n.addEventListener("click", ()=> setTimeout(marcar, 0)));
+  new MutationObserver(marcar).observe(document.getElementById("sidebar"), {subtree:true, attributes:true, attributeFilter:["class"]});
+  marcar();
+  // bolinha vermelha no grupo fechado quando algum item tem pendência (badge > 0)
+  const alertas = ()=> grupos.forEach(g=>{
+    const tem = [...g.querySelectorAll(".nav-badge")].some(b=> Number(b.textContent) > 0);
+    g.classList.toggle("has-alert", tem);
+  });
+  document.querySelectorAll(".nav-group .nav-badge").forEach(b=> new MutationObserver(alertas).observe(b, {childList:true, characterData:true, subtree:true}));
+  alertas();
+  // busca
+  const busca = document.getElementById("nav-search");
+  const vazio = document.getElementById("nav-empty");
+  const norm = t=> String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  busca.addEventListener("input", ()=>{
+    const q = norm(busca.value.trim());
+    let achou = 0;
+    grupos.forEach(g=>{
+      const nomeGrupo = norm(g.querySelector(".nav-group-name").textContent);
+      let n = 0;
+      g.querySelectorAll(".nav-item").forEach(it=>{
+        const ok = !q || nomeGrupo.includes(q) || norm(it.textContent).includes(q);
+        it.classList.toggle("nav-hidden", !ok); if(ok) n++;
+      });
+      g.classList.toggle("nav-hidden", n === 0);
+      g.classList.toggle("searching", !!q && n > 0);
+      achou += n;
+    });
+    vazio.style.display = q && !achou ? "block" : "none";
+  });
+  busca.addEventListener("keydown", e=>{
+    if(e.key === "Enter"){
+      const primeiro = document.querySelector(".nav-item:not(.nav-hidden)");
+      if(primeiro){ primeiro.click(); busca.value = ""; busca.dispatchEvent(new Event("input")); busca.blur(); }
+    } else if(e.key === "Escape"){ busca.value = ""; busca.dispatchEvent(new Event("input")); }
+  });
+})();
 // Toggles "ver todas / ver ranking completo" ↔ "fechar" dos cards do Resumo
 // Geral — reaproveita os dados já filtrados (CURRENT_ROWS), sem precisar
 // refazer todo o renderAll().
