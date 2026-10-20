@@ -474,6 +474,7 @@ if(!document.querySelector(".app")){
     <div class="section" id="sec-backlogloja">
       <div class="section-title">Backlog Seller &amp; PUDO <span class="sd-sub" id="bl-subtitle"></span></div>
       <div class="sd-toolbar">
+        <div class="filter"><label>Data</label><select id="bl-f-data"><option value="">Hoje (ao vivo)</option></select></div>
         <div class="filter"><label>Sub-regional</label><select id="bl-f-sub"></select></div>
         <div class="filter"><label>Station</label><select id="bl-f-station"></select></div>
         <div class="filter"><label>Canal</label><select id="bl-f-canal"></select></div>
@@ -4069,6 +4070,10 @@ function renderAlDetalhe(lista){
 // ?tipo=backlogloja (BacklogLoja.gs) — planilha "backlog_regional4", aba "backlog overall".
 // Foto atual por loja (Seller e PUDO). Filtros próprios.
 let BL_ROWS = [], BL_LOADED = false, BL_PEND = null, BL_META = {};
+// Histórico: o Apps Script (BacklogLojaHistorico.gs) salva uma foto por dia.
+// ?tipo=backlogloja → ao vivo; ?tipo=backlogloja&data=yyyy-MM-dd → foto salva.
+let BL_DATA = "", BL_DIAS = [];
+const BL_FOTOS = {};   // fotos já baixadas nesta visita (não busca de novo)
 const BL_F = { sub:"", station:"", canal:"", mpu:"", seg:"todas", ordem:"total", busca:"" };
 const BL_EXP = { station:false, lojas:false };
 const BL_LIM_ST = 15, BL_LIM = 50;
@@ -4077,17 +4082,24 @@ function loadBacklogLoja(silencioso){
   if(!silencioso && !BL_LOADED){ box.innerHTML = loaderHtml("Carregando backlog de sellers e PUDOs…"); document.getElementById("bl-conteudo").style.display = "none"; }
   if(BL_PEND) return BL_PEND;
   const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-  BL_PEND = fetchViaIframe(API_URL + sep + "tipo=backlogloja", 120000).then(json=>{
+  const dataPedida = BL_DATA;
+  const promessa = (dataPedida && BL_FOTOS[dataPedida]) ? Promise.resolve(BL_FOTOS[dataPedida])
+    : fetchViaIframe(API_URL + sep + "tipo=backlogloja" + (dataPedida ? "&data=" + encodeURIComponent(dataPedida) : ""), 120000);
+  BL_PEND = promessa.then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(dataPedida) BL_FOTOS[dataPedida] = json;
+    if(Array.isArray(json && json.dias)) BL_DIAS = json.dias.slice().sort().reverse();
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o BacklogLoja.gs e a rota ?tipo=backlogloja do webapp.gs foram publicados");
     const num = new Set(json.num || []);
     BL_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
-    BL_META = { planilha: json.atualizadoPlanilha || "", em: json.atualizadoEm || "" };
+    BL_META = { planilha: json.atualizadoPlanilha || "", em: json.atualizadoEm || "", foto: dataPedida, salvaEm: json.fotoSalvaEm || "" };
     BL_LOADED = true;
     box.innerHTML = "";
     document.getElementById("bl-conteudo").style.display = "";
     if(document.getElementById("sec-backlogloja").classList.contains("active")) renderBacklogLoja();
   }).catch(err=>{
     console.error("Backlog Seller & PUDO:", err);
+    if(BL_LOADED){ document.getElementById("bl-subtitle").textContent = "— ⚠ não consegui carregar (" + err.message + ")"; }
     if(!BL_LOADED && document.getElementById("sec-backlogloja").classList.contains("active")){
       box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o backlog (' + esc(err.message) + '). <a href="#" id="bl-retry">Tentar de novo</a></div>';
       const a = document.getElementById("bl-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadBacklogLoja(); };
@@ -4134,7 +4146,13 @@ function renderBacklogLoja(){
   opcoes("bl-f-station", [...new Set(BL_ROWS.filter(r=>blPassa(r,"station")).map(r=>r.station).filter(Boolean))].sort(), BL_F.station, "Todas");
   opcoes("bl-f-canal", [...new Set(BL_ROWS.map(r=>r.canal).filter(Boolean))].sort(), BL_F.canal, "Todos");
   opcoes("bl-f-mpu", [...new Set(BL_ROWS.map(r=>r.mpu||"—"))].sort(), BL_F.mpu, "Todas");
-  document.getElementById("bl-subtitle").textContent = BL_META.planilha ? "— planilha atualizada em " + BL_META.planilha : "";
+  const fmtBR = d => d ? d.slice(8,10) + "/" + d.slice(5,7) + "/" + d.slice(0,4) : "";
+  const selData = document.getElementById("bl-f-data");
+  selData.innerHTML = '<option value="">Hoje (ao vivo)</option>' + BL_DIAS.map(d=>`<option value="${d}"${d===BL_DATA?" selected":""}>${fmtBR(d)}</option>`).join("");
+  selData.value = BL_DATA;
+  document.getElementById("bl-subtitle").textContent = BL_META.foto
+    ? "— foto salva de " + fmtBR(BL_META.foto) + (BL_META.planilha ? " (planilha de " + BL_META.planilha + ")" : "")
+    : (BL_META.planilha ? "— planilha atualizada em " + BL_META.planilha : "");
 
   const lista = BL_ROWS.filter(r=>blPassa(r));
   const comBacklog = lista.filter(r=>r.total>0);
@@ -4144,8 +4162,8 @@ function renderBacklogLoja(){
   renderKpis("bl-kpis", [
     {label:"Backlog total", value:n(tot), icon:"📦", sub: n(comBacklog.length) + " lojas com backlog"},
     {label:"D2+ (mais antigo)", value:n(d2p), icon:"⏳", cls: d2p>0?"warn":"", sub: tot ? (d2p/tot*100).toFixed(1).replace(".",",") + "% do backlog" : ""},
-    {label:"Coletado hoje (D0)", value:n(blSoma(lista,"col0")), icon:"🚚", sub: n(blSoma(lista,"trips")) + " viagens concluídas"},
-    {label:"Lojas sem coleta hoje", value:n(semColeta.length), icon:"⛔", cls: semColeta.length?"crit":"", sub: n(blSoma(semColeta,"total")) + " pacotes parados"},
+    {label: BL_META.foto ? "Coletado no dia (D0)" : "Coletado hoje (D0)", value:n(blSoma(lista,"col0")), icon:"🚚", sub: n(blSoma(lista,"trips")) + " viagens concluídas"},
+    {label: BL_META.foto ? "Lojas sem coleta no dia" : "Lojas sem coleta hoje", value:n(semColeta.length), icon:"⛔", cls: semColeta.length?"crit":"", sub: n(blSoma(semColeta,"total")) + " pacotes parados"},
     {label:"On hold (D0)", value:n(blSoma(lista,"onhold")), icon:"✋", sub: n(lista.filter(r=>r.occ).length) + " lojas com ocorrência"}
   ]);
   blBarras("bl-chart-aging", [
@@ -4195,12 +4213,17 @@ function renderBacklogLojaTabela(){
   const $ = id => document.getElementById(id);
   if(!$("bl-f-sub")) return;
   const re = ()=>{ BL_EXP.lojas = false; renderBacklogLoja(); };
+  $("bl-f-data").addEventListener("change", e=>{
+    BL_DATA = e.target.value; BL_EXP.lojas = false;
+    $("bl-subtitle").textContent = "— carregando " + (BL_DATA ? "foto de " + BL_DATA.split("-").reverse().join("/") : "dados de hoje") + "…";
+    loadBacklogLoja(true);
+  });
   $("bl-f-sub").addEventListener("change", e=>{ BL_F.sub = e.target.value; BL_F.station = ""; re(); });
   $("bl-f-station").addEventListener("change", e=>{ BL_F.station = e.target.value; re(); });
   $("bl-f-canal").addEventListener("change", e=>{ BL_F.canal = e.target.value; re(); });
   $("bl-f-mpu").addEventListener("change", e=>{ BL_F.mpu = e.target.value; re(); });
   $("bl-limpar").addEventListener("click", ()=>{ Object.assign(BL_F, {sub:"", station:"", canal:"", mpu:"", seg:"todas", busca:""}); $("bl-busca").value = ""; document.querySelectorAll("#bl-seg button").forEach(b=>b.classList.toggle("active", b.dataset.v==="todas")); re(); });
-  $("bl-refresh").addEventListener("click", ()=> loadBacklogLoja(true));
+  $("bl-refresh").addEventListener("click", ()=>{ if(BL_DATA) delete BL_FOTOS[BL_DATA]; loadBacklogLoja(true); });
   $("bl-station-more").addEventListener("click", ()=>{ BL_EXP.station = !BL_EXP.station; renderBacklogLoja(); });
   $("bl-more").addEventListener("click", ()=>{ BL_EXP.lojas = !BL_EXP.lojas; renderBacklogLojaTabela(); });
   $("bl-ordem").addEventListener("change", e=>{ BL_F.ordem = e.target.value; BL_EXP.lojas = false; renderBacklogLojaTabela(); });
