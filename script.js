@@ -2464,8 +2464,9 @@ function kpiCardsPrimary(rows){
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
     {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
-    kpiCardMisScan(rows),
   ];
+  // (card Mis Scan foi para a 2ª linha, junto com risco/atrasados/perdas,
+  // para as duas linhas ficarem cheias: 6 cards em cima, 5 embaixo)
   // (card "Recebidos pós-coleta" retirado do Resumo Geral a pedido — o
   // ranking por DOP continua no card "Recebidos pós-coleta por DOP" e na aba Same Day)
 }
@@ -2532,6 +2533,7 @@ function kpiCardsSecondary(rows){
       info: CRIT_TEXTO,
       onClick: ()=>{ CRIT_ABERTO = !CRIT_ABERTO; renderAll(); }},
     {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
+    kpiCardMisScan(rows),
     {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
     {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
   ];
