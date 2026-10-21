@@ -2462,8 +2462,10 @@ function kpiCardsPrimary(rows){
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label: HIST_DIA ? "% FIFO Médio ("+fmtDiaBR(HIST_DIA)+")" : "% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
-    {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆"},
-    {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇"},
+    {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆", sub:"último dia fechado",
+      title:"Soma do outbound de todas as agências no último dia fechado (o dia de hoje ainda não tem volume na fonte)."},
+    {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇", sub:"último dia fechado",
+      title:"Soma do inbound de todas as agências no último dia fechado (o dia de hoje ainda não tem volume na fonte)."},
   ];
   // (card Mis Scan foi para a 2ª linha, junto com risco/atrasados/perdas,
   // para as duas linhas ficarem cheias: 6 cards em cima, 5 embaixo)
