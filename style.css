@@ -525,3 +525,8 @@ table.data td.num, table.data th.num { text-align:right; }
 .kpi-pop li { margin:2px 0; }
 .kpi-info:hover .kpi-pop, .kpi-info:focus .kpi-pop { display:block; }
 .crit-painel { margin:-4px 0 16px; }
+
+/* 2ª linha do Resumo: 5 cards (Risco Crítico, % Atrasados, Mis Scan, Pacotes e Valor perdido) */
+.kpi-grid-secondary { grid-template-columns: repeat(5, 1fr); }
+@media (max-width:1200px){ .kpi-grid-secondary{ grid-template-columns: repeat(3,1fr);} }
+@media (max-width:700px){ .kpi-grid-secondary{ grid-template-columns: repeat(2,1fr);} }
