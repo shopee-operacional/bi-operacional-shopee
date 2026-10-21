@@ -40,20 +40,20 @@ if(!document.querySelector(".app")){
       </div>
     </div>
     <div class="nav-group" data-group="svp">
-      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l1.5-5h13L20 10"/><path d="M4 10h16v1.5a2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg><span class="nav-group-name">SVP<small class="nav-group-sub">Agências &amp; PUDO</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l1.5-5h13L20 10"/><path d="M4 10h16v1.5a2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-5 0z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg><span class="nav-group-name">SVP<small class="nav-group-sub">Agências</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
         <div class="nav-item" data-section="desempenho"><span class="nav-txt">Desempenho por Agência</span></div>
         <div class="nav-item" data-section="detalhe"><span class="nav-txt">Detalhe da Agência</span></div>
-        <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
         <div class="nav-item" data-section="backlog"><span class="nav-txt">Análise de Backlog</span><span class="nav-badge" id="nav-backlog-badge">0</span></div>
         <div class="nav-item" data-section="notasfiscais"><span class="nav-txt">Pagamentos</span><span class="nav-badge" id="nav-nf-badge">0</span></div>
         <div class="nav-item" data-section="crm"><span class="nav-txt">CRM</span></div>
-        <div class="nav-item" data-section="historico"><span class="nav-txt">Histórico Pós-Fechamento</span></div>
+        <div class="nav-item" data-section="historico"><span class="nav-txt">Inbound Pós-Fechamento</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="fm">
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
+        <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="volume"><span class="nav-txt">Volume Coletado</span></div>
@@ -620,7 +620,7 @@ if(!document.querySelector(".app")){
 
     <!-- HISTORICO POS-FECHAMENTO -->
         <div class="section" id="sec-historico">
-      <div class="section-title">Histórico — Inbound Pós-Fechamento</div>
+      <div class="section-title">Inbound Pós-Fechamento</div>
       <div class="card">
         <div class="card-head">
           <div class="card-title">📦 Ranking — Agências</div>
