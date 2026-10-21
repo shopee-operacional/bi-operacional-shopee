@@ -1527,6 +1527,8 @@ async function loadBacklogAnalise(){
     const json = await fetchViaIframe(API_URL + sep + "tipo=backlog", 75000);
     BACKLOG_DATA = Array.isArray(json) ? json : (json.backlog || []);
     BACKLOG_LOADED = true;
+    critMontarFifo();
+    if(DATA.length) renderAll();
     populateBacklogFilters();
     renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
   } catch(err){
@@ -2467,15 +2469,68 @@ function kpiCardsPrimary(rows){
   // (card "Recebidos pós-coleta" retirado do Resumo Geral a pedido — o
   // ranking por DOP continua no card "Recebidos pós-coleta por DOP" e na aba Same Day)
 }
+// ==================== CRITICIDADE (regra combinada com a usuária) ====================
+// Agência CRÍTICA = as 3 condições juntas:
+//   1) mais de CRIT.diasSemColeta dias sem coleta (AGING SEM COLETA da BASE_TRATADA)
+//   2) backlog acima de CRIT.backlogMin pacotes (BACKLOG TOTAL (OPS))
+//   3) backlog atrasado afetando o FIFO há mais de CRIT.fifoDias dias
+//      (pacotes em D4 ou mais, somando Forward/RR/BSC da "Gestão da Rotina | PUDO")
+// Para mudar a regra, é só trocar os números abaixo.
+const CRIT = { diasSemColeta: 2, backlogMin: 30, fifoDias: 3 };
+let CRIT_FIFO = null;   // Map dopKey -> pacotes com mais de CRIT.fifoDias dias (null = ainda carregando)
+function critMontarFifo(){
+  const m = new Map();
+  (BACKLOG_DATA||[]).forEach(b=>{
+    const qtd = Object.entries(b.dias||{}).reduce((t,[k,v])=> (+k.replace("D_","")) > CRIT.fifoDias ? t + (+v||0) : t, 0);
+    if(qtd > 0){ const k = dopKey(b.dop); m.set(k, (m.get(k)||0) + qtd); }
+  });
+  CRIT_FIFO = m;
+}
+function critDiasSemColeta(d){
+  return Math.max(d.agingSemColeta||0, String(d.statusColeta||"").includes("3+") ? 3 : 0);
+}
+function critBacklog(d){ return d.backlogOps || d.backlog || 0; }
+function critFifo(d){ return CRIT_FIFO ? (CRIT_FIFO.get(dopKey(d.dop)) || 0) : 0; }
+function ehCritica(d){
+  return critDiasSemColeta(d) > CRIT.diasSemColeta && critBacklog(d) > CRIT.backlogMin && critFifo(d) > 0;
+}
+const CRIT_TEXTO = "Agência é considerada CRÍTICA quando tem as 3 condições ao mesmo tempo:"
+  + "<ul><li>mais de " + CRIT.diasSemColeta + " dias sem coleta;</li>"
+  + "<li>backlog acima de " + CRIT.backlogMin + " pacotes;</li>"
+  + "<li>backlog atrasado afetando o FIFO há mais de " + CRIT.fifoDias + " dias (pacotes em D" + (CRIT.fifoDias+1) + " ou mais).</li></ul>"
+  + "Clique no card para ver a lista.";
+let CRIT_ABERTO = false;
+function renderCritPainel(rows){
+  const grid = document.getElementById("kpi-grid-extra"); if(!grid) return;
+  let el = document.getElementById("crit-painel");
+  if(!el){ el = document.createElement("div"); el.id = "crit-painel"; el.className = "card crit-painel"; grid.insertAdjacentElement("afterend", el); }
+  if(!CRIT_ABERTO){ el.style.display = "none"; return; }
+  el.style.display = "";
+  const lista = rows.filter(ehCritica).sort((a,b)=> critFifo(b)-critFifo(a) || critDiasSemColeta(b)-critDiasSemColeta(a));
+  const n = v=> Math.round(v||0).toLocaleString("pt-BR");
+  el.innerHTML = `<div class="card-head"><div class="card-title">🔴 Agências em risco crítico (${lista.length})</div><div class="card-link" id="crit-fechar">Fechar ✕</div></div>`
+    + (!CRIT_FIFO ? '<div class="empty-state">Carregando o backlog por aging (FIFO)…</div>'
+      : !lista.length ? '<div class="empty-state">Nenhuma agência atende às 3 condições agora.</div>'
+      : `<div class="table-wrap"><table class="data"><thead><tr><th>Agência</th><th>DOP</th><th>Responsável</th><th>Dias sem coleta</th><th>Backlog</th><th>FIFO D${CRIT.fifoDias+1}+</th></tr></thead><tbody>`
+        + lista.map(d=>`<tr><td><b>${esc(d.agencia)}</b><div class="alert-sub">${esc(d.cidade)}</div></td><td class="dop-strong">${esc(d.dop)}</td><td>${esc(d.resp)}</td>`
+          + `<td><span class="badge critical"><span class="ic"></span>${critDiasSemColeta(d)} dias</span></td><td>${n(critBacklog(d))}</td><td><b style="color:var(--critical)">${n(critFifo(d))}</b> pct.</td></tr>`).join("")
+        + `</tbody></table></div>`);
+  const f = document.getElementById("crit-fechar");
+  if(f) f.onclick = ()=>{ CRIT_ABERTO = false; renderCritPainel(rows); };
+}
+
 // Cards extras — indicadores próprios deste painel operacional (risco,
 // atrasados), que não existem no painel de agências.
 function kpiCardsSecondary(rows){
-  const criticos = rows.filter(d=>riskClass(d.risco)==="critical").length;
+  const criticos = rows.filter(ehCritica).length;
   const atrasadosMedio = rows.length? rows.reduce((s,d)=>s+d.pctAtrasados,0)/rows.length : 0;
   const perdasQtdTotal = rows.reduce((s,d)=>s+d.perdasQtd,0);
   const perdasValorTotal = rows.reduce((s,d)=>s+d.perdasValor,0);
   return [
-    {label:"Agências em Risco Crítico", value: criticos, icon:"🔴", cls: criticos>0?"crit":""},
+    {label:"Agências em Risco Crítico", value: CRIT_FIFO ? criticos : "…", icon:"🔴", cls: criticos>0?"crit":"",
+      sub: CRIT_FIFO ? (CRIT_ABERTO ? "clique para fechar a lista" : "clique para ver a lista") : "carregando backlog por aging…",
+      info: CRIT_TEXTO,
+      onClick: ()=>{ CRIT_ABERTO = !CRIT_ABERTO; renderAll(); }},
     {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
     {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
     {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
@@ -2489,6 +2544,14 @@ function renderKpis(targetId, cards){
     div.className = "kpi"+(k.cls?" "+k.cls:"");
     div.innerHTML = `<div class="kpi-label">${k.icon} ${k.label}</div><div class="kpi-value">${k.value}</div>` + (k.sub ? `<div class="kpi-delta">${k.sub}</div>` : "");
     if(k.title) div.title = k.title;
+    if(k.info){
+      div.classList.add("has-info");
+      div.querySelector(".kpi-label").insertAdjacentHTML("beforeend", `<span class="kpi-info" tabindex="0" aria-label="O que é considerado">i<span class="kpi-pop">${k.info}</span></span>`);
+    }
+    if(k.onClick){
+      div.style.cursor = "pointer";
+      div.addEventListener("click", ev=>{ ev.preventDefault(); ev.stopPropagation(); k.onClick(); });
+    }
     if(k.goto){
       div.style.cursor = "pointer";
       div.title = "Clique para ver por DOP";
@@ -2500,14 +2563,15 @@ function renderKpis(targetId, cards){
 const ALERTS_PREVIEW_COUNT = 8;
 function renderAlerts(rows){
   const el = document.getElementById("alerts-list");
-  const allAlerts = rows.filter(d=> riskClass(d.risco)==="critical" || d.status.toUpperCase().includes("CRÍT"))
-    .sort((a,b)=>b.horasSemColeta-a.horasSemColeta);
+  const allAlerts = rows.filter(ehCritica)
+    .sort((a,b)=> critFifo(b)-critFifo(a) || critDiasSemColeta(b)-critDiasSemColeta(a));
   const hasMore = allAlerts.length > ALERTS_PREVIEW_COUNT;
   const alerts = expandState.alerts ? allAlerts : allAlerts.slice(0, ALERTS_PREVIEW_COUNT);
   el.innerHTML = "";
-  if(!alerts.length){ el.innerHTML = '<div class="empty-state">Nenhum alerta crítico no momento.</div>'; }
+  if(!alerts.length){ el.innerHTML = '<div class="empty-state">' + (CRIT_FIFO ? "Nenhuma agência em risco crítico no momento." : "Carregando backlog por aging (FIFO)…") + '</div>'; }
   alerts.forEach(d=>{
-    const ind = alertIndicador(d);
+    const ind = {label:"Sem coleta " + critDiasSemColeta(d) + "d · FIFO D" + (CRIT.fifoDias+1) + "+",
+      valor: Math.round(critFifo(d)).toLocaleString("pt-BR") + " de " + Math.round(critBacklog(d)).toLocaleString("pt-BR") + " pct."};
     const row = document.createElement("div");
     row.className = "alert-row";
     row.style.gridTemplateColumns = "3px 1.3fr 0.55fr 0.95fr 0.7fr";
@@ -2856,6 +2920,7 @@ function renderAll(){
   CURRENT_ROWS = rows;
   renderKpis("kpi-grid", kpiCardsPrimary(rows));
   renderKpis("kpi-grid-extra", kpiCardsSecondary(rows));
+  renderCritPainel(rows);
   renderAlerts(rows);
   // (gráficos de rosca de Risco, Status de Coleta e Cidade removidos do Resumo Geral)
   renderRankLists(rows);
@@ -5081,6 +5146,7 @@ loadData(true);
 loadSameDay();
 loadBacklogResumo();
 loadMisScan();
+loadBacklogAnalise();   // backlog por aging: usado na regra de criticidade do Resumo Geral
 // Lead Time em segundo plano, um instante depois das cargas principais (pra
 // não disputar com elas): quando a aba for aberta, já está pronto.
 setTimeout(()=>{ if(!LT_BUSCOU && !LT_PENDENTE) loadLeadTime(); }, 1500);
