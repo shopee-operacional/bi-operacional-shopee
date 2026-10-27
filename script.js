@@ -591,7 +591,7 @@ if(!document.querySelector(".app")){
               <button data-v="Partial Pickup">Partial Pickup</button>
               <button data-v="reinc">Só reincidentes</button>
             </div>
-            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-busca" placeholder="Buscar loja (DOP, Unique, Seller Group), station ou rota…"></div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-busca" placeholder="Buscar loja (DOP, Unique, Seller Group, nome), station ou rota…"></div>
           </div>
           <div class="table-wrap"><table class="data" id="ld-tab-det"></table></div>
           <div class="card-expand-btn" id="ld-det-more" style="display:none"></div>
@@ -4157,6 +4157,8 @@ function loadBacklogLoja(silencioso){
     const num = new Set(json.num || []);
     BL_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
     BL_META = { planilha: json.atualizadoPlanilha || "", em: json.atualizadoEm || "", foto: dataPedida, salvaEm: json.fotoSalvaEm || "" };
+    ldGuardarNomes();
+    if(LD_LOADED && document.getElementById("sec-loja").classList.contains("active")) renderLoja();
     BL_LOADED = true;
     box.innerHTML = "";
     document.getElementById("bl-conteudo").style.display = "";
@@ -4586,7 +4588,37 @@ function ldAplicar(json){
   document.getElementById("ld-conteudo").style.display = "";
   if(document.getElementById("sec-loja").classList.contains("active")) renderLoja();
 }
+// Nome do seller / PUDO no Desempenho por Loja. A base de visitas só traz o ID
+// ("Unique 747025308", "DOP4988"), então o nome vem de duas bases que o painel
+// já tem: a do Backlog Seller & PUDO (ID + shop Name, sellers e PUDOs) e, para
+// DOPs, a BASE_TRATADA. "Seller Group" é um grupo de várias lojas: fica sem nome.
+const LD_NOMES = {};
+function ldChaveLoja(v){
+  const s = String(v==null?"":v).trim();
+  if(/^seller\s*group/i.test(s)) return "";
+  const d = s.replace(/\D/g,"");
+  return d ? (/^dop/i.test(s) ? "DOP" + d : d) : "";
+}
+function ldGuardarNomes(){
+  (BL_ROWS||[]).forEach(r=>{ const k = ldChaveLoja(r.id); const nm = String(r.nome||"").trim(); if(k && nm && nm!=="—") LD_NOMES[k] = nm; });
+}
+let LD_NOMES_BASE = null, LD_NOMES_BASE_DE = null;
+function ldNome(loja){
+  const k = ldChaveLoja(loja); if(!k) return "";
+  if(LD_NOMES[k]) return LD_NOMES[k];
+  if(k.startsWith("DOP")){
+    if(LD_NOMES_BASE_DE !== DATA){ LD_NOMES_BASE = vcNomes(); LD_NOMES_BASE_DE = DATA; }
+    return LD_NOMES_BASE[k.slice(3)] || "";
+  }
+  return "";
+}
+function ldCelulaNome(loja){
+  const nm = ldNome(loja);
+  return nm ? `<div style="font-size:12px;font-weight:500;color:var(--text-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(nm)}">${esc(nm)}</div>` : "";
+}
 function loadLoja(silencioso){
+  // traz a base do Backlog Seller & PUDO em segundo plano, só pelos nomes das lojas
+  if(!BL_LOADED && !BL_PEND){ try{ loadBacklogLoja(true); } catch(e){} }
   const box = document.getElementById("ld-loading");
   if(!silencioso && !LD_LOADED){
     box.innerHTML = loaderHtml("Carregando desempenho por loja…");
@@ -4785,7 +4817,7 @@ function renderLojaDetalhe(detPer, diasNss){
   });
   let lojas = Object.values(porLoja).map(o=>{ o.total = o.nss + o.nsd + o.pp; o.reinc = (diasNss[o.loja] ? diasNss[o.loja].size : 0) >= 2; return o; });
   if(LD_F.det==="reinc") lojas = lojas.filter(o=>o.reinc);
-  if(q) lojas = lojas.filter(o=>[o.loja, o.station, o.sub, o.rota, o.transp].join(" ").toLowerCase().includes(q));
+  if(q) lojas = lojas.filter(o=>[o.loja, ldNome(o.loja), o.station, o.sub, o.rota, o.transp].join(" ").toLowerCase().includes(q));
   lojas.sort((a,b)=>(b.total-a.total) || (b.dias.size-a.dias.size) || b.ult.localeCompare(a.ult));
   const LIM = 50;
   const vis = LD_EXP.det ? lojas.slice(0, 2000) : lojas.slice(0, LIM);
@@ -4794,7 +4826,7 @@ function renderLojaDetalhe(detPer, diasNss){
     "<thead><tr><th>Loja</th><th>Station</th><th>Ocorrências</th><th>No Show Seller</th><th>No Show 3PL</th><th>Partial Pickup</th><th>Dias</th><th>Fora do raio</th><th>Justificativa mais comum</th><th>Última</th><th>Rota (última)</th><th>3PL</th></tr></thead><tbody>"
     + (vis.map(o=>{
         const jTop = Object.entries(o.just).sort((a,b)=>b[1]-a[1])[0];
-        return `<tr><td><b>${esc(o.loja)}</b>${o.reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias">reincidente</span>':""}</td><td>${esc(o.station)}</td><td><b>${o.total}</b></td><td>${o.nss||""}</td><td>${o.nsd||""}</td><td>${o.pp||""}</td><td>${o.dias.size}</td><td>${o.fora||""}</td><td>${jTop?esc(jTop[0]):""}</td><td>${fmtDiaBR(o.ult)}</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis" title="${esc(o.rota)}">${esc(o.rota)}</td><td>${esc(o.transp||"—")}</td></tr>`;
+        return `<tr><td><b>${esc(o.loja)}</b>${o.reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias">reincidente</span>':""}${ldCelulaNome(o.loja)}</td><td>${esc(o.station)}</td><td><b>${o.total}</b></td><td>${o.nss||""}</td><td>${o.nsd||""}</td><td>${o.pp||""}</td><td>${o.dias.size}</td><td>${o.fora||""}</td><td>${jTop?esc(jTop[0]):""}</td><td>${fmtDiaBR(o.ult)}</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis" title="${esc(o.rota)}">${esc(o.rota)}</td><td>${esc(o.transp||"—")}</td></tr>`;
       }).join("") || '<tr><td colspan="12"><div class="empty-state">Nenhuma loja com ocorrência nesse recorte.</div></td></tr>') + "</tbody>";
   const more = document.getElementById("ld-det-more");
   more.style.display = lojas.length > LIM ? "" : "none";
@@ -4843,7 +4875,7 @@ function renderLojaVisitas(diasNss){
     (!LD_F.vPerf || r.perf===LD_F.vPerf) &&
     (!LD_F.vJust || (r.just||"(sem justificativa)")===LD_F.vJust) &&
     (!LD_F.vReinc || (diasNss[r.loja] && diasNss[r.loja].size>=2)) &&
-    (!q || [r.loja, r.station, r.rota, r.transp, r.sub].join(" ").toLowerCase().includes(q))
+    (!q || [r.loja, ldNome(r.loja), r.station, r.rota, r.transp, r.sub].join(" ").toLowerCase().includes(q))
   ).sort((a,b)=> b.data.localeCompare(a.data) || a.station.localeCompare(b.station) || a.loja.localeCompare(b.loja));
   const LIM = 100;
   const vis = LD_EXP.vis ? lista.slice(0, 3000) : lista.slice(0, LIM);
@@ -4854,7 +4886,7 @@ function renderLojaVisitas(diasNss){
     + (vis.map(r=>{
         const reinc = diasNss[r.loja] && diasNss[r.loja].size>=2;
         const fora = r.raio==="Fora do raio";
-        return `<tr><td>${fmtDiaBR(r.data)}</td><td><b>${esc(r.loja)}</b>${reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias do período">reincidente</span>':""}</td><td>${esc(r.station)}</td><td><span class="badge ${perfCls(r.perf)}">${esc(r.perf||"—")}</span></td><td>${esc(r.just||"—")}</td><td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.raio||"—")}${fora && r.dist ? " (" + esc(r.dist.replace(".",",")) + " km)" : ""}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(r.transp||"—")}</td><td>${r.hora!=="" ? esc(r.hora)+"h" : ""}</td></tr>`;
+        return `<tr><td>${fmtDiaBR(r.data)}</td><td><b>${esc(r.loja)}</b>${reinc?' <span class="badge critical" title="No Show Seller em 2 ou mais dias do período">reincidente</span>':""}${ldCelulaNome(r.loja)}</td><td>${esc(r.station)}</td><td><span class="badge ${perfCls(r.perf)}">${esc(r.perf||"—")}</span></td><td>${esc(r.just||"—")}</td><td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.raio||"—")}${fora && r.dist ? " (" + esc(r.dist.replace(".",",")) + " km)" : ""}</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota)}</td><td>${esc(r.transp||"—")}</td><td>${r.hora!=="" ? esc(r.hora)+"h" : ""}</td></tr>`;
       }).join("") || '<tr><td colspan="9"><div class="empty-state">Nenhuma visita nesse recorte.</div></td></tr>') + "</tbody>";
   const more = document.getElementById("ld-vis-more");
   more.style.display = lista.length > LIM ? "" : "none";
