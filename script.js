@@ -57,6 +57,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="volume"><span class="nav-txt">Volume Coletado</span></div>
+        <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
         <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
         <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
       </div>
@@ -466,6 +467,46 @@ if(!document.querySelector(".app")){
           <div class="sd-hint" id="vc-lojas-aviso" style="margin-bottom:8px"></div>
           <div class="table-wrap"><table class="data" id="vc-tab-lojas"></table></div>
           <div class="card-expand-btn" id="vc-lojas-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORECAST x COLETADO -->
+    <div class="section" id="sec-forecast">
+      <div class="section-title">Forecast x Coletado <span class="sd-sub" id="fc-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="fc-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="fc-f-fim"></div>
+        <div class="sd-seg" id="fc-periodo">
+          <button data-p="ontem">Último dia</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="30d">30 dias</button>
+          <button data-p="mes">Mês atual</button>
+          <button data-p="hoje">Hoje (parcial)</button>
+          <button data-p="prox">Próximos 7 dias</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="fc-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="fc-f-station"></select></div>
+        <button class="theme-btn" id="fc-limpar">Limpar filtros</button>
+      </div>
+      <div id="fc-loading"></div>
+      <div id="fc-conteudo" style="display:none">
+        <div class="kpi-grid" id="fc-kpis"></div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Coletado x Forecast por dia</div><div class="sd-hint">barra = coletado (vermelha abaixo de 90%) · traço = forecast</div></div>
+          <div id="fc-chart-trend" class="sd-trend"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Por Sub-regional</div><div class="sd-hint">clique para filtrar · dentro do previsto: 90% a 110%</div></div>
+          <div class="table-wrap"><table class="data" id="fc-tab-sub"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Por Station</div><div class="losses-total" id="fc-st-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="filter"><label>Ordenar por</label><select id="fc-ordem"><option value="pior">Pior aderência</option><option value="melhor">Maior aderência</option><option value="dif">Maior falta (pacotes)</option><option value="volume">Maior forecast</option></select></div>
+          </div>
+          <div class="table-wrap"><table class="data" id="fc-tab-st"></table></div>
+          <div class="card-expand-btn" id="fc-st-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -2957,7 +2998,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -2982,6 +3023,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
+    if(item.dataset.section === "forecast"){ if(!FC_LOADED) loadForecast(); else renderForecast(); }
   });
 });
 document.querySelectorAll("[data-goto]").forEach(el=>{
@@ -5229,3 +5271,196 @@ setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda 
 // muda a cada 15 min; buscar a cada 5 garante pegar a leitura nova logo.
 setInterval(()=>{ if(NF_LOADED) loadNotasFiscais(true); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadSameDay(), 30 * 60 * 1000); // base de Same Day muda pouco ao longo do dia
+
+// ==================== FORECAST x COLETADO ====================
+// ?tipo=forecast (Forecast.gs) — planilha "Forecast_reg4", aba "raw".
+// Uma linha por dia/station: forecast (planejado) e coletado ("total pickup";
+// no dia de hoje é parcial). Aderência = coletado ÷ forecast.
+// Faixas: abaixo de 90% = vermelho, 90% a 110% = dentro, acima de 110% = acima do previsto.
+let FC = null, FC_LOADED = false, FC_PEND = null;
+const FC_F = { ini:"", fim:"", sub:"", station:"", ordem:"pior" };
+const FC_EXP = { st:false };
+const FC_LIM_ST = 25, FC_FAIXA = { baixo:0.90, alto:1.10 };
+function fcAdd(iso, n){ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); }
+function fcHoje(){ return (FC && FC.hoje) || histHoje(); }
+function fcPct(c, f){ return f ? c/f : null; }
+function fcPctTxt(v){ return v==null ? "—" : (v*100).toFixed(1).replace(".",",") + "%"; }
+function fcCls(v){ return v==null ? "" : v < FC_FAIXA.baixo ? "critical" : v > FC_FAIXA.alto ? "warning" : "good"; }
+function fcDifTxt(d){ return (d>0?"+":d<0?"−":"") + sdNum(Math.abs(d)); }
+function loadForecast(silencioso){
+  const box = document.getElementById("fc-loading");
+  if(!silencioso && !FC_LOADED){ box.innerHTML = loaderHtml("Carregando forecast x coletado…"); document.getElementById("fc-conteudo").style.display = "none"; }
+  if(FC_PEND) return FC_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  FC_PEND = fetchViaIframe(API_URL + sep + "tipo=forecast", 90000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Forecast.gs e a rota ?tipo=forecast do webapp.gs foram publicados");
+    FC = { hoje: json.hoje, em: json.atualizadoEm, rows: json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>o[c]=l[j]); o.fc = +o.fc||0; o.col = +o.col||0; return o; }) };
+    if(!FC_F.ini) fcPreset("ontem");
+    FC_LOADED = true;
+    box.innerHTML = "";
+    document.getElementById("fc-conteudo").style.display = "";
+    if(document.getElementById("sec-forecast").classList.contains("active")) renderForecast();
+  }).catch(err=>{
+    console.error("Forecast x Coletado:", err);
+    if(!FC_LOADED){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o forecast (' + esc(err.message) + '). <a href="#" id="fc-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("fc-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadForecast(); };
+    }
+  }).finally(()=>{ FC_PEND = null; });
+  return FC_PEND;
+}
+// último dia fechado = o dia antes de hoje que já tem coletado
+function fcUltimoFechado(){
+  const hoje = fcHoje();
+  const dias = [...new Set(FC.rows.filter(r=>r.dia<hoje && r.col>0).map(r=>r.dia))].sort();
+  return dias[dias.length-1] || fcAdd(hoje,-1);
+}
+function fcPreset(p){
+  const ult = fcUltimoFechado(), hoje = fcHoje();
+  if(p==="ontem"){ FC_F.ini = ult; FC_F.fim = ult; }
+  else if(p==="hoje"){ FC_F.ini = hoje; FC_F.fim = hoje; }
+  else if(p==="7d"){ FC_F.ini = fcAdd(ult,-6); FC_F.fim = ult; }
+  else if(p==="30d"){ FC_F.ini = fcAdd(ult,-29); FC_F.fim = ult; }
+  else if(p==="mes"){ FC_F.ini = ult.slice(0,8) + "01"; FC_F.fim = ult; }
+  else if(p==="prox"){ FC_F.ini = hoje; FC_F.fim = fcAdd(hoje,6); }
+}
+function fcPresetAtual(){
+  for(const p of ["ontem","hoje","7d","30d","mes","prox"]){
+    const s = {ini:FC_F.ini, fim:FC_F.fim}; fcPreset(p);
+    const igual = FC_F.ini===s.ini && FC_F.fim===s.fim; FC_F.ini = s.ini; FC_F.fim = s.fim;
+    if(igual) return p;
+  }
+  return "";
+}
+function fcPassa(r, ignorar, semPeriodo){
+  return (semPeriodo || (r.dia>=FC_F.ini && r.dia<=FC_F.fim))
+    && (ignorar==="sub" || !FC_F.sub || r.sub===FC_F.sub)
+    && (ignorar==="station" || !FC_F.station || r.station===FC_F.station);
+}
+function fcSomar(lista, chave){
+  const m = {};
+  lista.forEach(r=>{ const k = chave(r); const o = m[k] || (m[k] = {label:k, fc:0, col:0, sub:r.sub}); o.fc += r.fc; o.col += r.col; });
+  return Object.values(m).map(o=>{ o.dif = o.col - o.fc; o.ad = fcPct(o.col, o.fc); return o; });
+}
+function renderForecast(){
+  if(!FC) return;
+  const hoje = fcHoje();
+  const opcoes = (id, valores, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("fc-f-sub", [...new Set(FC.rows.map(r=>r.sub).filter(Boolean))].sort(), FC_F.sub, "Todas");
+  opcoes("fc-f-station", [...new Set(FC.rows.filter(r=>fcPassa(r,"station",true)).map(r=>r.station))].sort(), FC_F.station, "Todas");
+  document.getElementById("fc-f-ini").value = FC_F.ini;
+  document.getElementById("fc-f-fim").value = FC_F.fim;
+  const pa = fcPresetAtual();
+  document.querySelectorAll("#fc-periodo button").forEach(b=>b.classList.toggle("active", b.dataset.p===pa));
+
+  const nDias = Math.round((Date.parse(FC_F.fim) - Date.parse(FC_F.ini))/864e5) + 1;
+  const per = FC_F.ini===FC_F.fim ? histRotuloDia(FC_F.ini) : fmtDiaBR(FC_F.ini) + " a " + fmtDiaBR(FC_F.fim) + " (" + nDias + " dias)";
+  const temHoje = FC_F.ini<=hoje && FC_F.fim>=hoje, temFuturo = FC_F.fim>hoje;
+  document.getElementById("fc-subtitle").textContent = "— " + per + (temHoje ? " · hoje ainda em andamento" : "") + (temFuturo ? " · dias futuros só têm forecast" : "");
+
+  // aderência compara só dias fechados (hoje é parcial e o futuro não tem coletado);
+  // se o período for só hoje, mostra hoje (parcial)
+  const lista = FC.rows.filter(r=>fcPassa(r));
+  const fechados = lista.filter(r=>r.dia<hoje);
+  const soHoje = !fechados.length;
+  const real = soHoje ? lista.filter(r=>r.dia===hoje) : fechados;
+  const fcT = real.reduce((s,r)=>s+r.fc,0), colT = real.reduce((s,r)=>s+r.col,0);
+  const ad = fcPct(colT, fcT);
+  const sts = fcSomar(real, r=>r.station).filter(o=>o.fc>0);
+  const abaixo = sts.filter(o=>o.ad < FC_FAIXA.baixo), acima = sts.filter(o=>o.ad > FC_FAIXA.alto);
+  const fcFut = lista.filter(r=>r.dia>hoje).reduce((s,r)=>s+r.fc,0);
+  const n = sdNum;
+  renderKpis("fc-kpis", [
+    {label:"Forecast", value:n(fcT), icon:"🎯", sub: temFuturo && fcFut ? "+ " + n(fcFut) + " previstos nos próximos dias" : "planejado no período"},
+    {label:"Coletado", value:n(colT), icon:"🚚", sub: soHoje && temHoje ? "hoje até agora (parcial)" : temHoje ? "dias fechados (hoje fica de fora)" : "realizado no período"},
+    {label:"Diferença", value:fcDifTxt(colT - fcT), icon:"↕", cls: colT < fcT*FC_FAIXA.baixo ? "crit" : "", sub: fcT ? (colT>=fcT?"+":"−") + Math.abs((colT/fcT-1)*100).toFixed(1).replace(".",",") + "% vs forecast" : ""},
+    {label:"% Aderência", value:fcPctTxt(ad), icon:"📊", cls: ad!=null && ad < FC_FAIXA.baixo ? "crit" : ad!=null && ad > FC_FAIXA.alto ? "warn" : "", sub:"coletado ÷ forecast",
+      info:"Coletado ÷ forecast no período. Dentro do previsto: entre 90% e 110%."},
+    {label:"Stations abaixo de 90%", value:n(abaixo.length), icon:"🔻", cls: abaixo.length ? "crit" : "", sub: n(sts.length) + " stations com forecast"},
+    {label:"Stations acima de 110%", value:n(acima.length), icon:"🔺", cls: acima.length ? "warn" : "", sub:"coletaram mais que o previsto"}
+  ]);
+  fcTrend();
+  fcTabSub(real);
+  fcTabStation(sts);
+}
+// barras = coletado por dia; traço = forecast. Mostra pelo menos 14 dias.
+function fcTrend(){
+  const el = document.getElementById("fc-chart-trend"); if(!el || !FC) return;
+  const hoje = fcHoje();
+  const ini = [fcAdd(FC_F.fim, -13), FC_F.ini].sort()[0];
+  const porDia = {};
+  FC.rows.forEach(r=>{ if(r.dia>=ini && r.dia<=FC_F.fim && fcPassa(r, null, true)){ const o = porDia[r.dia] || (porDia[r.dia] = {fc:0, col:0}); o.fc += r.fc; o.col += r.col; } });
+  const dias = []; for(let d=ini; d<=FC_F.fim; d=fcAdd(d,1)) dias.push(d);
+  const pts = dias.map(d=>porDia[d] || {fc:0, col:0});
+  if(!pts.some(p=>p.fc||p.col)){ el.innerHTML = '<div class="empty-state">Sem dados para esse filtro.</div>'; return; }
+  const W = Math.max(320, el.clientWidth || 600), H = el.clientHeight || 220;
+  const m = {l:52, r:10, t:16, b:26}, iw = W-m.l-m.r, ih = H-m.t-m.b;
+  const max = Math.max(...pts.map(p=>Math.max(p.fc,p.col))) * 1.1 || 1;
+  const bw = iw / dias.length, gap = Math.min(6, bw*0.3);
+  const y = v => m.t + ih - v/max*ih;
+  const fmtK = v => v>=1e6 ? (v/1e6).toFixed(1).replace(".",",")+"M" : v>=1e3 ? Math.round(v/1e3)+"k" : String(Math.round(v));
+  const ticks = [0, max/1.1/2, max/1.1].map(Math.round);
+  const passoX = Math.ceil(dias.length/10);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Coletado x forecast por dia">
+    ${ticks.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${fmtK(v)}</text>`).join("")}
+    ${dias.map((d,i)=>{
+      const p = pts[i], noPer = d>=FC_F.ini && d<=FC_F.fim, x = m.l+i*bw+gap/2, w = Math.max(1,bw-gap);
+      const a = fcPct(p.col, p.fc), cor = d>hoje ? "transparent" : a!=null && a < FC_FAIXA.baixo ? "var(--critical)" : "var(--brand)";
+      const op = d===hoje ? 0.45 : (noPer ? 1 : 0.35);
+      return `<rect class="fc-col" data-i="${i}" x="${x.toFixed(1)}" y="${y(p.col).toFixed(1)}" width="${w.toFixed(1)}" height="${(m.t+ih-y(p.col)).toFixed(1)}" rx="2" fill="${cor}" opacity="${op}"/>`
+        + (p.fc ? `<line x1="${(x-1).toFixed(1)}" x2="${(x+w+1).toFixed(1)}" y1="${y(p.fc).toFixed(1)}" y2="${y(p.fc).toFixed(1)}" stroke="var(--text-primary)" stroke-width="2.5" stroke-linecap="round" opacity="${noPer?0.85:0.4}" pointer-events="none"/>` : "")
+        + ((i%passoX===0 || i===dias.length-1) ? `<text x="${(x+w/2).toFixed(1)}" y="${H-6}" text-anchor="middle">${fmtDiaBR(d)}</text>` : "");
+    }).join("")}
+  </svg>`;
+  el.querySelectorAll(".fc-col").forEach(c=>{
+    const i = +c.dataset.i, d = dias[i], p = pts[i], a = fcPct(p.col, p.fc);
+    c.style.cursor = "pointer";
+    c.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(histRotuloDia(d))}${d===hoje?" (parcial)":d>hoje?" (previsto)":""}</div>`
+      + `<div class="r">Forecast <b>${sdNum(p.fc)}</b></div>` + (d<=hoje ? `<div class="r">Coletado <b>${sdNum(p.col)}</b></div><div class="r">Aderência <b>${fcPctTxt(a)}</b> (${fcDifTxt(p.col-p.fc)})</div>` : "")
+      + `<div class="r" style="opacity:.7">clique para ver só esse dia</div>`, ev));
+    c.addEventListener("mouseleave", ()=> sdTip(null));
+    c.addEventListener("click", ()=>{ sdTip(null); FC_F.ini = d; FC_F.fim = d; renderForecast(); });
+  });
+}
+function fcLinha(o, extra){
+  const cls = fcCls(o.ad);
+  return `<td>${sdNum(o.fc)}</td><td>${sdNum(o.col)}</td><td style="color:${o.dif<0?"var(--critical)":"var(--success-text)"};font-weight:600">${fcDifTxt(o.dif)}</td><td>${cls?`<span class="badge ${cls}">${fcPctTxt(o.ad)}</span>`:"—"}</td>${extra||""}`;
+}
+function fcTabSub(real){
+  // mesmos dias comparados nos cards, mas com todas as sub-regionais (o clique filtra)
+  const dias = new Set(real.map(r=>r.dia));
+  const base = FC.rows.filter(r=>dias.has(r.dia) && fcPassa(r,"sub"));
+  const subs = fcSomar(base, r=>r.sub || "—").filter(o=>o.fc>0).sort((a,b)=>a.ad-b.ad);
+  const tot = fcSomar(base, ()=> "Total")[0];
+  document.getElementById("fc-tab-sub").innerHTML = "<thead><tr><th>Sub-regional</th><th>Forecast</th><th>Coletado</th><th>Diferença</th><th>% Aderência</th></tr></thead><tbody>"
+    + (subs.map(o=>`<tr data-sub="${esc(o.label)}" style="cursor:pointer"${o.label===FC_F.sub?' class="row-selected"':""}><td><b>${esc(o.label)}</b></td>${fcLinha(o)}</tr>`).join("") || '<tr><td colspan="5"><div class="empty-state">Sem forecast nesse recorte.</div></td></tr>')
+    + (tot && subs.length > 1 ? `<tr style="border-top:2px solid var(--border)"><td><b>Total</b></td>${fcLinha(tot)}</tr>` : "") + "</tbody>";
+  document.querySelectorAll("#fc-tab-sub tr[data-sub]").forEach(tr=> tr.onclick = ()=>{ FC_F.sub = FC_F.sub===tr.dataset.sub ? "" : tr.dataset.sub; FC_F.station = ""; FC_EXP.st = false; renderForecast(); });
+}
+function fcTabStation(sts){
+  const ord = { pior:(a,b)=>a.ad-b.ad, melhor:(a,b)=>b.ad-a.ad, dif:(a,b)=>a.dif-b.dif, volume:(a,b)=>b.fc-a.fc }[FC_F.ordem] || ((a,b)=>a.ad-b.ad);
+  const lista = sts.slice().sort(ord);
+  const vis = FC_EXP.st ? lista : lista.slice(0, FC_LIM_ST);
+  document.getElementById("fc-st-total").innerHTML = `<b>${lista.length}</b> stations`;
+  document.getElementById("fc-tab-st").innerHTML = "<thead><tr><th>Station</th><th>Sub-regional</th><th>Forecast</th><th>Coletado</th><th>Diferença</th><th>% Aderência</th></tr></thead><tbody>"
+    + (vis.map(o=>`<tr data-st="${esc(o.label)}" style="cursor:pointer"${o.label===FC_F.station?' class="row-selected"':""}><td><b>${esc(o.label)}</b></td><td>${esc(o.sub||"")}</td>${fcLinha(o)}</tr>`).join("") || '<tr><td colspan="6"><div class="empty-state">Sem forecast nesse recorte.</div></td></tr>') + "</tbody>";
+  document.querySelectorAll("#fc-tab-st tr[data-st]").forEach(tr=> tr.onclick = ()=>{ FC_F.station = FC_F.station===tr.dataset.st ? "" : tr.dataset.st; renderForecast(); });
+  const more = document.getElementById("fc-st-more");
+  more.style.display = lista.length > FC_LIM_ST ? "" : "none";
+  more.textContent = FC_EXP.st ? "− Mostrar só as " + FC_LIM_ST + " primeiras" : "+ Ver todas as " + lista.length + " stations";
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("fc-periodo")) return;
+  $("fc-periodo").addEventListener("click", e=>{ const b = e.target.closest("button"); if(!b || !FC) return; fcPreset(b.dataset.p); renderForecast(); });
+  $("fc-f-ini").addEventListener("change", e=>{ if(!e.target.value) return; FC_F.ini = e.target.value; if(FC_F.fim < FC_F.ini) FC_F.fim = FC_F.ini; renderForecast(); });
+  $("fc-f-fim").addEventListener("change", e=>{ if(!e.target.value) return; FC_F.fim = e.target.value; if(FC_F.ini > FC_F.fim) FC_F.ini = FC_F.fim; renderForecast(); });
+  $("fc-f-sub").addEventListener("change", e=>{ FC_F.sub = e.target.value; FC_F.station = ""; FC_EXP.st = false; renderForecast(); });
+  $("fc-f-station").addEventListener("change", e=>{ FC_F.station = e.target.value; renderForecast(); });
+  $("fc-ordem").addEventListener("change", e=>{ FC_F.ordem = e.target.value; renderForecast(); });
+  $("fc-limpar").addEventListener("click", ()=>{ FC_F.sub = ""; FC_F.station = ""; FC_EXP.st = false; if(FC) fcPreset("ontem"); renderForecast(); });
+  $("fc-st-more").addEventListener("click", ()=>{ FC_EXP.st = !FC_EXP.st; renderForecast(); });
+  window.addEventListener("resize", ()=>{ if(FC_LOADED && $("sec-forecast").classList.contains("active")) fcTrend(); });
+})();
+setInterval(()=>{ if(FC_LOADED) loadForecast(true); }, 30 * 60 * 1000);
