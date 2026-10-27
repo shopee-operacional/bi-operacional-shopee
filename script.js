@@ -112,7 +112,7 @@ if(!document.querySelector(".app")){
 
     <!-- RESUMO GERAL -->
     <div class="section active" id="sec-resumo">
-      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="kpi-grid kpi-grid-secondary" style="margin-bottom:12px" id="kpi-grid"></div>
       <div class="kpi-grid kpi-grid-secondary" id="kpi-grid-extra"></div>
 
       <div class="grid2">
@@ -2455,18 +2455,13 @@ function kpiCardsPrimary(rows){
   const sdHojeMedio = SD_MAP ? sameDayPonderado(rows,"dia")
     : (rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0);
   const sdLabelDia = SD_MAP && SD_INFO && SD_INFO.refDia ? "% Same Day ("+fmtDiaBR(SD_INFO.refDia)+")" : "% Same Day Médio (hoje)";
-  const volOutbound = rows.reduce((s,d)=>s+d.outbound,0);
-  const volInbound = rows.reduce((s,d)=>s+d.inbound,0);
   return [
     kpiCardBacklog(rows),
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label: HIST_DIA ? "% FIFO Médio ("+fmtDiaBR(HIST_DIA)+")" : "% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
-    {label:"Volume Outbound", value: volOutbound.toLocaleString("pt-BR"), icon:"⬆", sub:"último dia fechado",
-      title:"Soma do outbound de todas as agências no último dia fechado (o dia de hoje ainda não tem volume na fonte)."},
-    {label:"Volume Inbound", value: volInbound.toLocaleString("pt-BR"), icon:"⬇", sub:"último dia fechado",
-      title:"Soma do inbound de todas as agências no último dia fechado (o dia de hoje ainda não tem volume na fonte)."},
   ];
+  // (cards "Volume Outbound" e "Volume Inbound" retirados do Resumo Geral a pedido)
   // (card Mis Scan foi para a 2ª linha, junto com risco/atrasados/perdas,
   // para as duas linhas ficarem cheias: 6 cards em cima, 5 embaixo)
   // (card "Recebidos pós-coleta" retirado do Resumo Geral a pedido — o
