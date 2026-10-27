@@ -555,7 +555,7 @@ if(!document.querySelector(".app")){
             </div>
             <div class="filter"><label>Justificativa</label><select id="ld-vis-just"></select></div>
             <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-secondary); cursor:pointer;"><input type="checkbox" id="ld-vis-reinc"> Só reincidentes</label>
-            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-vis-busca" placeholder="Buscar Shop ID (DOP, Unique, Seller Group), station ou rota…"></div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="ld-vis-busca" placeholder="Buscar Shop ID (DOP, Unique, Seller Group), nome, station ou rota…"></div>
           </div>
           <div class="alert-sub" id="ld-vis-nota" style="display:none; margin:-4px 0 8px;"></div>
           <div class="table-wrap" style="max-height:460px; overflow:auto;"><table class="data" id="ld-tab-vis"></table></div>
@@ -751,10 +751,22 @@ function populateFilters(){
   populateSelect("f-risco", uniq("risco"));
   const campos = { resp:"resp", subreg:"subreg", cidade:"cidade", estacao:"estacao", statuscoleta:"statusColeta", risco:"risco" };
   FILTROS_TOPO.forEach(k=>{
-    const valores = uniq(campos[k]);
+    const valores = k==="estacao" ? estacoesDaSub() : uniq(campos[k]);
     filters[k] = filters[k].filter(v=>valores.includes(v)); // tira o que não existe mais
     msRender(k, valores);
   });
+}
+// Estações que aparecem no filtro: só as das sub-regionais marcadas
+// (nenhuma marcada = todas). Ao trocar a sub-regional, tira da seleção
+// as estações que não são dela.
+function estacoesDaSub(){
+  const subs = filters.subreg || [];
+  return [...new Set(DATA.filter(d=>!subs.length || subs.includes(d.subreg)).map(d=>d.estacao).filter(v=>v && v!=="—"))].sort();
+}
+function atualizarEstacoesPelaSub(){
+  const valores = estacoesDaSub();
+  filters.estacao = filters.estacao.filter(v=>valores.includes(v));
+  msRender("estacao", valores);
 }
 // ---------- Filtro com seleção múltipla (caixinhas) ----------
 // Substitui visualmente cada <select id="f-..."> por um botão que abre uma
@@ -792,6 +804,7 @@ function msRender(k, valores){
     <div class="ms-lista">${valores.map(v=>`<label class="ms-op"><input type="checkbox" value="${esc(v)}" ${filters[k].includes(v)?"checked":""}><span>${esc(v)}</span></label>`).join("")}</div>`;
   painel.querySelectorAll(".ms-op input").forEach(cb=> cb.addEventListener("change", ()=>{
     filters[k] = [...painel.querySelectorAll(".ms-op input:checked")].map(c=>c.value);
+    if(k==="subreg") atualizarEstacoesPelaSub();
     msAtualizar(k); renderAll();
   }));
   painel.querySelectorAll(".ms-acoes a").forEach(a=> a.addEventListener("click", ()=>{
@@ -799,6 +812,7 @@ function msRender(k, valores){
     const vis = [...painel.querySelectorAll(".ms-op")].filter(o=>o.style.display!=="none").map(o=>o.querySelector("input"));
     if(a.dataset.a==="todos") vis.forEach(c=>c.checked=true); else painel.querySelectorAll(".ms-op input").forEach(c=>c.checked=false);
     filters[k] = [...painel.querySelectorAll(".ms-op input:checked")].map(c=>c.value);
+    if(k==="subreg") atualizarEstacoesPelaSub();
     msAtualizar(k); renderAll();
   }));
   const b = painel.querySelector(".ms-busca");
@@ -4882,7 +4896,7 @@ function renderLojaVisitas(diasNss){
   document.getElementById("ld-vis-total").innerHTML = `<b>${lista.length.toLocaleString("pt-BR")}</b> ${lista.length===1?"visita":"visitas"}`;
   const perfCls = p => p==="Full Pickup" ? "good" : p==="No Show Seller" ? "critical" : (p==="No Show 3PL" || p==="Partial Pickup") ? "warning" : "";
   document.getElementById("ld-tab-vis").innerHTML =
-    '<thead style="position:sticky; top:0; background:var(--surface); z-index:1"><tr><th>Data</th><th>Shop ID</th><th>Station</th><th>Performance</th><th>Justificativa</th><th>Raio</th><th>Rota</th><th>Transportadora</th><th>Hora</th></tr></thead><tbody>'
+    '<thead><tr><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Data</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Shop ID</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Station</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Performance</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Justificativa</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Raio</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Rota</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Transportadora</th><th style="position:sticky; top:0; z-index:2; background:var(--surface-1); box-shadow:0 1px 0 var(--border)">Hora</th></tr></thead><tbody>'
     + (vis.map(r=>{
         const reinc = diasNss[r.loja] && diasNss[r.loja].size>=2;
         const fora = r.raio==="Fora do raio";
