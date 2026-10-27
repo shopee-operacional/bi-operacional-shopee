@@ -4203,6 +4203,21 @@ function blBarras(elId, grupos, sel, onClick){
     if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
   });
 }
+// Coletado (D0) separado por canal (Seller / PUDO), um card para cada canal da
+// coluna "canal" da base. Com o filtro Canal escolhido, aparece só o card dele.
+// Se a base não tiver canal, volta a mostrar um card só com o total.
+function blCardsColeta(lista){
+  const n = sdNum, dia = BL_META.foto ? "no dia" : "hoje";
+  const canais = [...new Set(lista.map(r=>r.canal).filter(Boolean))]
+    .sort((x,y)=> (/seller/i.test(y)-/seller/i.test(x)) || x.localeCompare(y));
+  if(!canais.length) return [{label:"Coletado " + dia + " (D0)", value:n(blSoma(lista,"col0")), icon:"🚚", sub: n(blSoma(lista,"trips")) + " viagens concluídas"}];
+  return canais.map(c=>{
+    const doCanal = lista.filter(r=>r.canal===c);
+    return {label:"Coletado " + c + " " + dia + " (D0)", value:n(blSoma(doCanal,"col0")), icon: /pudo/i.test(c) ? "🏬" : "🚚",
+      sub: n(blSoma(doCanal,"trips")) + " viagens · " + n(doCanal.filter(r=>r.col0>0).length) + " lojas coletadas",
+      title:"Pacotes coletados (D0) nas lojas do canal " + c + ", com os filtros aplicados."};
+  });
+}
 function renderBacklogLoja(){
   if(!BL_LOADED) return;
   const opcoes = (id, valores, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
@@ -4226,7 +4241,7 @@ function renderBacklogLoja(){
   renderKpis("bl-kpis", [
     {label:"Backlog total", value:n(tot), icon:"📦", sub: n(comBacklog.length) + " lojas com backlog"},
     {label:"D2+ (mais antigo)", value:n(d2p), icon:"⏳", cls: d2p>0?"warn":"", sub: tot ? (d2p/tot*100).toFixed(1).replace(".",",") + "% do backlog" : ""},
-    {label: BL_META.foto ? "Coletado no dia (D0)" : "Coletado hoje (D0)", value:n(blSoma(lista,"col0")), icon:"🚚", sub: n(blSoma(lista,"trips")) + " viagens concluídas"},
+    ...blCardsColeta(lista),
     {label: BL_META.foto ? "Lojas sem coleta no dia" : "Lojas sem coleta hoje", value:n(semColeta.length), icon:"⛔", cls: semColeta.length?"crit":"", sub: n(blSoma(semColeta,"total")) + " pacotes parados"},
     {label:"On hold (D0)", value:n(blSoma(lista,"onhold")), icon:"✋", sub: n(lista.filter(r=>r.occ).length) + " lojas com ocorrência"}
   ]);
