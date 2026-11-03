@@ -2515,12 +2515,32 @@ function kpiCardsPrimary(rows){
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
     {label: HIST_DIA ? "% FIFO Médio ("+fmtDiaBR(HIST_DIA)+")" : "% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
+    kpiCardForecast(),
   ];
   // (cards "Volume Outbound" e "Volume Inbound" retirados do Resumo Geral a pedido)
   // (card Mis Scan foi para a 2ª linha, junto com risco/atrasados/perdas,
   // para as duas linhas ficarem cheias: 6 cards em cima, 5 embaixo)
   // (card "Recebidos pós-coleta" retirado do Resumo Geral a pedido — o
   // ranking por DOP continua no card "Recebidos pós-coleta por DOP" e na aba Same Day)
+}
+// Card "Forecast x Coletado" do Resumo Geral: último dia fechado, mesma conta da
+// aba Forecast x Coletado. Respeita o filtro Sub-Regional do topo.
+function kpiCardForecast(){
+  // (FC é declarado mais abaixo no arquivo; se o Resumo desenhar antes, cai aqui)
+  try{ void FC; }catch(e){ return {label:"Forecast x Coletado", value:"…", icon:"🎯", sub:"carregando…"}; }
+  if(!FC || !FC.rows || !FC.rows.length) return {label:"Forecast x Coletado", value:"…", icon:"🎯", sub:"carregando…"};
+  const dia = fcUltimoFechado();
+  const subs = (filters.subreg || []).filter(x=> FC.rows.some(r=>r.sub===x));
+  const lista = FC.rows.filter(r=> r.dia===dia && (!subs.length || subs.includes(r.sub)));
+  const fc = lista.reduce((t,r)=>t+r.fc,0), col = lista.reduce((t,r)=>t+r.col,0);
+  const ad = fcPct(col, fc);
+  return {
+    label: "Forecast x Coletado (" + fmtDiaBR(dia) + ")",
+    value: fcPctTxt(ad), icon:"🎯",
+    cls: ad==null ? "" : ad < FC_FAIXA.baixo ? "crit" : ad > FC_FAIXA.alto ? "warn" : "",
+    sub: "coletado " + sdNum(col) + " de " + sdNum(fc) + " previstos" + (subs.length ? " · " + subs.join(", ") : ""),
+    onClick: ()=>{ const it = document.querySelector('.nav-item[data-section="forecast"]'); if(it) it.click(); }
+  };
 }
 // ==================== CRITICIDADE (regra combinada com a usuária) ====================
 // Agência CRÍTICA = as 3 condições juntas:
@@ -5367,6 +5387,7 @@ function fcAplicar(json){
   document.getElementById("fc-loading").innerHTML = "";
   document.getElementById("fc-conteudo").style.display = "";
   if(document.getElementById("sec-forecast").classList.contains("active")) renderForecast();
+  try{ if(typeof DATA !== "undefined" && DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){}
 }
 async function fcCacheCarregar(){
   const c = await fcCacheLer();
