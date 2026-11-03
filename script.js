@@ -48,15 +48,14 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="notasfiscais"><span class="nav-txt">Pagamentos</span><span class="nav-badge" id="nav-nf-badge">0</span></div>
         <div class="nav-item" data-section="crm"><span class="nav-txt">CRM</span></div>
         <div class="nav-item" data-section="historico"><span class="nav-txt">Inbound Pós-Fechamento</span></div>
+        <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="fm">
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
-        <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
-        <div class="nav-item" data-section="volume"><span class="nav-txt">Volume Coletado</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
         <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
         <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
@@ -3018,7 +3017,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "leadtime"){ if(!LT_LOADED || (!LT_BUSCOU && !LT_PENDENTE)) loadLeadTime(); if(LT_LOADED) renderLeadTime(); }
     if(item.dataset.section === "backlog" && !BACKLOG_LOADED){ loadBacklogAnalise(); }
     if(item.dataset.section === "notasfiscais" && !NF_LOADED){ loadNotasFiscais(); }
-    if(item.dataset.section === "crm" && !CRM_LOADED){ loadCrm(); }
+    if(item.dataset.section === "crm"){ if(CRM_LOADED) renderCrm(); else if(CRM_LOADING){ const l = document.getElementById("crm-loading"); if(l){ l.innerHTML = loaderHtml("Carregando a CRM…"); l.style.display = ""; } } else loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
@@ -5078,35 +5077,52 @@ function crmLimparFiltros(){
   crmFecharPop(); renderCrm();
 }
 // ---- carga ----
-async function loadCrm(){
+// A CRM é grande (~9.500 linhas × 42 colunas) e o Apps Script demora pra ler a
+// planilha. Por isso: a última resposta fica guardada no navegador (IndexedDB)
+// e aparece na hora; a busca nova roda em segundo plano e troca sem piscar.
+const crmCacheLer = ()=> ldIdb("readonly", st=> st.get("crm")).catch(()=>null);
+const crmCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "crm")).catch(()=>{});
+function crmAplicar(json){
+  const n = json.cols.length;
+  CRM = {
+    cols: json.cols.map((c,i)=> String(c == null || c === "" ? "Coluna " + (i+1) : c)),
+    rows: json.rows.map(r=>{ const o = new Array(n); for(let i = 0; i < n; i++){ const v = r[i]; o[i] = (v == null) ? "" : String(v).trim(); } return o; }),
+    atualizadoEm: json.atualizadoEm || null, aba: json.aba || "", planilha: json.planilha || ""
+  };
+  crmDetectarTipos();
+  // filtro de coluna que não existe mais (planilha mudou): descarta
+  Object.keys(crmView.filtros).forEach(i=>{ if(+i >= n) delete crmView.filtros[i]; });
+  if(crmView.sort.i >= n) crmView.sort = { i:-1, dir:1 };
+  CRM_LOADED = true;
+  const load = document.getElementById("crm-loading"); if(load) load.style.display = "none";
+  // só redesenha se a aba estiver aberta (senão desenha quando abrir)
+  const sec = document.getElementById("sec-crm");
+  if(sec && sec.classList.contains("active")) renderCrm();
+}
+async function crmCacheCarregar(){
+  const c = await crmCacheLer();
+  if(c && c.json && !CRM) { try{ crmAplicar(c.json); }catch(e){ console.warn("CRM cache:", e); } }
+}
+async function loadCrm(silencioso){
   if(CRM_LOADING) return;
   CRM_LOADING = true;
   const load = document.getElementById("crm-loading"), sub = document.getElementById("crm-subtitle");
-  if(!CRM && load){ load.innerHTML = loaderHtml("Carregando a CRM…"); load.style.display = ""; }
-  if(sub) sub.textContent = "— " + (CRM ? "atualizando…" : "carregando…");
+  if(!CRM && load && !silencioso){ load.innerHTML = loaderHtml("Carregando a CRM…"); load.style.display = ""; }
+  if(sub && !silencioso) sub.textContent = "— " + (CRM ? "atualizando…" : "carregando…");
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
     const json = await fetchViaIframe(API_URL + sep + "tipo=crm", 90000);
     if(json && json.erro) throw new Error(json.erro);
     if(!json || !Array.isArray(json.cols) || !Array.isArray(json.rows) || (json.rows.length && !Array.isArray(json.rows[0])))
       throw new Error("o Web App ainda não devolve a CRM — confira se o CrmAba.gs e o webapp.gs novos foram salvos e se uma nova versão foi publicada");
-    const n = json.cols.length;
-    CRM = {
-      cols: json.cols.map((c,i)=> String(c == null || c === "" ? "Coluna " + (i+1) : c)),
-      rows: json.rows.map(r=>{ const o = new Array(n); for(let i = 0; i < n; i++){ const v = r[i]; o[i] = (v == null) ? "" : String(v).trim(); } return o; }),
-      atualizadoEm: json.atualizadoEm || null, aba: json.aba || "", planilha: json.planilha || ""
-    };
-    crmDetectarTipos();
-    // filtro de coluna que não existe mais (planilha mudou): descarta
-    Object.keys(crmView.filtros).forEach(i=>{ if(+i >= n) delete crmView.filtros[i]; });
-    if(crmView.sort.i >= n) crmView.sort = { i:-1, dir:1 };
-    CRM_LOADED = true;
-    if(load) load.style.display = "none";
-    renderCrm();
+    crmAplicar(json);
+    crmCacheSalvar(json);
   } catch(err){
     console.error("CRM:", err);
-    if(sub) sub.textContent = "— não foi possível " + (CRM ? "atualizar" : "carregar") + " (" + err.message + ")";
-    if(load && !CRM) load.innerHTML = '<div class="empty-state">Não foi possível carregar a CRM agora (' + esc(err.message) + ').</div>';
+    if(!silencioso || !CRM){
+      if(sub && document.getElementById("sec-crm").classList.contains("active")) sub.textContent = "— não foi possível " + (CRM ? "atualizar" : "carregar") + " (" + err.message + ")";
+      if(load && !CRM && !silencioso) load.innerHTML = '<div class="empty-state">Não foi possível carregar a CRM agora (' + esc(err.message) + ').</div>';
+    }
   } finally {
     CRM_LOADING = false;
   }
@@ -5261,9 +5277,12 @@ setInterval(()=> loadLoja(true), 30 * 60 * 1000);
 // Backlog Seller & PUDO em segundo plano e a cada 15 min
 setTimeout(()=>{ if(!BL_LOADED) loadBacklogLoja(true); }, 7000);
 setInterval(()=> loadBacklogLoja(true), 15 * 60 * 1000);
-// Volume Coletado em segundo plano; a cada 30 min relê (o histórico é atualizado de hora em hora)
-setTimeout(()=>{ if(!VC_LOADED && !VC_PEND) loadVolume(); }, 9000);
-setInterval(()=>{ if(VC_LOADED && !VC_PEND) { if(VC_PADRAO) loadVolume(); else loadVolume(VC_F.ini, VC_F.fim); } }, 30 * 60 * 1000);
+// (aba Volume Coletado saiu do menu — não busca mais essa base)
+// CRM e Forecast x Coletado em segundo plano: mostram na hora a última base
+// guardada no navegador e buscam a nova quieto, pra aba abrir já pronta.
+crmCacheCarregar();
+setTimeout(()=>{ if(!CRM_LOADING) loadCrm(true); }, 4000);
+setInterval(()=>{ if(!CRM_LOADING) loadCrm(true); }, 30 * 60 * 1000);
 setInterval(()=>{ if(!HIST_DIA) loadData(false); }, REFRESH_INTERVAL_MS);
 setInterval(()=> loadBacklogResumo(), REFRESH_INTERVAL_MS);
 setInterval(()=> loadMisScan(), 30 * 60 * 1000); // histórico de mis scan muda no máximo 1x por hora
@@ -5287,6 +5306,25 @@ function fcPct(c, f){ return f ? c/f : null; }
 function fcPctTxt(v){ return v==null ? "—" : (v*100).toFixed(1).replace(".",",") + "%"; }
 function fcCls(v){ return v==null ? "" : v < FC_FAIXA.baixo ? "critical" : v > FC_FAIXA.alto ? "warning" : "good"; }
 function fcDifTxt(d){ return (d>0?"+":d<0?"−":"") + sdNum(Math.abs(d)); }
+// Cache no navegador (IndexedDB): a aba abre na hora com a última base
+// guardada e a nova chega em segundo plano.
+const fcCacheLer = ()=> ldIdb("readonly", st=> st.get("forecast")).catch(()=>null);
+const fcCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "forecast")).catch(()=>{});
+function fcAplicar(json){
+  const cols = json.cols, nc = cols.length;
+  const eraUltimoDia = !FC_F.ini || (FC && fcPresetAtual()==="ontem");
+  FC = { hoje: json.hoje, em: json.atualizadoEm, rows: json.rows.map(l=>{ const o = {}; for(let j = 0; j < nc; j++) o[cols[j]] = l[j]; o.fc = +o.fc||0; o.col = +o.col||0; return o; }) };
+  // primeira carga, ou estava no "último dia" antigo: vai pro último dia fechado novo
+  if(eraUltimoDia) fcPreset("ontem");
+  FC_LOADED = true;
+  document.getElementById("fc-loading").innerHTML = "";
+  document.getElementById("fc-conteudo").style.display = "";
+  if(document.getElementById("sec-forecast").classList.contains("active")) renderForecast();
+}
+async function fcCacheCarregar(){
+  const c = await fcCacheLer();
+  if(c && c.json && !FC){ try{ fcAplicar(c.json); }catch(e){ console.warn("Forecast cache:", e); } }
+}
 function loadForecast(silencioso){
   const box = document.getElementById("fc-loading");
   if(!silencioso && !FC_LOADED){ box.innerHTML = loaderHtml("Carregando forecast x coletado…"); document.getElementById("fc-conteudo").style.display = "none"; }
@@ -5295,12 +5333,8 @@ function loadForecast(silencioso){
   FC_PEND = fetchViaIframe(API_URL + sep + "tipo=forecast", 90000).then(json=>{
     if(json && json.erro) throw new Error(json.erro);
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Forecast.gs e a rota ?tipo=forecast do webapp.gs foram publicados");
-    FC = { hoje: json.hoje, em: json.atualizadoEm, rows: json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>o[c]=l[j]); o.fc = +o.fc||0; o.col = +o.col||0; return o; }) };
-    if(!FC_F.ini) fcPreset("ontem");
-    FC_LOADED = true;
-    box.innerHTML = "";
-    document.getElementById("fc-conteudo").style.display = "";
-    if(document.getElementById("sec-forecast").classList.contains("active")) renderForecast();
+    fcAplicar(json);
+    fcCacheSalvar(json);
   }).catch(err=>{
     console.error("Forecast x Coletado:", err);
     if(!FC_LOADED){
@@ -5464,3 +5498,6 @@ function fcTabStation(sts){
   window.addEventListener("resize", ()=>{ if(FC_LOADED && $("sec-forecast").classList.contains("active")) fcTrend(); });
 })();
 setInterval(()=>{ if(FC_LOADED) loadForecast(true); }, 30 * 60 * 1000);
+// em segundo plano ao abrir o painel (primeiro o cache, depois a base nova)
+fcCacheCarregar();
+setTimeout(()=>{ if(!FC_PEND) loadForecast(true); }, 6000);
