@@ -2809,16 +2809,17 @@ const SEM_COLETA_COLS = [
 function renderSemColetaTable(rows){
   // Junta o antigo "Mais horas sem coleta" (aba Rankings) com esta tabela:
   // ordena por dias sem coleta e, no empate, por horas.
-  const allAging = rows.filter(d=>d.agingSemColeta > 0 || d.horasSemColeta >= 24)
-    .sort((a,b)=>(b.agingSemColeta-a.agingSemColeta) || (b.horasSemColeta-a.horasSemColeta));
+  // Só entram DOPs sem coleta que TÊM backlog (sem pacote parado, não é problema)
+  const allAging = rows.filter(d=>(d.agingSemColeta > 0 || d.horasSemColeta >= 24) && critBacklog(d) > 0)
+    .sort((a,b)=>(b.agingSemColeta-a.agingSemColeta) || (b.horasSemColeta-a.horasSemColeta) || (critBacklog(b)-critBacklog(a)));
   const withAging = (expandState.semColeta ? allAging : allAging.slice(0,8))
-    .map(d=> Object.assign({}, d, { ultimaColetaFmt: fmtDate(d.ultimaColeta) }));
+    .map(d=> Object.assign({}, d, { ultimaColetaFmt: fmtDate(d.ultimaColeta), backlogOps: critBacklog(d) }));
   const totEl = document.getElementById("semcoleta-total");
-  if(totEl) totEl.innerHTML = allAging.length ? `<b>${allAging.length}</b> ${allAging.length===1?"DOP":"DOPs"} sem coleta` : "";
+  if(totEl) totEl.innerHTML = allAging.length ? `<b>${allAging.length}</b> ${allAging.length===1?"DOP":"DOPs"} sem coleta com backlog` : "";
   const scBtn = document.getElementById("semcoleta-toggle-bottom");
   if(scBtn){
     scBtn.style.display = (allAging.length > 8 || expandState.semColeta) ? "" : "none";
-    scBtn.textContent = expandState.semColeta ? "− Mostrar só os 8 primeiros" : "+ Ver todos os " + allAging.length + " DOPs sem coleta";
+    scBtn.textContent = expandState.semColeta ? "− Mostrar só os 8 primeiros" : "+ Ver todos os " + allAging.length + " DOPs sem coleta com backlog";
     scBtn.classList.toggle("is-open", !!expandState.semColeta);
   }
   const el = document.getElementById("table-sem-coleta");
@@ -2831,7 +2832,7 @@ function renderSemColetaTable(rows){
   // solto como innerHTML dele é HTML inválido (o navegador "foster-parenta"
   // pra fora da tabela) — por isso a mensagem vai numa <td>, não numa <div>.
   if(!withAging.length){
-    el.innerHTML = '<tbody><tr><td colspan="' + SEM_COLETA_COLS.length + '" class="empty-state">Todas as agências coletaram hoje.</td></tr></tbody>';
+    el.innerHTML = '<tbody><tr><td colspan="' + SEM_COLETA_COLS.length + '" class="empty-state">Nenhuma DOP sem coleta com backlog parado.</td></tr></tbody>';
     return;
   }
   const thead = "<thead><tr>"+SEM_COLETA_COLS.map(c=>`<th>${c.l}</th>`).join("")+"</tr></thead>";
