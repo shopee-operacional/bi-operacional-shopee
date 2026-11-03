@@ -218,6 +218,7 @@ if(!document.querySelector(".app")){
         <div class="filter sd-data"><label>Data fim</label><input type="date" id="lt-f-fim"></div>
         <div class="sd-seg" id="lt-periodo">
           <button data-p="dia">Último dia</button>
+          <button data-p="semana">Semana</button>
           <button data-p="7d">7 dias</button>
           <button data-p="15d">15 dias</button>
         </div>
@@ -3577,21 +3578,58 @@ function ltEscopoTexto(){
   if(ltView.canal) p.push(ltView.canal);
   return p.length ? p.join(" · ") : "Regional 4";
 }
+// Períodos contam dias do CALENDÁRIO (antes "7 dias" eram os 7 últimos dias
+// que tinham dado na base, e um buraco na base esticava o período sem avisar).
+function ltAddDias(iso, n){ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); }
+// dias do período (fora domingo) que não vieram na base
+function ltDiasFaltando(){
+  if(!LT || !LT.periodoIni || !LT.periodoFim) return [];
+  const tem = new Set(LT.diasDisponiveis || []), falta = [];
+  // começa no início pedido (a base devolve o 1º dia com dado como início)
+  let d = (LT_PEDIDO && LT_PEDIDO.fim===LT.periodoFim && LT_PEDIDO.ini < LT.periodoIni) ? LT_PEDIDO.ini : LT.periodoIni;
+  for(let i = 0; d <= LT.periodoFim && i < 60; i++, d = ltAddDias(d, 1)){
+    const dow = new Date(d + "T12:00:00Z").getUTCDay();
+    if(dow !== 0 && !tem.has(d)) falta.push(d);
+  }
+  return falta;
+}
+function ltFaltandoTexto(){
+  const f = ltDiasFaltando(); if(!f.length) return "";
+  const lista = f.length <= 4 ? f.map(fmtDiaBR).join(", ") : fmtDiaBR(f[0]) + " a " + fmtDiaBR(f[f.length-1]) + " (" + f.length + " dias)";
+  return " · ⚠ sem dados na base: " + lista;
+}
+let LT_PEDIDO = null; // último período pedido {ini, fim}
 function ltPeriodoTexto(){
   if(!LT) return "";
-  return LT.periodoIni===LT.periodoFim ? "dia " + fmtDiaBR(LT.periodoFim)
-    : fmtDiaBR(LT.periodoIni) + " a " + fmtDiaBR(LT.periodoFim) + " (" + LT.diasNoPeriodo + " dias)";
+  const ini = (LT_PEDIDO && LT_PEDIDO.fim===LT.periodoFim && LT_PEDIDO.ini < LT.periodoIni) ? LT_PEDIDO.ini : LT.periodoIni;
+  return (ini===LT.periodoFim ? "dia " + fmtDiaBR(LT.periodoFim)
+    : fmtDiaBR(ini) + " a " + fmtDiaBR(LT.periodoFim) + " (" + LT.diasNoPeriodo + (LT.diasNoPeriodo===1 ? " dia" : " dias") + " com dados)")
+    + ltFaltandoTexto();
 }
 function ltPreset(tipo){
   const d = (LT && LT.diasDisponiveis) || []; if(!d.length) return null;
   const ult = d[d.length-1];
   if(tipo==="dia") return [ult, ult];
-  if(tipo==="7d") return [d.slice(-7)[0], ult];
-  if(tipo==="15d") return [d[0], ult];
+  if(tipo==="7d") return [ltAddDias(ult, -6), ult];
+  if(tipo==="15d") return [ltAddDias(ult, -14), ult];
+  if(tipo==="semana"){
+    // segunda-feira da semana do último dia (semana Shopee = seg a dom)
+    const dow = (new Date(ult + "T12:00:00Z").getUTCDay() + 6) % 7;
+    return [ltAddDias(ult, -dow), ult];
+  }
   return null;
 }
 function ltPresetAtual(){
-  for(const t of ["dia","7d","15d"]){ const r = ltPreset(t); if(r && r[0]===LT.periodoIni && r[1]===LT.periodoFim) return t; }
+  const disp = (LT && LT.diasDisponiveis) || [];
+  if(LT_PEDIDO && LT_PEDIDO.fim===LT.periodoFim){
+    for(const t of ["dia","semana","7d","15d"]){ const r = ltPreset(t); if(r && r[0]===LT_PEDIDO.ini && r[1]===LT_PEDIDO.fim) return t; }
+  }
+  for(const t of ["dia","semana","7d","15d"]){
+    const r = ltPreset(t); if(!r || r[1]!==LT.periodoFim) continue;
+    // a base devolve como início o 1º dia com dado dentro do período
+    const ini1 = disp.filter(x=>x>=r[0] && x<=r[1])[0];
+    if(r[0]===LT.periodoIni || ini1===LT.periodoIni) return t;
+  }
   return "";
 }
 function ltAplicar(json){
@@ -3604,7 +3642,9 @@ function ltAplicar(json){
   const disp = LT.diasDisponiveis || [];
   ["lt-f-ini","lt-f-fim"].forEach(id=>{ const el = document.getElementById(id); if(el && disp.length){ el.min = disp[0]; el.max = disp[disp.length-1]; } });
   const a = document.getElementById("lt-f-ini"), b = document.getElementById("lt-f-fim");
-  if(a) a.value = LT.periodoIni || ""; if(b) b.value = LT.periodoFim || "";
+  // mostra o início PEDIDO (ex.: 27/10 no "7 dias"), não o 1º dia com dado
+  const iniTela = (LT_PEDIDO && LT_PEDIDO.fim===LT.periodoFim && LT_PEDIDO.ini < LT.periodoIni) ? LT_PEDIDO.ini : LT.periodoIni;
+  if(a) a.value = iniTela || ""; if(b) b.value = LT.periodoFim || "";
   if(ltView.subreg==="__default__") ltView.subreg = LT.rows.some(r=>r.subreg==="CO") ? "CO" : "";
 }
 // Coloca uma resposta na tela (some a animação, mostra o conteúdo).
@@ -3620,6 +3660,7 @@ function ltMostrar(json, manterLista){
 }
 function loadLeadTime(ini, fim){
   if(ini && fim && ini > fim){ const t = ini; ini = fim; fim = t; }
+  LT_PEDIDO = (ini && fim) ? { ini, fim } : null;
   const padrao = !(ini || fim);
   // busca padrão já em andamento (pré-carga): só espera por ela
   if(padrao && LT_PENDENTE) return LT_PENDENTE;
@@ -3658,6 +3699,12 @@ async function ltBuscar(ini, fim, padrao){
     const eraCopia = LT_COPIA_EM !== null;
     LT_NOTA = ""; LT_COPIA_EM = null;
     ltMostrar(json, eraCopia);
+    // a busca padrão do Apps Script traz os 7 últimos dias COM dado; se a base
+    // tem buraco, isso passa de 7 dias de calendário — pede o período certo
+    if(padrao && !LT_PEDIDO){
+      const r = ltPreset("7d");
+      if(r && json.periodoIni && json.periodoIni < r[0]) loadLeadTime(r[0], r[1]);
+    }
   } catch(err){
     console.error("Lead Time:", err);
     if(seq !== LT_SEQ) return;
