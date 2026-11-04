@@ -49,6 +49,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="crm"><span class="nav-txt">CRM</span></div>
         <div class="nav-item" data-section="historico"><span class="nav-txt">Inbound Pós-Fechamento</span></div>
         <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
+        <div class="nav-item" data-section="wbr"><span class="nav-txt">Análise WBR</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="fm">
@@ -507,6 +508,29 @@ if(!document.querySelector(".app")){
           </div>
           <div class="table-wrap"><table class="data" id="fc-tab-st"></table></div>
           <div class="card-expand-btn" id="fc-st-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANÁLISE WBR -->
+    <div class="section" id="sec-wbr">
+      <div class="section-title">Análise WBR <span class="sd-sub" id="wbr-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Regional</label><select id="wbr-f-reg"></select></div>
+        <div class="filter"><label>Responsável</label><select id="wbr-f-resp"></select></div>
+        <div class="filter sd-data"><label>Data do backlog</label><input type="date" id="wbr-f-dbkl"></div>
+        <div class="filter sd-data"><label>Data do inbound</label><input type="date" id="wbr-f-dinb"></div>
+        <div class="filter"><label>Semana (Mis-Scan, Same Day, FIFO)</label><select id="wbr-f-sem"></select></div>
+        <button class="theme-btn" id="wbr-limpar">Limpar filtros</button>
+      </div>
+      <div id="wbr-loading"></div>
+      <div id="wbr-conteudo" style="display:none">
+        <div class="wbr-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:14px">
+          <div class="card" id="wbr-card-bkl"></div>
+          <div class="card" id="wbr-card-inb"></div>
+          <div class="card" id="wbr-card-mis"></div>
+          <div class="card" id="wbr-card-sd"></div>
+          <div class="card" id="wbr-card-fifo"></div>
         </div>
       </div>
     </div>
@@ -3019,7 +3043,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3044,6 +3068,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
+    if(item.dataset.section === "wbr"){ if(WBR) renderWbr(); else loadWbr(); }
     if(item.dataset.section === "forecast"){ if(!FC_LOADED) loadForecast(); else renderForecast(); }
   });
 });
@@ -5570,3 +5595,205 @@ setInterval(()=>{ if(FC_LOADED) loadForecast(true); }, 30 * 60 * 1000);
 // em segundo plano ao abrir o painel (primeiro o cache, depois a base nova)
 fcCacheCarregar();
 setTimeout(()=>{ if(!FC_PEND) loadForecast(true); }, 6000);
+
+// ==================== ANÁLISE WBR ====================
+// ?tipo=wbr (WBR.gs) — aba "Base_Dados por dia_SameDay" da planilha
+// "Gestão da Rotina | PUDO - ELIVAN". Uma linha por DOP/dia. Recria a aba
+// ANALISE WBR da planilha: Initial Backlog e Inbound (por dia), Mis-Scan,
+// Same Day e FIFO (por semana) — cada um por responsável + Top 10 DOPs.
+let WBR = null, WBR_PEND = null;
+const WBR_F = { reg:"__default__", resp:"", dBkl:"", dInb:"", sem:"" };
+const wbrCacheLer = ()=> ldIdb("readonly", st=> st.get("wbr")).catch(()=>null);
+const wbrCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "wbr")).catch(()=>{});
+const wbrDow = iso => new Date(iso + "T12:00:00Z").getUTCDay();   // 0 = domingo
+const wbrAddDias = (iso, n)=>{ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); };
+const wbrPct = (a, b, dec) => b ? (a/b*100).toFixed(dec||0).replace(".",",") + "%" : "—";
+const wbrMin = h => { const m = /^(\d{1,2}):(\d{2})/.exec(h||""); return m ? (+m[1])*60 + (+m[2]) : null; };
+const wbrHHMM = m => m==null ? "" : String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
+const wbrDiaSemana = iso => ["dom","seg","ter","qua","qui","sex","sáb"][wbrDow(iso)];
+
+function wbrAplicar(json){
+  const cols = json.cols, dic = json.dic || {};
+  const ix = {}; cols.forEach((c,i)=> ix[c] = i);
+  const txt = (k, v) => dic[k] ? (dic[k][v] == null ? "" : dic[k][v]) : v;
+  const rows = json.rows.map(r=>({
+    data: r[ix.data], semana: +r[ix.semana] || 0, dop: String(r[ix.dop]),
+    resp: txt("resp", r[ix.resp]) || "—", reg: txt("reg", r[ix.reg]) || "—",
+    station: txt("station", r[ix.station]), nome: txt("nome", r[ix.nome]),
+    bipDop: r[ix.bipDop] || "", bipDrv: r[ix.bipDrv] || "",
+    bkl: +r[ix.bkl]||0, inb: +r[ix.inb]||0, inbPos: +r[ix.inbPos]||0,
+    out: +r[ix.out]||0, outSd: +r[ix.outSd]||0, semFifo: +r[ix.semFifo]||0, mis: +r[ix.mis]||0
+  }));
+  const dias = [...new Set(rows.map(r=>r.data))].sort();
+  const semanas = [...new Set(rows.map(r=>r.semana).filter(Boolean))].sort((a,b)=>a-b);
+  const ultAntes = WBR && WBR.ultBkl;
+  WBR = { em: json.atualizadoEm, rows, dias, semanas,
+          ultBkl: dias.filter(d=> rows.some(r=>r.data===d && r.bkl>0)).pop() || dias[dias.length-1] };
+  // primeira carga, ou estava no último dia: acompanha o dia novo
+  if(!WBR_F.dBkl || WBR_F.dBkl === ultAntes) wbrDatasPadrao();
+  if(!WBR_F.sem || !semanas.includes(+WBR_F.sem)) WBR_F.sem = String(wbrSemanaPadrao());
+  if(WBR_F.reg === "__default__") WBR_F.reg = rows.some(r=>r.reg==="CO") ? "CO" : "";
+  document.getElementById("wbr-loading").innerHTML = "";
+  document.getElementById("wbr-conteudo").style.display = "";
+  if(document.getElementById("sec-wbr").classList.contains("active")) renderWbr();
+}
+// backlog: último dia da base · inbound: dia útil anterior (pula domingo)
+function wbrDatasPadrao(){
+  WBR_F.dBkl = WBR.ultBkl;
+  WBR_F.dInb = wbrInbAnterior(WBR_F.dBkl);
+}
+function wbrInbAnterior(dBkl){
+  const comInb = WBR.dias.filter(d=> d < dBkl && wbrDow(d) !== 0 && WBR.rows.some(r=>r.data===d && r.inb>0));
+  return comInb.pop() || dBkl;
+}
+// semana fechada mais recente (se o último dia já é domingo, é a própria semana)
+function wbrSemanaPadrao(){
+  const ult = WBR.dias[WBR.dias.length-1]; if(!ult) return "";
+  const semUlt = (WBR.rows.find(r=>r.data===ult) || {}).semana;
+  if(wbrDow(ult) === 0) return semUlt;
+  const ant = WBR.semanas.filter(w=> w < semUlt);
+  return ant.length ? ant[ant.length-1] : semUlt;
+}
+async function wbrCacheCarregar(){
+  const c = await wbrCacheLer();
+  if(c && c.json && !WBR){ try{ wbrAplicar(c.json); }catch(e){ console.warn("WBR cache:", e); } }
+}
+function loadWbr(silencioso){
+  const box = document.getElementById("wbr-loading");
+  if(!silencioso && !WBR){ box.innerHTML = loaderHtml("Carregando a Análise WBR…"); document.getElementById("wbr-conteudo").style.display = "none"; }
+  if(WBR_PEND) return WBR_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  WBR_PEND = fetchViaIframe(API_URL + sep + "tipo=wbr", 120000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o WBR.gs e a rota ?tipo=wbr do webapp.gs foram publicados");
+    wbrAplicar(json);
+    wbrCacheSalvar(json);
+  }).catch(err=>{
+    console.error("Análise WBR:", err);
+    if(!WBR && !silencioso){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar a Análise WBR (' + esc(err.message) + '). <a href="#" id="wbr-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("wbr-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadWbr(); };
+    }
+  }).finally(()=>{ WBR_PEND = null; });
+  return WBR_PEND;
+}
+
+// ---- contas ----
+function wbrEscopo(comResp){
+  return WBR.rows.filter(r=> (!WBR_F.reg || r.reg===WBR_F.reg) && (!comResp || !WBR_F.resp || r.resp===WBR_F.resp));
+}
+function wbrSomar(lista, chave, valor){
+  const m = new Map();
+  lista.forEach(r=>{ const k = chave(r); const v = valor(r); if(!v) return; const o = m.get(k) || {k, v:0, r}; o.v += v; m.set(k, o); });
+  return [...m.values()].sort((a,b)=> b.v - a.v);
+}
+const wbrForaSd = r => Math.max(0, r.out - r.outSd);
+function wbrDopTxt(r){ return `<b>${esc(r.dop)}</b>${r.nome ? " - " + esc(r.nome) : ""}<div class="alert-sub">${esc(r.station||"")} · ${esc(r.resp)}</div>`; }
+
+// tabela "por responsável": valor, % do total, % acumulado
+function wbrTabResp(lista, rotulo){
+  const tot = lista.reduce((t,o)=>t+o.v,0);
+  if(!tot) return '<div class="empty-state">Sem dados para esse período.</div>';
+  let acum = 0;
+  return `<div class="table-wrap"><table class="data"><thead><tr><th>Responsável</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th></tr></thead><tbody>`
+    + lista.map(o=>{ acum += o.v; const sel = WBR_F.resp===o.k;
+        return `<tr class="wbr-resp${sel?" sel":""}" data-resp="${esc(o.k)}" style="cursor:pointer${sel?";background:var(--accent-soft, #fdece8)":""}" title="Clique para filtrar este responsável"><td><b>${esc(o.k)}</b></td><td>${sdNum(o.v)}</td><td>${wbrPct(o.v,tot)}</td><td>${wbrPct(acum,tot)}</td></tr>`; }).join("")
+    + `<tr style="font-weight:700"><td>Total</td><td>${sdNum(tot)}</td><td>100%</td><td></td></tr></tbody></table></div>`;
+}
+// rodapé dos Top 10: total top 10 · % do top 10 · total do escopo
+function wbrRodape(top, totEscopo, rotulo){
+  const t10 = top.reduce((t,o)=>t+o.v,0);
+  return `<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px">
+    <span>Total ${rotulo} Top 10: <b>${sdNum(t10)}</b></span>
+    <span>% do total no Top 10: <b>${wbrPct(t10, totEscopo)}</b></span>
+    <span>Total ${WBR_F.resp ? "do analista" : "da seleção"}: <b>${sdNum(totEscopo)}</b></span></div>`;
+}
+function wbrCard(id, titulo, sub, corpo){
+  document.getElementById(id).innerHTML = `<div class="card-head"><div class="card-title">${titulo}</div><div class="sd-hint">${sub}</div></div>${corpo}`;
+}
+
+function renderWbr(){
+  if(!WBR) return;
+  const F = WBR_F;
+  // filtros
+  const regs = [...new Set(WBR.rows.map(r=>r.reg))].filter(x=>x && x!=="—").sort();
+  const respsReg = [...new Set(WBR.rows.filter(r=>!F.reg || r.reg===F.reg).map(r=>r.resp))].filter(x=>x && x!=="—").sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  if(F.resp && !respsReg.includes(F.resp)) F.resp = "";
+  const opt = (id, vals, atual, vazio, rot) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + vals.map(v=>`<option value="${esc(v)}"${String(v)===String(atual)?" selected":""}>${esc(rot ? rot(v) : v)}</option>`).join(""); };
+  opt("wbr-f-reg", regs, F.reg, "Todas");
+  opt("wbr-f-resp", respsReg, F.resp, "Todos");
+  const semSel = document.getElementById("wbr-f-sem");
+  semSel.innerHTML = WBR.semanas.slice().reverse().map(w=>`<option value="${w}"${String(w)===String(F.sem)?" selected":""}>Week ${w}</option>`).join("");
+  ["wbr-f-dbkl","wbr-f-dinb"].forEach(id=>{ const el = document.getElementById(id); el.min = WBR.dias[0]; el.max = WBR.dias[WBR.dias.length-1]; });
+  document.getElementById("wbr-f-dbkl").value = F.dBkl;
+  document.getElementById("wbr-f-dinb").value = F.dInb;
+  const em = WBR.em ? new Date(WBR.em) : null;
+  document.getElementById("wbr-subtitle").textContent = "— " + (F.reg || "todas as regionais") + (F.resp ? " · " + F.resp : "")
+    + (em && !isNaN(em) ? " · base lida às " + em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "");
+
+  const reg = wbrEscopo(false), esc_ = wbrEscopo(true);   // reg = sem filtro de responsável
+  const sem = +F.sem;
+  // domingos entre o dia do inbound e o do backlog (ex.: inbound sáb, backlog seg)
+  const domingos = []; for(let d = wbrAddDias(F.dInb,1); d < F.dBkl; d = wbrAddDias(d,1)) if(wbrDow(d)===0) domingos.push(d);
+  const porDop = (lista, campo) => { const m = new Map(); lista.forEach(r=> m.set(r.dop, (m.get(r.dop)||0) + r[campo])); return m; };
+  const inbDia = esc_.filter(r=>r.data===F.dInb);
+  const inbPosDop = porDop(inbDia, "inbPos");
+  const inbDomDop = porDop(esc_.filter(r=>domingos.includes(r.data)), "inb");
+  const linhaInb = new Map(); inbDia.forEach(r=> linhaInb.set(r.dop, r));
+
+  // 1) Initial Backlog
+  const bklDia = r => r.data===F.dBkl ? r.bkl : 0;
+  const bklTop = wbrSomar(esc_, r=>r.dop, bklDia).slice(0,10);
+  const bklTot = esc_.reduce((t,r)=>t+bklDia(r),0);
+  wbrCard("wbr-card-bkl", "📦 Initial Backlog", "backlog início do dia · " + wbrDiaSemana(F.dBkl) + " " + fmtDiaBR(F.dBkl),
+    wbrTabResp(wbrSomar(reg, r=>r.resp, bklDia), "Backlog início do dia")
+    + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">Top 10 DOPs backlog</div>`
+    + (bklTop.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>Backlog início do dia</th><th>% do total</th><th title="Inbound depois da última coleta FM no dia do inbound ÷ backlog">% inbound após última coleta</th><th title="Inbound do domingo entre as duas datas ÷ backlog">% inbound domingo/backlog</th></tr></thead><tbody>`
+      + bklTop.map(o=>`<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(o.v)}</b></td><td>${wbrPct(o.v,bklTot)}</td><td>${wbrPct(inbPosDop.get(o.k)||0, o.v, 2)}</td><td>${domingos.length ? wbrPct(inbDomDop.get(o.k)||0, o.v, 2) : "—"}</td></tr>`).join("")
+      + `</tbody></table></div>` + wbrRodape(bklTop, bklTot, "backlog") : '<div class="empty-state">Sem backlog nesse dia.</div>'));
+
+  // 2) Inbound
+  const inbV = r => r.data===F.dInb ? r.inb : 0;
+  wbrCard("wbr-card-inb", "📥 Inbound", "volume inbound · " + wbrDiaSemana(F.dInb) + " " + fmtDiaBR(F.dInb),
+    wbrTabResp(wbrSomar(reg, r=>r.resp, inbV), "Inbound")
+    + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">Inbound após última coleta dos Top 10 DOPs backlog</div>`
+    + (bklTop.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>Inbound após última coleta</th><th>Último bip motorista</th><th>Último bip DOP</th><th title="último bip do DOP − último bip do motorista">Diferença (hh:mm)</th><th>Inbound domingo</th></tr></thead><tbody>`
+      + bklTop.map(o=>{
+          const l = linhaInb.get(o.k) || {};
+          const mDop = wbrMin(l.bipDop), mDrv = wbrMin(l.bipDrv);
+          const dif = mDop==null ? null : Math.max(0, mDop - (mDrv||0));
+          return `<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(inbPosDop.get(o.k)||0)}</b></td><td>${esc(l.bipDrv||"")}</td><td>${esc(l.bipDop||"")}</td><td style="color:var(--critical)">${dif==null ? "—" : wbrHHMM(dif)}</td><td>${domingos.length ? sdNum(inbDomDop.get(o.k)||0) : "—"}</td></tr>`;
+        }).join("") + `</tbody></table></div>` : '<div class="empty-state">Sem DOPs com backlog nesse dia.</div>'));
+
+  // 3) 4) 5) semanais
+  const semanal = (id, titulo, rotulo, rotTop, fn) => {
+    const v = r => r.semana===sem ? fn(r) : 0;
+    const top = wbrSomar(esc_, r=>r.dop, v).slice(0,10);
+    const tot = esc_.reduce((t,r)=>t+v(r),0);
+    wbrCard(id, titulo, "Week " + sem,
+      wbrTabResp(wbrSomar(reg, r=>r.resp, v), rotulo)
+      + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">${rotTop}</div>`
+      + (top.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th></tr></thead><tbody>`
+        + (()=>{ let a = 0; return top.map(o=>{ a += o.v; return `<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(o.v)}</b></td><td>${wbrPct(o.v,tot)}</td><td>${wbrPct(a,tot)}</td></tr>`; }).join(""); })()
+        + `</tbody></table></div>` + wbrRodape(top, tot, rotulo.toLowerCase()) : '<div class="empty-state">Nada nessa semana. 🎉</div>'));
+  };
+  semanal("wbr-card-mis", "🔍 Mis-Scan", "Mis Scan", "Top 10 Mis Scan", r=>r.mis);
+  semanal("wbr-card-sd", "⏱ Same Day", "Fora do Same Day", "Top 10 fora do Same Day", wbrForaSd);
+  semanal("wbr-card-fifo", "📅 FIFO", "Pacotes fora do FIFO", "Top 10 ofensores FIFO", r=>r.semFifo);
+
+  document.querySelectorAll("#sec-wbr .wbr-resp").forEach(tr=> tr.onclick = ()=>{ F.resp = F.resp===tr.dataset.resp ? "" : tr.dataset.resp; renderWbr(); });
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  $("wbr-f-reg").addEventListener("change", e=>{ WBR_F.reg = e.target.value; WBR_F.resp = ""; renderWbr(); });
+  $("wbr-f-resp").addEventListener("change", e=>{ WBR_F.resp = e.target.value; renderWbr(); });
+  $("wbr-f-sem").addEventListener("change", e=>{ WBR_F.sem = e.target.value; renderWbr(); });
+  // trocar a data do backlog já sugere o inbound do dia útil anterior
+  $("wbr-f-dbkl").addEventListener("change", e=>{ if(!e.target.value) return; WBR_F.dBkl = e.target.value; WBR_F.dInb = wbrInbAnterior(WBR_F.dBkl); renderWbr(); });
+  $("wbr-f-dinb").addEventListener("change", e=>{ if(!e.target.value) return; WBR_F.dInb = e.target.value; renderWbr(); });
+  $("wbr-limpar").addEventListener("click", ()=>{ WBR_F.resp = ""; WBR_F.reg = WBR && WBR.rows.some(r=>r.reg==="CO") ? "CO" : ""; if(WBR){ wbrDatasPadrao(); WBR_F.sem = String(wbrSemanaPadrao()); } renderWbr(); });
+})();
+// em segundo plano: primeiro o cache do navegador, depois a base nova
+wbrCacheCarregar();
+setTimeout(()=>{ if(!WBR_PEND) loadWbr(true); }, 8000);
+setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
