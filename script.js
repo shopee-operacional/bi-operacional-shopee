@@ -518,9 +518,9 @@ if(!document.querySelector(".app")){
       <div class="sd-toolbar">
         <div class="filter"><label>Regional</label><select id="wbr-f-reg"></select></div>
         <div class="filter"><label>Responsável</label><select id="wbr-f-resp"></select></div>
+        <div class="filter"><label>Semana</label><select id="wbr-f-sem"></select></div>
         <div class="filter sd-data"><label>Data do backlog</label><input type="date" id="wbr-f-dbkl"></div>
         <div class="filter sd-data"><label>Data do inbound</label><input type="date" id="wbr-f-dinb"></div>
-        <div class="filter"><label>Semana (Mis-Scan, Same Day, FIFO)</label><select id="wbr-f-sem"></select></div>
         <button class="theme-btn" id="wbr-limpar">Limpar filtros</button>
       </div>
       <div id="wbr-loading"></div>
@@ -5626,22 +5626,25 @@ function wbrAplicar(json){
   }));
   const dias = [...new Set(rows.map(r=>r.data))].sort();
   const semanas = [...new Set(rows.map(r=>r.semana).filter(Boolean))].sort((a,b)=>a-b);
-  const ultAntes = WBR && WBR.ultBkl;
   WBR = { em: json.atualizadoEm, rows, dias, semanas,
           ultBkl: dias.filter(d=> rows.some(r=>r.data===d && r.bkl>0)).pop() || dias[dias.length-1] };
   // primeira carga, ou estava no último dia: acompanha o dia novo
-  if(!WBR_F.dBkl || WBR_F.dBkl === ultAntes) wbrDatasPadrao();
-  if(!WBR_F.sem || !semanas.includes(+WBR_F.sem)) WBR_F.sem = String(wbrSemanaPadrao());
+  if(!WBR_F.sem || !semanas.includes(+WBR_F.sem)){ WBR_F.sem = String(wbrSemanaPadrao()); WBR_F.dBkl = ""; }
+  if(!WBR_F.dBkl) wbrDatasPadrao();
   if(WBR_F.reg === "__default__") WBR_F.reg = rows.some(r=>r.reg==="CO") ? "CO" : "";
   document.getElementById("wbr-loading").innerHTML = "";
   document.getElementById("wbr-conteudo").style.display = "";
   if(document.getElementById("sec-wbr").classList.contains("active")) renderWbr();
 }
-// backlog: último dia da base · inbound: dia útil anterior (pula domingo)
-function wbrDatasPadrao(){
-  WBR_F.dBkl = WBR.ultBkl;
+// A semana manda na aba inteira (como na ANALISE WBR da planilha):
+// backlog = 1º dia da semana com backlog (a segunda) · inbound = dia útil
+// anterior com inbound (o sábado antes, pulando o domingo).
+function wbrDatasDaSemana(sem){
+  const dias = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===+sem && r.bkl>0));
+  WBR_F.dBkl = dias[0] || WBR.ultBkl;
   WBR_F.dInb = wbrInbAnterior(WBR_F.dBkl);
 }
+function wbrDatasPadrao(){ wbrDatasDaSemana(WBR_F.sem || wbrSemanaPadrao()); }
 function wbrInbAnterior(dBkl){
   const comInb = WBR.dias.filter(d=> d < dBkl && wbrDow(d) !== 0 && WBR.rows.some(r=>r.data===d && r.inb>0));
   return comInb.pop() || dBkl;
@@ -5787,11 +5790,12 @@ function renderWbr(){
   const $ = id => document.getElementById(id);
   $("wbr-f-reg").addEventListener("change", e=>{ WBR_F.reg = e.target.value; WBR_F.resp = ""; renderWbr(); });
   $("wbr-f-resp").addEventListener("change", e=>{ WBR_F.resp = e.target.value; renderWbr(); });
-  $("wbr-f-sem").addEventListener("change", e=>{ WBR_F.sem = e.target.value; renderWbr(); });
+  // trocar a semana leva as datas do backlog e do inbound junto
+  $("wbr-f-sem").addEventListener("change", e=>{ WBR_F.sem = e.target.value; wbrDatasDaSemana(WBR_F.sem); renderWbr(); });
   // trocar a data do backlog já sugere o inbound do dia útil anterior
   $("wbr-f-dbkl").addEventListener("change", e=>{ if(!e.target.value) return; WBR_F.dBkl = e.target.value; WBR_F.dInb = wbrInbAnterior(WBR_F.dBkl); renderWbr(); });
   $("wbr-f-dinb").addEventListener("change", e=>{ if(!e.target.value) return; WBR_F.dInb = e.target.value; renderWbr(); });
-  $("wbr-limpar").addEventListener("click", ()=>{ WBR_F.resp = ""; WBR_F.reg = WBR && WBR.rows.some(r=>r.reg==="CO") ? "CO" : ""; if(WBR){ wbrDatasPadrao(); WBR_F.sem = String(wbrSemanaPadrao()); } renderWbr(); });
+  $("wbr-limpar").addEventListener("click", ()=>{ WBR_F.resp = ""; WBR_F.reg = WBR && WBR.rows.some(r=>r.reg==="CO") ? "CO" : ""; if(WBR){ WBR_F.sem = String(wbrSemanaPadrao()); wbrDatasPadrao(); } renderWbr(); });
 })();
 // em segundo plano: primeiro o cache do navegador, depois a base nova
 wbrCacheCarregar();
