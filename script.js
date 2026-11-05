@@ -1621,6 +1621,62 @@ function diaLabel(chave){
 }
 // A partir de D3 é considerado crítico (combinado com a usuária) — D1/D2
 // ainda não. Soma tudo que for D3 pra cima, de um DOP.
+// ==================== MENSAGEM PARA A AGÊNCIA (Análise de Backlog) ====================
+// Botão "💬 Mensagem" em cada DOP com pacote em D3+: monta o texto pronto
+// (saudação pelo horário, nome da agência, quantos pacotes e há quantos dias),
+// que dá pra editar, copiar ou abrir direto no WhatsApp.
+const BL_MSG = {
+  itens: [],
+  guardar(b){ this.itens.push(b); return this.itens.length - 1; },
+  texto(b){
+    const h = new Date().getHours();
+    const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    const dias = Object.entries(b.dias||{}).filter(([,q])=>q>0).map(([k])=> +k.replace("D_",""));
+    const maisAntigo = dias.length ? Math.max(...dias) : 0;
+    const d3 = backlogD3Mais(b);
+    const tipo = b.frente && b.frente !== "Forward" ? " (" + b.frente + ")" : "";
+    const pac = n => n + (n===1 ? " pacote pendente" : " pacotes pendentes");
+    return `${saud}, ${b.agencia}! Tudo bem?\n\n`
+      + `Verificamos que em seu sistema consta${d3===1?"":"m"} ${pac(d3)}${tipo} `
+      + (d3===1 ? `há ${maisAntigo} dias` : `há 3 dias ou mais` + (maisAntigo > 3 ? `, sendo o mais antigo há ${maisAntigo} dias` : ""))
+      + ` (DOP ${b.dop}).\n\n`
+      + `Poderia, por favor, nos informar o que ocorreu?\n\nObrigada!`;
+  },
+  abrir(i){
+    const b = this.itens[+i]; if(!b) return;
+    let m = document.getElementById("bl-msg-modal");
+    if(!m){
+      m = document.createElement("div"); m.id = "bl-msg-modal";
+      m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px";
+      m.innerHTML = `<div class="card" style="max-width:560px;width:100%;margin:0">
+        <div class="card-head"><div class="card-title" id="bl-msg-tit">💬 Mensagem para a agência</div><button class="theme-btn" id="bl-msg-x">✕</button></div>
+        <textarea id="bl-msg-txt" style="width:100%;min-height:190px;font:inherit;font-size:14px;padding:10px;border-radius:8px;border:1px solid var(--border, #ddd);background:var(--card, #fff);color:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap">
+          <span id="bl-msg-ok" style="align-self:center;color:var(--good, #1a7f4b);font-size:13px;margin-right:auto"></span>
+          <button class="theme-btn" id="bl-msg-wa">Abrir no WhatsApp</button>
+          <button class="theme-btn primary" id="bl-msg-copiar">Copiar mensagem</button>
+        </div></div>`;
+      document.body.appendChild(m);
+      const fechar = ()=> m.style.display = "none";
+      m.addEventListener("click", e=>{ if(e.target===m) fechar(); });
+      document.getElementById("bl-msg-x").onclick = fechar;
+      document.addEventListener("keydown", e=>{ if(e.key==="Escape") fechar(); });
+      document.getElementById("bl-msg-copiar").onclick = async ()=>{
+        const t = document.getElementById("bl-msg-txt");
+        try{ await navigator.clipboard.writeText(t.value); }catch(e){ t.select(); document.execCommand("copy"); }
+        document.getElementById("bl-msg-ok").textContent = "✓ Copiada! É só colar na conversa.";
+      };
+      document.getElementById("bl-msg-wa").onclick = ()=>{
+        const t = document.getElementById("bl-msg-txt").value;
+        window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank");
+      };
+    }
+    document.getElementById("bl-msg-tit").textContent = "💬 Mensagem para " + b.agencia;
+    document.getElementById("bl-msg-txt").value = this.texto(b);
+    document.getElementById("bl-msg-ok").textContent = "";
+    m.style.display = "flex";
+  }
+};
 function backlogD3Mais(b){
   return Object.entries(b.dias||{}).reduce((s,[k,qtd]) => (+k.replace("D_","")) >= 3 ? s + qtd : s, 0);
 }
@@ -1709,6 +1765,7 @@ function backlogPctAtrasadosFrente(b){
 // DOPs/pacotes parados sob ele; clicar expande a lista dos DOPs (agência +
 // dias de aging), igual mostrava antes, só que agora com mais um nível.
 function renderBacklogAnalise(filtro){
+  BL_MSG.itens = [];
   const el = document.getElementById("backlog-list");
   const badge = document.getElementById("nav-backlog-badge");
   if(!el) return;
@@ -1808,7 +1865,7 @@ function renderBacklogAnalise(filtro){
         return `
         <div class="alert-row backlog-dop-row" data-dop="${b.dop}" style="grid-template-columns:1.4fr 0.9fr; cursor:pointer; align-items:flex-start;" title="Clique para ver o detalhe de ${b.agencia}">
           <div><div class="alert-name">${b.agencia}</div><div class="alert-sub">DOP ${b.dop}${local ? " · " + local : ""} · ${b.totalArrastado.toLocaleString("pt-BR")} pacote${b.totalArrastado>1?'s':''} parado${b.totalArrastado>1?'s':''}</div></div>
-          <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">${backlogDiasChips(b)}</div>
+          <div style="display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center;">${backlogDiasChips(b)}${backlogD3Mais(b) > 0 ? `<button class="theme-btn bl-msg-btn" data-msg="${BL_MSG.guardar(b)}" title="Montar mensagem para a agência sobre os pacotes pendentes" style="margin:2px 0 2px 4px; padding:3px 9px; font-size:12px;">💬 Mensagem</button>` : ""}</div>
         </div>`;
       }).join("");
       const toggleDopsHtml = (!aberto || !temMais) ? "" : `
@@ -1856,6 +1913,9 @@ function renderBacklogAnalise(filtro){
   });
   el.querySelectorAll(".backlog-dop-row[data-dop]").forEach(row=>{
     row.addEventListener("click", ev=>{ ev.stopPropagation(); openDetail(row.dataset.dop); });
+  });
+  el.querySelectorAll(".bl-msg-btn[data-msg]").forEach(btn=>{
+    btn.addEventListener("click", ev=>{ ev.stopPropagation(); BL_MSG.abrir(btn.dataset.msg); });
   });
   el.querySelectorAll(".backlog-analistas-toggle[data-frente]").forEach(row=>{
     row.addEventListener("click", ()=>{
