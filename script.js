@@ -2038,8 +2038,13 @@ function nfEmFilteredExcept(exceptKey){
 function nfOpcoes(exceptKey, campo){
   return [...new Set(nfUniq(nfFilteredExcept(exceptKey), campo).concat(nfUniq(nfEmFilteredExcept(exceptKey), campo)))].sort();
 }
+// "Outubro/2026" -> 202610, pra ordenar os meses pelo calendário (mais recente primeiro)
+function nfMesChave(m){
+  const p = String(m||"").split("/"); const i = NF_MESES_PT.indexOf(p[0]);
+  return i < 0 ? 0 : (+p[1]||0) * 100 + i + 1;
+}
 function populateNfFilters(){
-  populateSelect("nf-f-mes", nfOpcoes("mes","mes"));
+  populateSelect("nf-f-mes", nfOpcoes("mes","mes").sort((a,b)=> nfMesChave(b) - nfMesChave(a)));
   populateSelect("nf-f-regional", nfOpcoes("regional","regional"));
   populateSelect("nf-f-subregional", nfOpcoes("subregional","subRegional"));
   populateSelect("nf-f-analista", nfOpcoes("analista","analista"));
@@ -4799,9 +4804,10 @@ function loadLoja(silencioso){
 }
 function ldPreset(p){
   const ult = LD_DIAS[LD_DIAS.length-1] || "";
-  // "Último dia" = último dia FECHADO: hoje ainda está em andamento (quase sem visitas avaliadas)
-  const hoje = new Date(Date.now() - 3*3600e3).toISOString().slice(0,10);
-  const ultFechado = (ult===hoje && LD_DIAS.length>1) ? LD_DIAS[LD_DIAS.length-2] : ult;
+  // "Último dia" = último dia JÁ AVALIADO: enquanto a base não avalia as visitas,
+  // elas vêm todas como "evaluate" (o dia aparecia zerado). Pula esses dias.
+  const avaliados = new Set(LD_AGG.filter(r=> LD_PERFS.includes(r.perf)).map(r=>r.data));
+  const ultFechado = LD_DIAS.filter(d=> avaliados.has(d)).pop() || ult;
   if(p==="dia"){ LD_F.ini = ultFechado; LD_F.fim = ultFechado; }
   else if(p==="7d"){ const ds = LD_DIAS.slice(-7); LD_F.ini = ds[0]||ult; LD_F.fim = ult; }
   else if(p==="semana"){
@@ -4876,14 +4882,16 @@ function renderLoja(){
   const t = ldConta(lista);
   const n = v => (v||0).toLocaleString("pt-BR");
   const per = LD_F.ini===LD_F.fim ? histRotuloDia(LD_F.ini) : fmtDiaBR(LD_F.ini) + " a " + fmtDiaBR(LD_F.fim);
-  document.getElementById("ld-subtitle").textContent = "— " + per + (LD_F.fim===LD_DIAS[LD_DIAS.length-1] ? " (último dia pode estar em andamento)" : "") + (LD_CACHE_EM ? " · cópia salva às " + new Date(LD_CACHE_EM).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) + ", atualizando…" : "");
+  const ldSemAval = LD_DIAS.filter(d=> d>=LD_F.ini && d<=LD_F.fim && !LD_AGG.some(r=>r.data===d && LD_PERFS.includes(r.perf)));
+  document.getElementById("ld-subtitle").textContent = "— " + per
+    + (ldSemAval.length ? " · ⚠ " + ldSemAval.map(fmtDiaBR).join(", ") + " ainda sem avaliação na base (visitas em \"evaluate\")" : (LD_F.fim===LD_DIAS[LD_DIAS.length-1] ? " (último dia pode estar em andamento)" : "")) + (LD_CACHE_EM ? " · cópia salva às " + new Date(LD_CACHE_EM).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) + ", atualizando…" : "");
   // reincidentes: loja com No Show Seller em 2 dias ou mais no período
   const detPer = LD_DET.filter(r=>ldPassa(r));
   const diasNss = {};
   detPer.forEach(r=>{ if(r.perf==="No Show Seller"){ (diasNss[r.loja] || (diasNss[r.loja] = new Set())).add(r.data); } });
   const reinc = Object.values(diasNss).filter(s=>s.size>=2).length;
   renderKpis("ld-kpis", [
-    {label:"Visitas", value:n(t.den), icon:"🏪", sub: n(t.outros) + " desativadas/reatribuídas fora da conta"},
+    {label:"Visitas", value:n(t.den), icon:"🏪", sub: n(t.outros) + " fora da conta (desativadas, reatribuídas ou ainda em avaliação)"},
     {label:"% Full Pickup", value: ldPct(t.fp, t.den), icon:"✅", cls: t.den && t.fp/t.den < 0.85 ? "warn" : ""},
     {label:"% No Show Seller", value: ldPct(t.nss, t.den), icon:"🙅", cls: t.den && t.nss/t.den > 0.1 ? "crit" : "warn", sub: n(t.nss) + " visitas · " + ldPct(t.nssFora, t.den) + " fora do raio"},
     {label:"% No Show 3PL", value: ldPct(t.nsd, t.den), icon:"🚚", cls: t.nsd>0 ? "warn" : "", sub: n(t.nsd) + " visitas"},
