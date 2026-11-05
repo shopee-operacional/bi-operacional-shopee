@@ -1644,6 +1644,10 @@ const BL_MSG = {
   },
   abrir(i){
     const b = this.itens[+i]; if(!b) return;
+    this.abrirTexto("💬 Mensagem para " + b.agencia, this.texto(b));
+  },
+  // janela genérica: usada pela Análise de Backlog e pela aba Pagamentos
+  abrirTexto(titulo, texto){
     let m = document.getElementById("bl-msg-modal");
     if(!m){
       m = document.createElement("div"); m.id = "bl-msg-modal";
@@ -1671,8 +1675,8 @@ const BL_MSG = {
         window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank");
       };
     }
-    document.getElementById("bl-msg-tit").textContent = "💬 Mensagem para " + b.agencia;
-    document.getElementById("bl-msg-txt").value = this.texto(b);
+    document.getElementById("bl-msg-tit").textContent = titulo;
+    document.getElementById("bl-msg-txt").value = texto;
     document.getElementById("bl-msg-ok").textContent = "";
     m.style.display = "flex";
   }
@@ -2336,11 +2340,30 @@ function renderNotasFiscais(){
     if(!rows.length){
       el.innerHTML = '<tbody><tr><td class="empty-state">Nenhum DOP pendente para os filtros atuais.</td></tr></tbody>';
     } else {
-      const thead = "<thead><tr><th>Mês</th><th>DOP</th><th>Empresa</th><th>Sub-Regional</th><th>Regional</th><th>Analista</th></tr></thead>";
-      const tbody = "<tbody>" + rows.map(d=>`<tr><td>${d.mes||"—"}</td><td class="dop-strong">${d.dop}</td><td>${d.empresa||"—"}</td><td>${d.subRegional||"—"}</td><td>${d.regional||"—"}</td><td>${d.analista||"—"}</td></tr>`).join("") + "</tbody>";
+      const thead = "<thead><tr><th>Mês</th><th>DOP</th><th>Empresa</th><th>Sub-Regional</th><th>Regional</th><th>Analista</th><th></th></tr></thead>";
+      const tbody = "<tbody>" + rows.map(d=>`<tr><td>${d.mes||"—"}</td><td class="dop-strong">${d.dop}</td><td>${d.empresa||"—"}</td><td>${d.subRegional||"—"}</td><td>${d.regional||"—"}</td><td>${d.analista||"—"}</td><td style="text-align:right"><button class="theme-btn nf-msg-btn" data-dop="${esc(d.dop)}" title="Montar mensagem para a agência sobre a nota fiscal" style="padding:3px 9px;font-size:12px;white-space:nowrap">💬 Mensagem</button></td></tr>`).join("") + "</tbody>";
       el.innerHTML = thead + tbody;
+      el.querySelectorAll(".nf-msg-btn").forEach(btn=> btn.onclick = ()=>{
+        // mesmo DOP pendente em mais de um mês: cita todos os meses numa mensagem só
+        const doDop = rows.filter(r=> String(r.dop)===btn.dataset.dop);
+        nfAbrirMensagem(doDop);
+      });
     }
   }
+}
+function nfAbrirMensagem(linhas){
+  if(!linhas.length) return;
+  const d = linhas[0];
+  const h = new Date().getHours();
+  const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  const meses = [...new Set(linhas.map(r=>r.mes).filter(Boolean))].sort((a,b)=> nfMesChave(a) - nfMesChave(b));
+  const lista = meses.length <= 1 ? (meses[0] || "") : meses.slice(0,-1).join(", ") + " e " + meses[meses.length-1];
+  const nome = d.empresa || ("DOP " + d.dop);
+  const texto = `${saud}, ${nome}! Tudo bem?\n\n`
+    + `Verificamos que ainda não recebemos a nota fiscal referente ao pagamento de ${lista || "mês pendente"}`
+    + ` (DOP ${d.dop}).\n\n`
+    + `Poderia, por favor, nos enviar a nota ou informar o que ocorreu?\n\nObrigada!`;
+  BL_MSG.abrirTexto("💬 Mensagem para " + nome, texto);
 }
 const nfRefreshBtn = document.getElementById("nf-refresh");
 if(nfRefreshBtn) nfRefreshBtn.addEventListener("click", ()=> loadNotasFiscais());
