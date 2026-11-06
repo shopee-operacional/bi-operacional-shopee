@@ -3666,10 +3666,12 @@ let LT_SEQ = 0;           // nº do último pedido; resposta de pedido antigo n�
 let LT_BUSCOU = false;    // a busca padrão já foi feita nesta sessão?
 let LT_NOTA = "";         // complemento do subtítulo ("atualizando…", aviso de cópia salva)
 let LT_COPIA_EM = null;   // quando a cópia guardada que está na tela foi salva (null = tela com dados novos)
-const LT_LS_KEY = "ltUltimo_v1";
+const LT_LS_KEY = "ltUltimo_v2";
 const LT_LS_MAX_MS = 3 * 24 * 60 * 60 * 1000; // cópia com mais de 3 dias não é usada
-function ltSalvarLocal(json){
-  try{ localStorage.setItem(LT_LS_KEY, JSON.stringify({ salvoEm: Date.now(), json: json })); }
+// Guarda a resposta JÁ ajustada para 7 dias de calendário (e o período pedido),
+// pra que na próxima abertura a cópia mostrada na hora já seja a certa.
+function ltSalvarLocal(json, pedido){
+  try{ localStorage.setItem(LT_LS_KEY, JSON.stringify({ salvoEm: Date.now(), json: json, pedido: pedido || null })); }
   catch(e){ /* sem espaço ou navegador sem localStorage: só não guarda */ }
 }
 function ltLerLocal(){
@@ -3792,17 +3794,18 @@ function ltMostrar(json, manterLista){
   ltAtualizarFiltros();
   renderLeadTime();
 }
-function loadLeadTime(ini, fim){
+function loadLeadTime(ini, fim, auto){
   if(ini && fim && ini > fim){ const t = ini; ini = fim; fim = t; }
   LT_PEDIDO = (ini && fim) ? { ini, fim } : null;
   const padrao = !(ini || fim);
   // busca padrão já em andamento (pré-carga): só espera por ela
   if(padrao && LT_PENDENTE) return LT_PENDENTE;
-  const p = ltBuscar(ini, fim, padrao);
+  const p = ltBuscar(ini, fim, padrao, auto);
   if(padrao){ LT_PENDENTE = p; p.then(()=>{ LT_PENDENTE = null; }); }
   return p;
 }
-async function ltBuscar(ini, fim, padrao){
+// auto = ajuste automático para 7 dias de calendário logo após a busca padrão
+async function ltBuscar(ini, fim, padrao, auto){
   const sub = document.getElementById("lt-subtitle");
   const load = document.getElementById("lt-loading");
   // período escolhido pela pessoa "vence" qualquer busca anterior ainda em andamento
@@ -3813,22 +3816,39 @@ async function ltBuscar(ini, fim, padrao){
       if(!LT && padrao){
         // nada na tela ainda: mostra a última cópia guardada, se houver
         const copia = ltLerLocal();
-        if(copia){ LT_COPIA_EM = copia.salvoEm; ltMostrar(copia.json); }
+        if(copia){ LT_COPIA_EM = copia.salvoEm; LT_PEDIDO = copia.pedido || null; ltMostrar(copia.json); LT_PEDIDO = null; }
       }
       if(!LT && load){ load.innerHTML = loaderHtml("Carregando lead time…"); load.style.display = ""; }
-      if(padrao && LT_COPIA_EM && LT){ LT_NOTA = " · atualizando…"; renderLeadTime(); }
+      // já tem número na tela (cópia salva ou busca padrão): só avisa no subtítulo,
+      // sem apagar o período — a tela não fica parecendo travada
+      if((padrao || auto) && LT){ LT_NOTA = " · atualizando…"; renderLeadTime(); }
       else if(sub) sub.textContent = "— carregando…";
       const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
       const q = (ini || fim) ? "&ini=" + encodeURIComponent(ini||fim) + "&fim=" + encodeURIComponent(fim||ini) : "";
       json = await fetchViaIframe(API_URL + sep + "tipo=leadtime" + q, 90000);
       if(!json || !json.rows || !json.cols) throw new Error("resposta sem dados — confira se o LeadTime.gs foi publicado");
       if(padrao){ LT_BUSCOU = true; ltSalvarLocal(json); }
+      if(auto) ltSalvarLocal(json, LT_PEDIDO);
     }
     if(seq !== LT_SEQ){
       // a pessoa já escolheu outro período enquanto esta busca rodava:
       // guarda a resposta para depois, sem trocar o que está na tela
       LT_CACHE[json.periodoIni + "_" + json.periodoFim] = json;
       return;
+    }
+    // a cópia salva (já com 7 dias de calendário) está na tela e a busca padrão
+    // veio com período maior: não troca a tela pelo número "errado" — pede o
+    // período certo direto e só troca quando ele chegar (sem piscar)
+    if(padrao && !LT_PEDIDO && LT_COPIA_EM){
+      const d = json.diasDisponiveis || [];
+      if(d.length){
+        const ult = d[d.length-1], ini7 = ltAddDias(ult, -6);
+        if(json.periodoIni && json.periodoIni < ini7){
+          LT_CACHE[json.periodoIni + "_" + json.periodoFim] = json;
+          loadLeadTime(ini7, ult, true);
+          return;
+        }
+      }
     }
     const eraCopia = LT_COPIA_EM !== null;
     LT_NOTA = ""; LT_COPIA_EM = null;
@@ -3837,11 +3857,13 @@ async function ltBuscar(ini, fim, padrao){
     // tem buraco, isso passa de 7 dias de calendário — pede o período certo
     if(padrao && !LT_PEDIDO){
       const r = ltPreset("7d");
-      if(r && json.periodoIni && json.periodoIni < r[0]) loadLeadTime(r[0], r[1]);
+      if(r && json.periodoIni && json.periodoIni < r[0]) loadLeadTime(r[0], r[1], true);
     }
   } catch(err){
     console.error("Lead Time:", err);
     if(seq !== LT_SEQ) return;
+    // falhou só o ajuste automático de período: mantém os números da busca padrão
+    if(auto && LT && !LT_COPIA_EM){ LT_NOTA = ""; renderLeadTime(); return; }
     if(LT_COPIA_EM && LT){
       // a cópia guardada continua na tela, com aviso de quando ela é
       LT_NOTA = " · ⚠ não consegui atualizar agora; dados salvos em " + ltQuandoTxt(LT_COPIA_EM);
