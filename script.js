@@ -5764,13 +5764,19 @@ function wbrInbAnterior(dBkl){
   const comInb = WBR.dias.filter(d=> d < dBkl && wbrDow(d) !== 0 && WBR.rows.some(r=>r.data===d && r.inb>0));
   return comInb.pop() || dBkl;
 }
-// semana fechada mais recente (se o último dia já é domingo, é a própria semana)
+// Semana fechada mais recente. O dia em que a semana termina é descoberto
+// pela própria base (último dia da semana anterior): antes o código supunha
+// semana de segunda a domingo, mas na base a semana vira no domingo — e aí
+// no domingo/segunda ele escolhia a semana nova, ainda sem dados (tudo zerado).
 function wbrSemanaPadrao(){
   const ult = WBR.dias[WBR.dias.length-1]; if(!ult) return "";
   const semUlt = (WBR.rows.find(r=>r.data===ult) || {}).semana;
-  if(wbrDow(ult) === 0) return semUlt;
   const ant = WBR.semanas.filter(w=> w < semUlt);
-  return ant.length ? ant[ant.length-1] : semUlt;
+  if(!ant.length) return semUlt;
+  const semAnt = ant[ant.length-1];
+  const diasAnt = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===semAnt));
+  const fimSemana = diasAnt.length ? wbrDow(diasAnt[diasAnt.length-1]) : 0;
+  return wbrDow(ult) === fimSemana ? semUlt : semAnt;
 }
 async function wbrCacheCarregar(){
   const c = await wbrCacheLer();
