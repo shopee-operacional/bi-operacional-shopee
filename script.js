@@ -55,6 +55,7 @@ if(!document.querySelector(".app")){
     <div class="nav-group" data-group="fm">
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
+        <div class="nav-item" data-section="coletas"><span class="nav-txt">Coletas ao vivo</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
@@ -208,6 +209,55 @@ if(!document.querySelector(".app")){
         <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
         <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
         <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- COLETAS AO VIVO (FM) -->
+    <div class="section" id="sec-coletas">
+      <div class="section-title">Coletas ao vivo <span class="sd-sub" id="co-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Sub-regional</label><select id="co-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="co-f-station"></select></div>
+        <div class="filter"><label>Agência</label><select id="co-f-agencia"></select></div>
+        <div class="filter"><label>Status do dia</label><select id="co-f-estado"></select></div>
+        <button class="theme-btn" id="co-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="co-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="co-loading"></div>
+      <div id="co-conteudo" style="display:none">
+        <div class="kpi-grid" id="co-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Status das coletas hoje</div><div class="sd-hint">PUPs · clique para filtrar</div></div>
+            <div id="co-chart-estado" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Coletado hoje por Station</div><div class="sd-hint">pacotes · clique para filtrar</div></div>
+            <div id="co-chart-station" class="sd-bars"></div>
+            <div class="card-expand-btn" id="co-station-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Motoristas hoje</div><div class="sd-hint">pacotes coletados · PUPs visitados</div></div>
+          <div id="co-chart-driver" class="sd-bars"></div>
+          <div class="card-expand-btn" id="co-driver-more" style="display:none"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">PUPs</div><div class="losses-total" id="co-tab-total"></div></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <div class="sd-seg" id="co-seg">
+              <button data-v="hoje" class="active">Com task hoje</button>
+              <button data-v="coletando">Coletando agora</button>
+              <button data-v="falha">Falhas</button>
+              <button data-v="semvisita">Sem visita hoje</button>
+              <button data-v="fora">Fora do raio</button>
+              <button data-v="todas">Todos</button>
+            </div>
+            <div class="search-box" style="flex:1; min-width:220px; margin:0;"><input id="co-busca" placeholder="Buscar PUP, loja, motorista, rota, justificativa…"></div>
+          </div>
+          <div class="table-wrap"><table class="data" id="co-tab"></table></div>
+          <div class="card-expand-btn" id="co-more" style="display:none"></div>
+        </div>
       </div>
     </div>
 
@@ -3133,7 +3183,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3156,6 +3206,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "crm"){ if(CRM_LOADED) renderCrm(); else if(CRM_LOADING){ const l = document.getElementById("crm-loading"); if(l){ l.innerHTML = loaderHtml("Carregando a CRM…"); l.style.display = ""; } } else loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
+    if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
     if(item.dataset.section === "wbr"){ if(WBR) renderWbr(); else loadWbr(); }
@@ -4389,6 +4440,218 @@ function renderAlDetalhe(lista){
     renderAlDetalhe(alFiltrar());
   }));
   let t; document.getElementById("al-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ AL_F.busca = e.target.value; renderAlDetalhe(alFiltrar()); }, 200); });
+})();
+// ==================== COLETAS AO VIVO (FM) ====================
+// ?tipo=coletasaovivo (ColetasAoVivo.gs) — planilha "Tasks -Regional4", aba "PUP's".
+// Lançamentos reais dos motoristas: a aba se atualiza sozinha a cada 5 min
+// enquanto está aberta (o Apps Script guarda a leitura por 5 min).
+let CO_ROWS = [], CO_LOADED = false, CO_PEND = null, CO_META = {};
+const CO_F = { sub:"__default__", station:"", agencia:"", estado:"", seg:"hoje", busca:"" };
+const CO_EXP = { station:false, driver:false, tab:false };
+const CO_LIM_ST = 15, CO_LIM_DRV = 15, CO_LIM = 60;
+const CO_REFRESH_MS = 5 * 60 * 1000;
+// estado do PUP HOJE: se não teve start/done hoje, o "last status" é de outro dia
+const CO_ESTADOS = [
+  {k:"Coletando",       cor:"var(--brand)",       badge:"info"},
+  {k:"Full Pickup",     cor:"var(--good)",        badge:"good"},
+  {k:"Partial Pickup",  cor:"var(--warning)",     badge:"warning"},
+  {k:"No Show Seller",  cor:"var(--critical)",    badge:"critical"},
+  {k:"No Show 3PL",     cor:"var(--critical)",    badge:"critical"},
+  {k:"Disabled",        cor:"var(--serious)",     badge:"serious"},
+  {k:"Outros",          cor:"var(--text-muted)",  badge:""},
+  {k:"Sem visita hoje", cor:"var(--text-muted)",  badge:""}
+];
+function coEstado(r){
+  const h = CO_META.hoje || "";
+  if(!(String(r.lastDone).startsWith(h) || String(r.lastStart).startsWith(h))) return "Sem visita hoje";
+  const s = String(r.status||"").toLowerCase();
+  if(/coletando/.test(s)) return "Coletando";
+  if(/full/.test(s)) return "Full Pickup";
+  if(/partial/.test(s)) return "Partial Pickup";
+  if(/no show/.test(s) && /seller/.test(s)) return "No Show Seller";
+  if(/no show/.test(s)) return "No Show 3PL";
+  if(/disabled/.test(s)) return "Disabled";
+  return "Outros";
+}
+const coFalha = e => /No Show|Disabled/.test(e);
+const coHora = iso => iso ? iso.slice(11,16) : "";
+const coDiaHora = iso => {
+  if(!iso) return "—";
+  return (iso.slice(0,10)===CO_META.hoje ? "" : iso.slice(8,10) + "/" + iso.slice(5,7) + " ") + iso.slice(11,16);
+};
+function loadColetas(silencioso){
+  const box = document.getElementById("co-loading");
+  if(!silencioso && !CO_LOADED){ box.innerHTML = loaderHtml("Carregando as coletas de hoje…"); document.getElementById("co-conteudo").style.display = "none"; }
+  if(CO_PEND) return CO_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  CO_PEND = fetchViaIframe(API_URL + sep + "tipo=coletasaovivo", 120000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o ColetasAoVivo.gs e a rota ?tipo=coletasaovivo do webapp.gs foram publicados");
+    const num = new Set(json.num || []);
+    CO_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+    CO_META = { hoje: json.hoje || "", em: json.atualizadoEm || "", temVisita: !!json.temVisitaHoje };
+    CO_ROWS.forEach(r=>{ r.estado = coEstado(r); });
+    if(CO_F.sub === "__default__") CO_F.sub = CO_ROWS.some(r=>r.sub==="CO") ? "CO" : "";
+    CO_LOADED = true;
+    box.innerHTML = "";
+    document.getElementById("co-conteudo").style.display = "";
+    if(document.getElementById("sec-coletas").classList.contains("active")) renderColetas();
+  }).catch(err=>{
+    console.error("Coletas ao vivo:", err);
+    if(CO_LOADED){ document.getElementById("co-subtitle").textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
+    box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar as coletas (' + esc(err.message) + '). <a href="#" id="co-retry">Tentar de novo</a></div>';
+    const a = document.getElementById("co-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadColetas(); };
+  }).finally(()=>{ CO_PEND = null; });
+  return CO_PEND;
+}
+function coPassa(r, ignorar){
+  return (ignorar==="sub" || !CO_F.sub || r.sub===CO_F.sub)
+    && (ignorar==="station" || !CO_F.station || r.station===CO_F.station)
+    && (ignorar==="agencia" || !CO_F.agencia || r.agencia===CO_F.agencia)
+    && (ignorar==="estado" || !CO_F.estado || r.estado===CO_F.estado);
+}
+function coSoma(lista, k){ return lista.reduce((t,r)=>t+(r[k]||0),0); }
+function renderColetas(){
+  if(!CO_LOADED) return;
+  const opcoes = (id, valores, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  opcoes("co-f-sub", u(CO_ROWS,"sub"), CO_F.sub, "Todas");
+  opcoes("co-f-station", u(CO_ROWS.filter(r=>coPassa(r,"station")),"station"), CO_F.station, "Todas");
+  opcoes("co-f-agencia", u(CO_ROWS.filter(r=>coPassa(r,"agencia")),"agencia"), CO_F.agencia, "Todas");
+  opcoes("co-f-estado", CO_ESTADOS.map(e=>e.k), CO_F.estado, "Todos");
+  const em = CO_META.em ? new Date(CO_META.em) : null;
+  document.getElementById("co-subtitle").textContent = "— planilha Tasks lida às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—") + " · atualiza sozinho a cada 5 min";
+
+  const lista = CO_ROWS.filter(r=>coPassa(r));
+  const comTask = lista.filter(r=>r.tasks>0);
+  const visitados = lista.filter(r=>r.estado!=="Sem visita hoje");
+  const coletando = lista.filter(r=>r.estado==="Coletando");
+  const falhas = lista.filter(r=>coFalha(r.estado));
+  const semVisita = comTask.filter(r=>r.estado==="Sem visita hoje");
+  const fora = visitados.filter(r=>/fora/i.test(r.raio||""));
+  const motoristas = new Set(visitados.map(r=>r.driver).filter(Boolean));
+  const n = sdNum, pct = (a,b)=> b ? (a/b*100).toFixed(1).replace(".",",") + "%" : "—";
+  renderKpis("co-kpis", [
+    {label:"Coletado hoje (D0)", value:n(coSoma(lista,"pick0")), icon:"📦", sub: n(lista.filter(r=>r.pick0>0).length) + " PUPs com coleta"},
+    {label:"PUPs visitados", value:n(visitados.length), icon:"✅", sub: "de " + n(comTask.length) + " com task hoje · " + pct(comTask.filter(r=>r.estado!=="Sem visita hoje").length, comTask.length)},
+    {label:"Coletando agora", value:n(coletando.length), icon:"🚚", sub: n(motoristas.size) + " motoristas em rota hoje",
+      onClick: ()=>{ coSetSeg("coletando"); }},
+    {label:"Falhas hoje", value:n(falhas.length), icon:"⛔", cls: falhas.length?"crit":"",
+      sub: n(falhas.filter(r=>/Seller/.test(r.estado)).length) + " No Show Seller · " + n(falhas.filter(r=>/3PL/.test(r.estado)).length) + " No Show 3PL",
+      onClick: ()=>{ coSetSeg("falha"); }},
+    {label:"Sem visita hoje", value:n(semVisita.length), icon:"⏳", cls: semVisita.length?"warn":"",
+      sub: n(coSoma(semVisita,"backlog")) + " pacotes de backlog nesses PUPs", onClick: ()=>{ coSetSeg("semvisita"); }},
+    {label:"Fora do raio", value:n(fora.length), icon:"📍", cls: fora.length?"warn":"", sub: pct(fora.length, visitados.length) + " das visitas de hoje",
+      onClick: ()=>{ coSetSeg("fora"); }}
+  ]);
+
+  // status do dia
+  const porEstado = CO_ESTADOS.map(e=>({label:e.k, volume: CO_ROWS.filter(r=>coPassa(r,"estado") && r.estado===e.k && (e.k!=="Sem visita hoje" || r.tasks>0)).length, cor:e.cor}))
+    .filter(g=>g.volume>0);
+  coBarras("co-chart-estado", porEstado, CO_F.estado, "PUPs", v=>{ CO_F.estado = CO_F.estado===v ? "" : v; CO_EXP.tab = false; renderColetas(); });
+
+  // por station
+  const st = coAgrupar(CO_ROWS.filter(r=>coPassa(r,"station") && r.pick0>0), "station");
+  coBarras("co-chart-station", CO_EXP.station ? st : st.slice(0, CO_LIM_ST), CO_F.station, "pacotes",
+    v=>{ CO_F.station = CO_F.station===v ? "" : v; CO_EXP.tab = false; renderColetas(); });
+  const ms = document.getElementById("co-station-more");
+  ms.style.display = st.length > CO_LIM_ST ? "" : "none";
+  ms.textContent = CO_EXP.station ? "− Mostrar só as " + CO_LIM_ST + " maiores" : "+ Ver todas as " + st.length + " stations";
+
+  // motoristas
+  const drv = coAgrupar(visitados.filter(r=>r.driver), "driver");
+  coBarras("co-chart-driver", CO_EXP.driver ? drv : drv.slice(0, CO_LIM_DRV), "", "pacotes",
+    v=>{ CO_F.busca = v; document.getElementById("co-busca").value = v; coSetSeg("todas"); });
+  const md = document.getElementById("co-driver-more");
+  md.style.display = drv.length > CO_LIM_DRV ? "" : "none";
+  md.textContent = CO_EXP.driver ? "− Mostrar só os " + CO_LIM_DRV + " primeiros" : "+ Ver todos os " + drv.length + " motoristas";
+
+  renderColetasTabela();
+}
+function coAgrupar(lista, campo){
+  const m = {};
+  lista.forEach(r=>{ const k = r[campo] || "—"; const o = m[k] || (m[k] = {label:k, volume:0, puPs:0, falhas:0}); o.volume += r.pick0; o.puPs++; if(coFalha(r.estado)) o.falhas++; });
+  return Object.values(m).sort((a,b)=>(b.volume-a.volume) || (b.puPs-a.puPs));
+}
+function coBarras(elId, grupos, sel, unidade, onClick){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">Nada nesse filtro ainda hoje.</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.volume)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = sel && g.label===sel ? "sel" : (sel ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}">
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.volume/max*100).toFixed(2)}%${g.cor?";background:"+g.cor:""}"></div></div>
+      <div class="sd-bar-val">${sdNum(g.volume)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div><div class="r">${unidade==="PUPs" ? "PUPs" : "Pacotes coletados"} <b>${sdNum(g.volume)}</b></div>`
+      + (g.puPs ? `<div class="r">PUPs visitados <b>${sdNum(g.puPs)}</b></div>` : "") + (g.falhas ? `<div class="r">Falhas <b>${sdNum(g.falhas)}</b></div>` : ""), ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+function coSetSeg(v){
+  CO_F.seg = v; CO_EXP.tab = false;
+  document.querySelectorAll("#co-seg button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
+  renderColetasTabela();
+  const t = document.getElementById("co-tab"); if(t && t.scrollIntoView) t.scrollIntoView({behavior:"smooth", block:"center"});
+}
+function renderColetasTabela(){
+  const q = CO_F.busca.trim().toLowerCase();
+  const segs = {
+    hoje: r=>r.tasks>0 || r.estado!=="Sem visita hoje", coletando: r=>r.estado==="Coletando",
+    falha: r=>coFalha(r.estado), semvisita: r=>r.tasks>0 && r.estado==="Sem visita hoje",
+    fora: r=>r.estado!=="Sem visita hoje" && /fora/i.test(r.raio||""), todas: ()=>true
+  };
+  let pups = CO_ROWS.filter(r=>coPassa(r) && segs[CO_F.seg](r));
+  if(q) pups = pups.filter(r=>[r.pup, r.id, r.nome, r.station, r.driver, r.rota, r.just, r.agencia, r.cluster].join(" ").toLowerCase().includes(q));
+  // mais recente primeiro (o que acabou de acontecer no topo); sem visita: maior backlog primeiro
+  pups.sort((a,b)=> (String(b.lastDone > b.lastStart ? b.lastDone : b.lastStart)).localeCompare(String(a.lastDone > a.lastStart ? a.lastDone : a.lastStart)) || (b.backlog-a.backlog));
+  if(CO_F.seg==="semvisita") pups.sort((a,b)=>(b.backlog-a.backlog) || (b.tasks-a.tasks));
+  document.getElementById("co-tab-total").innerHTML = `<b>${pups.length.toLocaleString("pt-BR")}</b> PUPs · <b>${sdNum(coSoma(pups,"pick0"))}</b> pacotes coletados`;
+  const vis = CO_EXP.tab ? pups.slice(0, 3000) : pups.slice(0, CO_LIM);
+  const badgeDe = e => (CO_ESTADOS.find(x=>x.k===e) || {}).badge || "";
+  const cel = v => v ? sdNum(v) : '<span style="opacity:.35">0</span>';
+  document.getElementById("co-tab").innerHTML =
+    "<thead><tr><th>PUP</th><th>Loja</th><th>Station</th><th>Sub</th><th>Status hoje</th><th>Coletado D0</th><th>Backlog</th><th>Início</th><th>Último done</th><th>Raio</th><th>Justificativa</th><th>Motorista</th><th>Agência</th><th>Rota</th><th>Tasks D0</th><th>Freq. visita</th></tr></thead><tbody>"
+    + (vis.map(r=>{
+      const fora = /fora/i.test(r.raio||"") && r.estado!=="Sem visita hoje";
+      const b = badgeDe(r.estado);
+      return `<tr><td><b>${esc(r.pup)}</b></td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.nome)}">${esc(r.nome)}</td><td>${esc(r.station)}</td><td>${esc(r.sub)}</td>`
+        + `<td>${b ? `<span class="badge ${b}"><span class="ic"></span>${esc(r.estado)}</span>` : `<span style="color:var(--text-muted)">${esc(r.estado)}</span>`}</td>`
+        + `<td><b>${cel(r.pick0)}</b></td><td>${cel(r.backlog)}</td><td>${coDiaHora(r.lastStart)}</td><td>${coDiaHora(r.lastDone)}</td>`
+        + `<td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.estado==="Sem visita hoje" ? "—" : (r.raio||"—"))}</td>`
+        + `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.just)}">${esc(r.just||"—")}</td>`
+        + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.driver)}">${esc(r.driver||"—")}</td><td>${esc(r.agencia||"—")}</td>`
+        + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota||"—")}</td><td>${cel(r.tasks)}</td><td>${r.freq ? r.freq.toFixed(0) + "%" : "—"}</td></tr>`;
+    }).join("") || '<tr><td colspan="16"><div class="empty-state">Nenhum PUP nesse recorte.</div></td></tr>') + "</tbody>";
+  const more = document.getElementById("co-more");
+  more.style.display = pups.length > CO_LIM ? "" : "none";
+  more.textContent = CO_EXP.tab ? "− Mostrar só os " + CO_LIM + " primeiros" : "+ Ver todos os " + pups.length.toLocaleString("pt-BR") + " PUPs" + (pups.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("co-f-sub")) return;
+  const re = ()=>{ CO_EXP.tab = false; renderColetas(); };
+  $("co-f-sub").addEventListener("change", e=>{ CO_F.sub = e.target.value; CO_F.station = ""; re(); });
+  $("co-f-station").addEventListener("change", e=>{ CO_F.station = e.target.value; re(); });
+  $("co-f-agencia").addEventListener("change", e=>{ CO_F.agencia = e.target.value; re(); });
+  $("co-f-estado").addEventListener("change", e=>{ CO_F.estado = e.target.value; re(); });
+  $("co-limpar").addEventListener("click", ()=>{ Object.assign(CO_F, {sub:"", station:"", agencia:"", estado:"", busca:""}); $("co-busca").value = ""; coSetSeg("hoje"); renderColetas(); });
+  $("co-refresh").addEventListener("click", ()=>{ $("co-subtitle").textContent = "— atualizando…"; loadColetas(true); });
+  $("co-station-more").addEventListener("click", ()=>{ CO_EXP.station = !CO_EXP.station; renderColetas(); });
+  $("co-driver-more").addEventListener("click", ()=>{ CO_EXP.driver = !CO_EXP.driver; renderColetas(); });
+  $("co-more").addEventListener("click", ()=>{ CO_EXP.tab = !CO_EXP.tab; renderColetasTabela(); });
+  document.querySelectorAll("#co-seg button").forEach(b=> b.addEventListener("click", ()=> coSetSeg(b.dataset.v)));
+  let t; $("co-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ CO_F.busca = e.target.value; CO_EXP.tab = false; renderColetasTabela(); }, 200); });
+  // atualiza sozinho a cada 5 min, mas só quando a aba está aberta e a página visível
+  setInterval(()=>{
+    if(document.hidden || !document.getElementById("sec-coletas").classList.contains("active")) return;
+    loadColetas(true);
+  }, CO_REFRESH_MS);
 })();
 // ==================== BACKLOG SELLER & PUDO ====================
 // ?tipo=backlogloja (BacklogLoja.gs) — planilha "backlog_regional4", aba "backlog overall".
