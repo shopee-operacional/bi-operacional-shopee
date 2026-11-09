@@ -3020,7 +3020,9 @@ let baseSortState = { key:"dop", dir:1 };
 let gestaoSortState = { key:"backlogOps", dir:-1 };
 function fmtDate(iso){
   if(!iso) return "—";
-  const d = new Date(iso);
+  // texto "dd/MM/yyyy HH:mm" (formato brasileiro): new Date() leria como mês/dia
+  const br = String(iso).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]+(\d{1,2}):(\d{2}))?/);
+  const d = br ? new Date(+br[3], +br[2]-1, +br[1], +(br[4]||0), +(br[5]||0)) : new Date(iso);
   if(isNaN(d)) return iso;
   return d.toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
