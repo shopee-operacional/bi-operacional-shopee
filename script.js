@@ -218,7 +218,7 @@ if(!document.querySelector(".app")){
       <div class="sd-toolbar">
         <div class="filter"><label>Sub-regional</label><select id="co-f-sub"></select></div>
         <div class="filter"><label>Station</label><select id="co-f-station"></select></div>
-        <div class="filter"><label>Agência</label><select id="co-f-agencia"></select></div>
+        <div class="filter"><label>Transportadora</label><select id="co-f-agencia"></select></div>
         <div class="filter"><label>Status do dia</label><select id="co-f-estado"></select></div>
         <button class="theme-btn" id="co-limpar">Limpar filtros</button>
         <button class="theme-btn" id="co-refresh">⟳ Atualizar</button>
@@ -4501,6 +4501,10 @@ function coEstado(r){
   if(/disabled/.test(s)) return "Disabled";
   return "Outros";
 }
+// A coluna "agencia" da aba PUP's é a transportadora que faz a coleta:
+// AVISTALOGISTICA = transportadora Avista · SPXOWNFLEET = frota própria (roda direto pra Shopee)
+const CO_TRANSP = { "AVISTALOGISTICA":"Avista (transportadora)", "SPXOWNFLEET":"SPX frota própria (direto Shopee)" };
+const coTransp = v => CO_TRANSP[String(v||"").toUpperCase().replace(/\s+/g,"")] || v;
 const coFalha = e => /No Show|Disabled/.test(e);
 const coHora = iso => iso ? iso.slice(11,16) : "";
 const coDiaHora = iso => {
@@ -4572,7 +4576,9 @@ function renderColetas(){
   const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   opcoes("co-f-sub", u(CO_ROWS,"sub"), CO_F.sub, "Todas");
   opcoes("co-f-station", u(CO_ROWS.filter(r=>coPassa(r,"station")),"station"), CO_F.station, "Todas");
-  opcoes("co-f-agencia", u(CO_ROWS.filter(r=>coPassa(r,"agencia")),"agencia"), CO_F.agencia, "Todas");
+  // filtro de transportadora (coluna "agencia" da aba PUP's): mostra o nome amigável
+  document.getElementById("co-f-agencia").innerHTML = `<option value="">Todas</option>`
+    + u(CO_ROWS.filter(r=>coPassa(r,"agencia")),"agencia").map(v=>`<option value="${esc(v)}"${v===CO_F.agencia?" selected":""}>${esc(coTransp(v))}</option>`).join("");
   opcoes("co-f-estado", CO_ESTADOS.map(e=>e.k), CO_F.estado, "Todos");
   const em = CO_META.em ? new Date(CO_META.em) : null;
   document.getElementById("co-subtitle").textContent = "— planilha Tasks lida às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—") + " · atualiza sozinho a cada 5 min";
@@ -4671,7 +4677,7 @@ function renderColetasTabela(){
   const badgeDe = e => (CO_ESTADOS.find(x=>x.k===e) || {}).badge || "";
   const cel = v => v ? sdNum(v) : '<span style="opacity:.35">0</span>';
   document.getElementById("co-tab").innerHTML =
-    "<thead><tr><th>PUP</th><th>Loja</th><th>Station</th><th>Sub</th><th>Status hoje</th><th>Coletado D0</th><th>Backlog</th><th>Início</th><th>Último done</th><th>Raio</th><th>Justificativa</th><th>Motorista</th><th>Agência</th><th>Rota</th><th>Tasks D0</th><th>Freq. visita</th></tr></thead><tbody>"
+    "<thead><tr><th>PUP</th><th>Loja</th><th>Station</th><th>Sub</th><th>Status hoje</th><th>Coletado D0</th><th>Backlog</th><th>Início</th><th>Último done</th><th>Raio</th><th>Justificativa</th><th>Motorista</th><th>Transportadora</th><th>Rota</th><th>Tasks D0</th><th>Freq. visita</th></tr></thead><tbody>"
     + (vis.map(r=>{
       const fora = /fora/i.test(r.raio||"") && r.estado!=="Sem visita hoje";
       const b = badgeDe(r.estado);
@@ -4680,7 +4686,7 @@ function renderColetasTabela(){
         + `<td><b>${cel(r.pick0)}</b></td><td>${cel(r.backlog)}</td><td>${coDiaHora(r.lastStart)}</td><td>${coDiaHora(r.lastDone)}</td>`
         + `<td${fora?' style="color:var(--critical);font-weight:600"':""}>${esc(r.estado==="Sem visita hoje" ? "—" : (r.raio||"—"))}</td>`
         + `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.just)}">${esc(r.just||"—")}</td>`
-        + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.driver)}">${esc(r.driver||"—")}</td><td>${esc(r.agencia||"—")}</td>`
+        + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.driver)}">${esc(r.driver||"—")}</td><td>${esc(r.agencia ? coTransp(r.agencia) : "—")}</td>`
         + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.rota)}">${esc(r.rota||"—")}</td><td>${cel(r.tasks)}</td><td>${r.freq ? r.freq.toFixed(0) + "%" : "—"}</td></tr>`;
     }).join("") || '<tr><td colspan="16"><div class="empty-state">Nenhum PUP nesse recorte.</div></td></tr>') + "</tbody>";
   const more = document.getElementById("co-more");
