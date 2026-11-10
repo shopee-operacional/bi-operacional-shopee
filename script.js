@@ -1151,23 +1151,24 @@ async function loadBaseDia(dia){
 //   % FIFO = 1 − (pacotes fora do FIFO ÷ outbound do dia)
 // (antes o card fazia a média do "FIFO HOJE" por agência — isso dava a % de
 // AGÊNCIAS que cumpriram o FIFO, não a % de pacotes.)
-// D-1 = último dia com outbound antes do dia que está na tela (hoje, ou o
-// dia escolhido no filtro Data). Só entram as agências que estão na tela.
+// D-1 = dia de calendário anterior ao que está na tela (hoje, ou o dia
+// escolhido no filtro Data). Só entram as agências que estão na tela.
 function kpiCardFifoD1(rows){
   let wbr = null; try{ wbr = WBR; }catch(e){}   // WBR é declarado mais abaixo no arquivo
   if(!wbr) return {label:"% FIFO (D-1)", value:"…", icon:"📅", sub:"carregando…"};
   const ref = HIST_DIA || histHoje();
   const dops = new Set(rows.map(d=>dopKey(d.dop)));
   // soma outbound e fora do FIFO por dia, numa passada só
-  const porDia = new Map();
+  // D-1 = sempre o dia de calendário anterior (sem pular para um dia mais antigo)
+  const p = ref.split("-");
+  const dia = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]-1)).toISOString().slice(0,10);
+  let out = 0, fora = 0;
   wbr.rows.forEach(r=>{
-    if(r.data >= ref || !dops.has(dopKey(r.dop))) return;
-    const t = porDia.get(r.data) || {out:0, fora:0};
-    t.out += r.out; t.fora += r.semFifo; porDia.set(r.data, t);
+    if(r.data !== dia || !dops.has(dopKey(r.dop))) return;
+    out += r.out; fora += r.semFifo;
   });
-  const dia = [...porDia.keys()].filter(d=> porDia.get(d).out>0).sort().pop();
-  if(!dia) return {label:"% FIFO (D-1)", value:"—", icon:"📅", sub:"sem outbound no dia anterior"};
-  const out = porDia.get(dia).out, fora = porDia.get(dia).fora;
+  if(!out) return {label:"% FIFO (D-1 · " + fmtDiaBR(dia) + ")", value:"—", icon:"📅",
+    sub: wbr.dias.includes(dia) ? "sem outbound nesse dia" : "o dia " + fmtDiaBR(dia) + " ainda não entrou na base do WBR"};
   const pct = out ? 1 - fora/out : 0;
   const n = v => Math.round(v).toLocaleString("pt-BR");
   return {label:"% FIFO (D-1 · " + fmtDiaBR(dia) + ")", value: (pct*100).toFixed(1).replace(".",",") + "%", icon:"📅",
