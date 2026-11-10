@@ -50,13 +50,13 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="historico"><span class="nav-txt">Inbound Pós-Fechamento</span></div>
         <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
         <div class="nav-item" data-section="wbr"><span class="nav-txt">Análise WBR</span></div>
+        <div class="nav-item" data-section="otp"><span class="nav-txt">Falha de OTP</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="fm">
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
         <div class="nav-item" data-section="coletas"><span class="nav-txt">Coletas ao vivo</span></div>
-        <div class="nav-item" data-section="otp"><span class="nav-txt">Falha de OTP</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
@@ -1067,7 +1067,11 @@ async function loadData(showOverlay){
     if(API_URL.indexOf("COLOQUE_AQUI") !== -1){
       throw new Error("API_URL ainda não configurada em script.js");
     }
-    const json = await fetchViaIframe(API_URL, 20000);
+    // 60 s e uma 2ª tentativa: logo depois de publicar uma versão nova, ou com
+    // várias abas buscando dados ao mesmo tempo, o Apps Script pode demorar
+    let json;
+    try{ json = await fetchViaIframe(API_URL, 60000); }
+    catch(e1){ if(/Tempo esgotado/.test(e1.message)) json = await fetchViaIframe(API_URL, 60000); else throw e1; }
     const rows = Array.isArray(json) ? json : (json.rows || []);
     DATA = normalizeRows(rows);
     applySameDay();
@@ -2572,13 +2576,15 @@ let MS_ERRO = false;
 async function loadMisScan(){
   try{
     const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-    const json = await fetchViaIframe(API_URL + sep + "tipo=misscan", 60000);
+    // a aba de origem é grande: a 1ª leitura pode demorar (depois fica 10 min em cache)
+    const json = await fetchViaIframe(API_URL + sep + "tipo=misscan", 180000);
+    if(json && json.erro) throw new Error(json.erro);
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o MisScan.gs e o WebApp.gs novos foram publicados");
     MS_ROWS = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); o.mis=+o.mis||0; o.inbound=+o.inbound||0; return o; });
     MS_ERRO = false;
   } catch(err){
     console.error("Mis scan:", err);
-    MS_ERRO = true;
+    MS_ERRO = (err && err.message) || true;
   }
   if(DATA.length) renderAll();
   // se o Detalhe da Agência já estiver aberto, atualiza o card de mis scan dele
@@ -2596,7 +2602,8 @@ function misScanDiaRef(){
 // anterior ao escolhido no filtro Data. Base: ?tipo=misscan (MisScanOps.gs,
 // aba "Operação por DOP (DIA)" da planilha PUDO | Relatórios OPS).
 function kpiCardMisScan(rows){
-  if(!MS_ROWS) return {label:"Mis Scan", value:"—", icon:"🔍", sub: MS_ERRO ? "base de mis scan indisponível" : "carregando…"};
+  if(!MS_ROWS) return {label:"Mis Scan", value: MS_ERRO ? "—" : "…", icon:"🔍",
+    sub: MS_ERRO ? "base de mis scan indisponível" + (typeof MS_ERRO === "string" ? "<br><small>" + esc(MS_ERRO) + "</small>" : "") : "carregando…"};
   const dia = fdDiaD1();
   const dops = new Set(rows.map(d=>dopKey(d.dop)));
   const lista = MS_ROWS.filter(r => r.data===dia && r.mis>0 && dops.has(dopKey(r.dop)));
