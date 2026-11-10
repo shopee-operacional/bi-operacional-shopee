@@ -4993,7 +4993,6 @@ function kpiCardOtp(){
   const h = l.filter(r=>r.data===OTP.hoje), fh = h.filter(r=>r.falha).length;
   const o = l.filter(r=>r.data===otpAddDia(OTP.hoje,-1)), fo = o.filter(r=>r.falha).length;
   return {label:"% Falha de OTP (hoje)", value: otpPct(fh, h.length), icon:"🔐", cls: h.length && fh/h.length>=0.05 ? "warn" : "",
-    sub: sdNum(fh) + " falhas de " + sdNum(h.length) + " tasks<br>D-1 (" + fmtDiaBR(otpAddDia(OTP.hoje,-1)) + "): <b>" + otpPct(fo, o.length) + "</b>",
     title:"Tasks de coleta com otp_fail ÷ total de tasks (planilha FM One Time Password, aba BD PUDO). Atualiza a cada 5 min.",
     onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="otp"]'); if(n) n.click(); }};
 }
