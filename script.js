@@ -2758,7 +2758,6 @@ function renderCritPainel(rows){
 // atrasados), que não existem no painel de agências.
 function kpiCardsSecondary(rows){
   const criticos = rows.filter(ehCritica).length;
-  const atrasadosMedio = rows.length? rows.reduce((s,d)=>s+d.pctAtrasados,0)/rows.length : 0;
   const perdasQtdTotal = rows.reduce((s,d)=>s+d.perdasQtd,0);
   const perdasValorTotal = rows.reduce((s,d)=>s+d.perdasValor,0);
   return [
@@ -2766,7 +2765,6 @@ function kpiCardsSecondary(rows){
       sub: CRIT_FIFO ? (CRIT_ABERTO ? "clique para fechar a lista" : "clique para ver a lista") : "carregando backlog por aging…",
       info: CRIT_TEXTO,
       onClick: ()=>{ CRIT_ABERTO = !CRIT_ABERTO; renderAll(); }},
-    {label:"% Atrasados Médio", value: atrasadosMedio.toFixed(1)+"%", icon:"⏱"},
     kpiCardMisScan(rows),
     {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
     {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
