@@ -2816,10 +2816,22 @@ function kpiCardBacklog(rows){
     .map(f=> esc(f) + " <b>" + n(vivo.porFrente[f]) + "</b>").join(" · ");
   const hora = BR_INFO.atualizadoEm ? new Date(BR_INFO.atualizadoEm).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
   const falta = BR_INFO.frentesFaltando.length ? "<br>⚠ não lida: " + esc(BR_INFO.frentesFaltando.join("; ")) : "";
-  return {label:"Backlog Total (" + (BR_INFO.frentes.length || 3) + " frentes)", value: n(vivo.total), icon:"📦",
-    sub: frentes + "<br>hoje (D0) <b>" + n(vivo.d0) + "</b> · dias anteriores <b>" + n(vivo.d1) + "</b>"
+  // backlog dos SELLERS: base da Coletas ao vivo (Tasks -Regional4, aba PUP's),
+  // PUPs que não são DOP, com os filtros Sub-Regional e Estação do topo
+  let sel = null;
+  try{
+    if(CO_LOADED){
+      const subs = filters.subreg || [], ests = filters.estacao || [];
+      sel = CO_ROWS.filter(r=> !/^DOP/i.test(String(r.pup||"")) && !/^DOP/i.test(String(r.id||""))
+        && (!subs.length || subs.includes(r.sub)) && (!ests.length || ests.includes(r.station)))
+        .reduce((t,r)=> t + (+r.backlog||0), 0);
+    }
+  }catch(e){ sel = null; }
+  return {label:"Backlog Total (DOPs + Sellers)", value: n(vivo.total + (sel||0)), icon:"📦",
+    sub: "DOPs <b>" + n(vivo.total) + "</b> · Sellers <b>" + (sel==null ? "…" : n(sel)) + "</b>"
+      + "<br>" + frentes + "<br>hoje (D0) <b>" + n(vivo.d0) + "</b> · dias anteriores <b>" + n(vivo.d1) + "</b>"
       + "<br>" + n(vivo.dops.size) + (vivo.dops.size===1 ? " DOP" : " DOPs") + (hora ? " · lido às " + hora : "") + falta,
-    title: "Backlog que está nas agências agora, somando as frentes (planilha Gestão da Rotina | PUDO)."};
+    title: "DOPs: backlog nas agências agora, somando as frentes (planilha Gestão da Rotina | PUDO). Sellers: backlog dos sellers na aba PUP's da planilha Tasks -Regional4 (Coletas ao vivo)."};
 }
 // ---- "sem coleta" do DIA ANTERIOR (D-1) — cards do Resumo Geral ----
 function ontemDe(iso){ const p = iso.split("-"); const d = new Date(+p[0], +p[1]-1, +p[2]-1);
@@ -4703,6 +4715,8 @@ function coAplicar(json){
   CO_ROWS.forEach(r=>{ r.estado = coEstado(r); });
   if(CO_F.sub === "__default__") CO_F.sub = CO_ROWS.some(r=>r.sub==="CO") ? "CO" : "";
   CO_LOADED = true;
+  // card "Backlog Total" do Resumo Geral usa o backlog dos sellers dessa base
+  try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){}
   box.innerHTML = "";
   document.getElementById("co-conteudo").style.display = "";
   if(document.getElementById("sec-coletas").classList.contains("active")) renderColetas();
