@@ -115,7 +115,7 @@ if(!document.querySelector(".app")){
 
     <!-- RESUMO GERAL -->
     <div class="section active" id="sec-resumo">
-      <div class="kpi-grid kpi-grid-secondary" style="margin-bottom:12px" id="kpi-grid"></div>
+      <div class="kpi-grid" style="margin-bottom:12px" id="kpi-grid"></div>
       <div class="kpi-grid kpi-grid-secondary" id="kpi-grid-extra"></div>
 
       <div class="grid2">
@@ -2753,6 +2753,7 @@ function kpiCardsPrimary(rows){
   return [
     kpiCardBacklog(rows),
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
+    kpiCardSellerSemColeta(),
     kpiCardFifoD1(rows),   // % FIFO do dia anterior (D-1), no lugar do FIFO do dia
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     kpiCardForecast(),
@@ -4590,6 +4591,8 @@ function coAplicar(json){
   box.innerHTML = "";
   document.getElementById("co-conteudo").style.display = "";
   if(document.getElementById("sec-coletas").classList.contains("active")) renderColetas();
+  // card "Sellers sem coleta hoje" do Resumo Geral usa essa base
+  try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){}
 }
 // Pra abrir mais rápido: guarda a última leitura no navegador (IndexedDB) e,
 // ao abrir o painel, mostra ela na hora (só se for de hoje) enquanto busca a
@@ -4613,6 +4616,23 @@ setTimeout(()=>{
   const velho = !CO_META.em || Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS;
   if(!CO_PEND && (!CO_LOADED || velho)) loadColetas(true);
 }, 3000);
+// Card "Sellers sem coleta hoje" do Resumo Geral (base da Coletas ao vivo,
+// aba PUP's da planilha Tasks -Regional4 — tempo real).
+// Seller = PUP cujo ID não começa com "DOP" (os que começam com DOP são PUDO).
+// Sem coleta = tem task hoje, não coletou nada (D0 = 0) e não está coletando
+// nem com Full/Partial Pickup. Respeita os filtros Sub-Regional e Estação do topo.
+const coEhSeller = r => !/^DOP/i.test(String(r.pup||"")) && !/^DOP/i.test(String(r.id||""));
+function kpiCardSellerSemColeta(){
+  if(!CO_LOADED) return {label:"Sellers Sem Coleta Hoje", value:"…", icon:"🏪", sub:"carregando…"};
+  const subs = filters.subreg || [], ests = filters.estacao || [];
+  const sellers = CO_ROWS.filter(r=> coEhSeller(r) && r.tasks>0
+    && (!subs.length || subs.includes(r.sub)) && (!ests.length || ests.includes(r.station)));
+  const sem = sellers.filter(r=> !r.pick0 && !["Coletando","Full Pickup","Partial Pickup"].includes(r.estado));
+  return {label:"Sellers Sem Coleta Hoje", value: sem.length, icon:"🏪", cls: sem.length>0?"warn":"",
+    sub: "de <b>" + sdNum(sellers.length) + "</b> sellers com task hoje",
+    title:"Sellers com task hoje que ainda não tiveram coleta (sem visita, No Show ou Disabled). Base: Coletas ao vivo (Tasks -Regional4).",
+    onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="coletas"]'); if(n) n.click(); }};
+}
 function coPassa(r, ignorar){
   return (ignorar==="sub" || !CO_F.sub || r.sub===CO_F.sub)
     && (ignorar==="station" || !CO_F.station || r.station===CO_F.station)
