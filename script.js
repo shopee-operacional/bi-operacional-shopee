@@ -4515,15 +4515,8 @@ function loadColetas(silencioso){
   CO_PEND = fetchViaIframe(API_URL + sep + "tipo=coletasaovivo", 120000).then(json=>{
     if(json && json.erro) throw new Error(json.erro);
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o ColetasAoVivo.gs e a rota ?tipo=coletasaovivo do webapp.gs foram publicados");
-    const num = new Set(json.num || []);
-    CO_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
-    CO_META = { hoje: json.hoje || "", em: json.atualizadoEm || "", temVisita: !!json.temVisitaHoje };
-    CO_ROWS.forEach(r=>{ r.estado = coEstado(r); });
-    if(CO_F.sub === "__default__") CO_F.sub = CO_ROWS.some(r=>r.sub==="CO") ? "CO" : "";
-    CO_LOADED = true;
-    box.innerHTML = "";
-    document.getElementById("co-conteudo").style.display = "";
-    if(document.getElementById("sec-coletas").classList.contains("active")) renderColetas();
+    coAplicar(json);
+    coCacheSalvar(json);
   }).catch(err=>{
     console.error("Coletas ao vivo:", err);
     if(CO_LOADED){ document.getElementById("co-subtitle").textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
@@ -4532,6 +4525,40 @@ function loadColetas(silencioso){
   }).finally(()=>{ CO_PEND = null; });
   return CO_PEND;
 }
+function coAplicar(json){
+  const box = document.getElementById("co-loading");
+  const num = new Set(json.num || []);
+  CO_ROWS = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+  CO_META = { hoje: json.hoje || "", em: json.atualizadoEm || "", temVisita: !!json.temVisitaHoje };
+  CO_ROWS.forEach(r=>{ r.estado = coEstado(r); });
+  if(CO_F.sub === "__default__") CO_F.sub = CO_ROWS.some(r=>r.sub==="CO") ? "CO" : "";
+  CO_LOADED = true;
+  box.innerHTML = "";
+  document.getElementById("co-conteudo").style.display = "";
+  if(document.getElementById("sec-coletas").classList.contains("active")) renderColetas();
+}
+// Pra abrir mais rápido: guarda a última leitura no navegador (IndexedDB) e,
+// ao abrir o painel, mostra ela na hora (só se for de hoje) enquanto busca a
+// nova em segundo plano. Além disso, a busca começa logo que o painel abre,
+// sem esperar alguém clicar na aba.
+const coCacheLer = ()=> ldIdb("readonly", st=> st.get("coletas")).catch(()=>null);
+const coCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "coletas")).catch(()=>{});
+async function coCacheCarregar(){
+  const c = await coCacheLer();
+  if(!c || !c.json || CO_LOADED) return;
+  if(c.json.hoje && c.json.hoje !== histHoje()) return;   // leitura de outro dia não serve
+  try{
+    coAplicar(c.json);
+    if(CO_PEND && document.getElementById("sec-coletas").classList.contains("active"))
+      document.getElementById("co-subtitle").textContent += " · atualizando…";
+  }catch(e){ console.warn("Coletas cache:", e); }
+}
+// (setTimeout: o ldIdb usa o LD_IDB, que é declarado mais abaixo no arquivo)
+setTimeout(coCacheCarregar, 0);
+setTimeout(()=>{
+  const velho = !CO_META.em || Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS;
+  if(!CO_PEND && (!CO_LOADED || velho)) loadColetas(true);
+}, 3000);
 function coPassa(r, ignorar){
   return (ignorar==="sub" || !CO_F.sub || r.sub===CO_F.sub)
     && (ignorar==="station" || !CO_F.station || r.station===CO_F.station)
