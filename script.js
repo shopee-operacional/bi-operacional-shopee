@@ -2778,7 +2778,7 @@ function kpiCardForecast(){
     label: "Forecast x Coletado (" + fmtDiaBR(dia) + ")",
     value: fcPctTxt(ad), icon:"🎯",
     cls: ad==null ? "" : ad < FC_FAIXA.baixo ? "crit" : ad > FC_FAIXA.alto ? "warn" : "",
-    sub: "coletado " + sdNum(col) + " de " + sdNum(fc) + " previstos" + (subs.length ? " · " + subs.join(", ") : ""),
+    sub: "Forecast <b>" + sdNum(fc) + "</b><br>Coletado <b>" + sdNum(col) + "</b>" + (subs.length ? "<br>" + subs.join(", ") : ""),
     onClick: ()=>{ const it = document.querySelector('.nav-item[data-section="forecast"]'); if(it) it.click(); }
   };
 }
@@ -4993,6 +4993,7 @@ function kpiCardOtp(){
   const h = l.filter(r=>r.data===OTP.hoje), fh = h.filter(r=>r.falha).length;
   const o = l.filter(r=>r.data===otpAddDia(OTP.hoje,-1)), fo = o.filter(r=>r.falha).length;
   return {label:"% Falha de OTP (hoje)", value: otpPct(fh, h.length), icon:"🔐", cls: h.length && fh/h.length>=0.05 ? "warn" : "",
+    sub: "<b>" + sdNum(fh) + "</b> " + (fh===1 ? "falha" : "falhas"),
     title:"Tasks de coleta com otp_fail ÷ total de tasks (planilha FM One Time Password, aba BD PUDO). Atualiza a cada 5 min.",
     onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="otp"]'); if(n) n.click(); }};
 }
