@@ -1212,12 +1212,12 @@ function fdCarregar(dia, forcar){
   if(FD.pend[dia] || (!forcar && (FD.dados[dia] || FD.erro[dia]))) return;
   FD.pend[dia] = true;
   const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
-  const redesenhar = ()=>{ try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){} };
+  const redesenhar = ()=>{ try{ if(DATA && DATA.length){ const r = CURRENT_ROWS || filtered(); renderKpis("kpi-grid", kpiCardsPrimary(r)); renderKpis("kpi-grid-extra", kpiCardsSecondary(r)); } }catch(e){} };
   fetchViaIframe(API_URL + sep + "tipo=fifo&dia=" + encodeURIComponent(dia), 90000).then(json=>{
     if(json && json.erro) throw new Error(json.erro);
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o FifoDia.gs e a rota ?tipo=fifo do webapp.gs foram publicados");
     const m = new Map();
-    json.rows.forEach(r=>{ m.set(dopKey(r[0]), {out:+r[1]||0, sem:+r[2]||0}); });
+    json.rows.forEach(r=>{ m.set(dopKey(r[0]), {dop:String(r[0]), out:+r[1]||0, sem:+r[2]||0, mis:+r[3]||0, inb:+r[4]||0}); });
     FD.dados[dia] = { m, em: json.atualizadoEm || "" }; delete FD.erro[dia];
   }).catch(err=>{
     console.error("FIFO D-1:", err);
@@ -2592,7 +2592,29 @@ function misScanDiaRef(){
   if(HIST_DIA){ const ate = dias.filter(d=>d<=HIST_DIA); return ate.length ? ate[ate.length-1] : ""; }
   return dias[dias.length-1];
 }
+// Card "Mis Scan" do Resumo Geral: dia anterior (D-1), da mesma base do Daily
+// OPS usada no card de FIFO (?tipo=fifo, coluna mis_scan). Antes vinha do
+// histórico HISTORICO_MIS_SCAN, que parou de ser gravado em 05/11 — se a base
+// do Daily OPS não responder, cai de volta pro histórico.
 function kpiCardMisScan(rows){
+  const diaFd = fdDiaD1(), d = FD.dados[diaFd];
+  if(d){
+    const dops = new Set(rows.map(x=>dopKey(x.dop)));
+    const lista = [...d.m.entries()].filter(([k,v])=> dops.has(k) && v.mis>0).map(([k,v])=>v);
+    const total = lista.reduce((t,v)=>t+v.mis,0), inb = lista.reduce((t,v)=>t+v.inb,0);
+    const pior = lista.slice().sort((a,b)=>b.mis-a.mis)[0];
+    const n = v => Math.round(v||0).toLocaleString("pt-BR");
+    return {label:"Mis Scan (" + fmtDiaBR(diaFd) + ")", value: n(total), icon:"🔍", cls: total>0?"warn":"",
+      sub: total
+        ? lista.length + (lista.length===1?" DOP":" DOPs") + (inb ? " · " + (total/inb*100).toFixed(1).replace(".",",") + "% do inbound" : "")
+          + "<br>maior: DOP " + esc(pior.dop) + " <b>" + n(pior.mis) + "</b>"
+        : "nenhum pacote com mis scan",
+      title: "Pacotes com mis scan no dia anterior (base do Daily OPS: PUDO | OPS Reg4, coluna mis_scan)."};
+  }
+  if(!FD.erro[diaFd]){ fdCarregar(diaFd); if(!MS_ROWS) return {label:"Mis Scan (" + fmtDiaBR(diaFd) + ")", value:"…", icon:"🔍", sub:"carregando…"}; }
+  return kpiCardMisScanHist(rows);
+}
+function kpiCardMisScanHist(rows){
   if(!MS_ROWS) return {label:"Mis Scan", value:"—", icon:"🔍", sub: MS_ERRO ? "histórico indisponível" : "carregando…"};
   const dia = misScanDiaRef();
   const dops = new Set(rows.map(d=>dopKey(d.dop)));
