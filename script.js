@@ -1194,35 +1194,55 @@ async function loadBaseDia(dia){
   }
 }
 // ==================== % FIFO D-1 (card do Resumo Geral) ====================
-// % FIFO por PACOTES do dia anterior, da base da Análise WBR (aba
-// "Base_Dados por dia_SameDay"), que já carrega em segundo plano:
-//   % FIFO = 1 − (pacotes fora do FIFO ÷ outbound do dia)
-// (antes o card fazia a média do "FIFO HOJE" por agência — isso dava a % de
-// AGÊNCIAS que cumpriram o FIFO, não a % de pacotes.)
+// Fonte: base do Daily OPS (planilha "Backup:PUDO | Relatórios OPS", aba
+// "PUDO | OPS Reg4") via ?tipo=fifo&dia=yyyy-MM-dd (FifoDia.gs), que traz por
+// DOP o outbound do dia e os pacotes sem FIFO.
+//   % FIFO = 1 − (pacotes sem FIFO ÷ outbound)
 // D-1 = dia de calendário anterior ao que está na tela (hoje, ou o dia
 // escolhido no filtro Data). Só entram as agências que estão na tela.
+// (Antes usava a base da Análise WBR, mas ela só recebe o outbound do dia
+// depois — o D-1 ficava "sem outbound".)
+const FD = { dados:{}, pend:{}, erro:{} };   // por dia
+function fdDiaD1(){
+  const p = (HIST_DIA || histHoje()).split("-");
+  return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]-1)).toISOString().slice(0,10);
+}
+function fdCarregar(dia, forcar){
+  if(FD.pend[dia] || (!forcar && (FD.dados[dia] || FD.erro[dia]))) return;
+  FD.pend[dia] = true;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  const redesenhar = ()=>{ try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){} };
+  fetchViaIframe(API_URL + sep + "tipo=fifo&dia=" + encodeURIComponent(dia), 90000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o FifoDia.gs e a rota ?tipo=fifo do webapp.gs foram publicados");
+    const m = new Map();
+    json.rows.forEach(r=>{ m.set(dopKey(r[0]), {out:+r[1]||0, sem:+r[2]||0}); });
+    FD.dados[dia] = { m, em: json.atualizadoEm || "" }; delete FD.erro[dia];
+  }).catch(err=>{
+    console.error("FIFO D-1:", err);
+    if(!FD.dados[dia]) FD.erro[dia] = err.message || "erro";
+  }).finally(()=>{ delete FD.pend[dia]; redesenhar(); });
+}
+// o D-1 de hoje só fecha durante a manhã: busca de novo a cada 30 min
+setInterval(()=>{ if(!document.hidden && !HIST_DIA) fdCarregar(fdDiaD1(), true); }, 30 * 60 * 1000);
 function kpiCardFifoD1(rows){
-  let wbr = null; try{ wbr = WBR; }catch(e){}   // WBR é declarado mais abaixo no arquivo
-  if(!wbr) return {label:"% FIFO (D-1)", value:"…", icon:"📅", sub:"carregando…"};
-  const ref = HIST_DIA || histHoje();
-  const dops = new Set(rows.map(d=>dopKey(d.dop)));
-  // soma outbound e fora do FIFO por dia, numa passada só
-  // D-1 = sempre o dia de calendário anterior (sem pular para um dia mais antigo)
-  const p = ref.split("-");
-  const dia = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]-1)).toISOString().slice(0,10);
+  const dia = fdDiaD1();
+  const label = "% FIFO (D-1 · " + fmtDiaBR(dia) + ")";
+  const d = FD.dados[dia];
+  if(!d){
+    fdCarregar(dia);
+    return FD.erro[dia] ? {label, value:"—", icon:"📅", sub:"não consegui ler a base do Daily OPS", title: FD.erro[dia]}
+                        : {label, value:"…", icon:"📅", sub:"carregando…"};
+  }
   let out = 0, fora = 0;
-  wbr.rows.forEach(r=>{
-    if(r.data !== dia || !dops.has(dopKey(r.dop))) return;
-    out += r.out; fora += r.semFifo;
-  });
-  if(!out) return {label:"% FIFO (D-1 · " + fmtDiaBR(dia) + ")", value:"—", icon:"📅",
-    sub: wbr.dias.includes(dia) ? "sem outbound nesse dia" : "o dia " + fmtDiaBR(dia) + " ainda não entrou na base do WBR"};
-  const pct = out ? 1 - fora/out : 0;
+  new Set(rows.map(r=>dopKey(r.dop))).forEach(k=>{ const v = d.m.get(k); if(v){ out += v.out; fora += v.sem; } });
+  if(!out) return {label, value:"—", icon:"📅", sub:"sem outbound nesse dia na base do Daily OPS"};
+  const pct = 1 - fora/out;
   const n = v => Math.round(v).toLocaleString("pt-BR");
-  return {label:"% FIFO (D-1 · " + fmtDiaBR(dia) + ")", value: (pct*100).toFixed(1).replace(".",",") + "%", icon:"📅",
+  return {label, value: (pct*100).toFixed(1).replace(".",",") + "%", icon:"📅",
     cls: pct>=0.95 ? "" : pct>=0.85 ? "warn" : "crit",
-    sub: "fora do FIFO <b>" + n(fora) + "</b> de <b>" + n(out) + "</b> pct. (outbound)",
-    title: "% de pacotes coletados dentro do FIFO no dia anterior (base da Análise WBR)."};
+    sub: "sem FIFO <b>" + n(fora) + "</b> de <b>" + n(out) + "</b> pct. (outbound)",
+    title: "% de pacotes do outbound do dia anterior dentro do FIFO (base do Daily OPS: PUDO | OPS Reg4)."};
 }
 function histVoltarAoVivo(){
   if(HIST_DIA){ SD_MAP = SD_MAP_VIVO; SD_INFO = SD_INFO_VIVO; }
@@ -6374,8 +6394,6 @@ function wbrAplicar(json){
   if(!WBR_F.sem || !semanas.includes(+WBR_F.sem)){ WBR_F.sem = String(wbrSemanaPadrao()); WBR_F.dBkl = ""; }
   if(!WBR_F.dBkl) wbrDatasPadrao();
   if(WBR_F.reg === "__default__") WBR_F.reg = rows.some(r=>r.reg==="CO") ? "CO" : "";
-  // card "% FIFO (D-1)" do Resumo Geral usa essa base
-  try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){}
   document.getElementById("wbr-loading").innerHTML = "";
   document.getElementById("wbr-conteudo").style.display = "";
   if(document.getElementById("sec-wbr").classList.contains("active")) renderWbr();
