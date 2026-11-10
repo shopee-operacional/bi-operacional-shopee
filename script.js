@@ -1072,6 +1072,7 @@ function histHoje(){
 function histPreencherDias(dias){
   HIST_DIAS = (Array.isArray(dias) ? dias : []).map(x=>x && x.dia).filter(Boolean).sort().reverse();
   histAjustarCampo();
+  fifoD1Carregar();
 }
 function histAjustarCampo(){
   const inp = document.getElementById("f-data"); if(!inp) return;
@@ -1144,6 +1145,51 @@ async function loadBaseDia(dia){
   } finally {
     if(overlay) overlay.style.display = "none";
   }
+}
+// ==================== % FIFO D-1 (card do Resumo Geral) ====================
+// O card de FIFO do Resumo mostra o dia anterior (D-1) em vez do dia corrente.
+// Usa a base salva por dia (HistoricoBase.gs, mesma do filtro "Data"): pega o
+// último dia gravado antes do dia que está na tela (hoje, ou o dia escolhido
+// no filtro Data) e faz a mesma média do "FIFO HOJE" por agência daquela base.
+let FIFO_D1 = { dia:"", rows:null, salvoEm:"", erro:"", pend:"" };
+function fifoD1Dia(){
+  const ref = HIST_DIA || histHoje();
+  return HIST_DIAS.find(d=> d < ref) || "";   // HIST_DIAS vem do mais novo pro mais antigo
+}
+function fifoD1Carregar(){
+  const dia = fifoD1Dia();
+  if(!dia || dia === FIFO_D1.dia || dia === FIFO_D1.pend) return;
+  FIFO_D1.pend = dia;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  const redesenhar = ()=>{ try{ if(DATA && DATA.length) renderKpis("kpi-grid", kpiCardsPrimary(CURRENT_ROWS || filtered())); }catch(e){} };
+  fetchViaIframe(API_URL + sep + "tipo=basedia&dia=" + encodeURIComponent(dia), 60000).then(json=>{
+    if(FIFO_D1.pend !== dia) return;
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows) || Array.isArray(json)) throw new Error("resposta sem dados");
+    const rows = json.rows.map(r=>{ const o={}; json.cols.forEach((c,i)=>o[c]=r[i]); return o; });
+    FIFO_D1 = { dia, rows: normalizeRows(rows), salvoEm: json.salvoEm || "", erro:"", pend:"" };
+    redesenhar();
+  }).catch(err=>{
+    console.error("FIFO D-1:", err);
+    if(FIFO_D1.pend !== dia) return;
+    FIFO_D1 = { dia, rows:null, salvoEm:"", erro: err.message || "erro", pend:"" };
+    redesenhar();
+  });
+}
+function kpiCardFifoD1(rows){
+  const dia = fifoD1Dia();
+  if(!dia) return {label:"% FIFO Médio (D-1)", value:"…", icon:"📅", sub: HIST_DIAS.length ? "sem base salva do dia anterior" : "carregando…"};
+  const label = "% FIFO Médio (D-1 · " + fmtDiaBR(dia) + ")";
+  if(FIFO_D1.dia !== dia){ fifoD1Carregar(); return {label, value:"…", icon:"📅", sub:"carregando a base salva desse dia…"}; }
+  if(!FIFO_D1.rows) return {label, value:"—", icon:"📅", sub:"não foi possível ler a base salva desse dia"};
+  // mesmas agências que estão na tela (respeita os filtros do topo)
+  const dops = new Set(rows.map(d=>dopKey(d.dop)));
+  const lista = FIFO_D1.rows.filter(d=> dops.has(dopKey(d.dop)));
+  const media = lista.length ? lista.reduce((s,d)=>s+d.fifoHojeFlag,0)/lista.length : 0;
+  const hora = histHora(FIFO_D1.salvoEm);
+  return {label, value: lista.length ? pct0(media) : "—", icon:"📅",
+    sub: "base salva de " + fmtDiaBR(dia) + (hora ? " às " + hora : ""),
+    title: "Média do FIFO do dia anterior por agência, a partir da base gravada desse dia."};
 }
 function histVoltarAoVivo(){
   if(HIST_DIA){ SD_MAP = SD_MAP_VIVO; SD_INFO = SD_INFO_VIVO; }
@@ -2668,14 +2714,13 @@ function kpiCardsPrimary(rows){
   // retirados do Resumo Geral a pedido — ficam só os do dia)
   // "Hoje" usa os mesmos flags do dia (FIFO HOJE / SAME DAY) já usados no
   // Detalhe da Agência — aqui só agregamos a média entre as agências.
-  const fifoHojeMedio = rows.length? rows.reduce((s,d)=>s+d.fifoHojeFlag,0)/rows.length : 0;
   const sdHojeMedio = SD_MAP ? sameDayPonderado(rows,"dia")
     : (rows.length? rows.reduce((s,d)=>s+d.sameDayFlag,0)/rows.length : 0);
   const sdLabelDia = SD_MAP && SD_INFO && SD_INFO.refDia ? "% Same Day ("+fmtDiaBR(SD_INFO.refDia)+")" : "% Same Day Médio (hoje)";
   return [
     kpiCardBacklog(rows),
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":""},
-    {label: HIST_DIA ? "% FIFO Médio ("+fmtDiaBR(HIST_DIA)+")" : "% FIFO Médio (hoje)", value: pct0(fifoHojeMedio), icon:"📅"},
+    kpiCardFifoD1(rows),   // % FIFO do dia anterior (D-1), no lugar do FIFO do dia
     {label: sdLabelDia, value: SD_MAP ? pct1(sdHojeMedio) : pct0(sdHojeMedio), icon:"📅"},
     kpiCardForecast(),
   ];
