@@ -2790,7 +2790,7 @@ function kpiCardsPrimary(rows){
   return [
     kpiCardBacklog(rows),
     {label: HIST_DIA ? "Dops Sem Coleta ("+fmtDiaBR(HIST_DIA)+")" : "Dops Sem Coleta Hoje", value: semColetaHoje, icon:"🚚", cls: semColetaHoje>0?"warn":"",
-      sub: "🔴 <b>" + sdNum(dopsPrioridade(rows).length) + "</b> sem coleta ontem e hoje",
+      sub: "🔴 <b>" + sdNum(dopsPrioridade(rows).length) + "</b> sem coleta em " + fmtDiaBR(ontemDe(HIST_DIA || histHoje())) + " e " + fmtDiaBR(HIST_DIA || histHoje()),
       title: "Prioridade = DOP sem coleta hoje, com backlog, e com a última coleta antes de ontem (" + fmtDiaBR(ontemDe(HIST_DIA || histHoje())) + ")."},
     kpiCardSellerSemColeta(),
     kpiCardFifoD1(rows),   // % FIFO do dia anterior (D-1), no lugar do FIFO do dia
@@ -4673,7 +4673,7 @@ function kpiCardSellerSemColeta(){
   const prio = sem.filter(r=>{ const dd = diaLocal(r.lastDone) || "0000";
     return dd < ontem || (dd === ontem && !/full|partial/i.test(String(r.status||""))); });
   return {label:"Sellers Sem Coleta Hoje", value: sem.length, icon:"🏪", cls: sem.length>0?"warn":"",
-    sub: "de <b>" + sdNum(sellers.length) + "</b> sellers com task hoje<br>🔴 <b>" + sdNum(prio.length) + "</b> sem coleta ontem e hoje",
+    sub: "de <b>" + sdNum(sellers.length) + "</b> sellers com task hoje<br>🔴 <b>" + sdNum(prio.length) + "</b> sem coleta em " + fmtDiaBR(ontem) + " e " + fmtDiaBR(CO_META.hoje || histHoje()),
     title:"Sellers com task hoje que ainda não tiveram coleta (sem visita, No Show ou Disabled). Prioridade = também sem coleta ontem. Base: Coletas ao vivo (Tasks -Regional4).",
     onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="coletas"]'); if(n) n.click(); }};
 }
