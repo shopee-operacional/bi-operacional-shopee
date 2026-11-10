@@ -44,8 +44,8 @@ if(!document.querySelector(".app")){
       <div class="nav-group-items">
         <div class="nav-item" data-section="desempenho"><span class="nav-txt">Desempenho por Agência</span></div>
         <div class="nav-item" data-section="detalhe"><span class="nav-txt">Detalhe da Agência</span></div>
-        <div class="nav-item" data-section="backlog"><span class="nav-txt">Análise de Backlog</span><span class="nav-badge" id="nav-backlog-badge">0</span></div>
-        <div class="nav-item" data-section="notasfiscais"><span class="nav-txt">Pagamentos</span><span class="nav-badge" id="nav-nf-badge">0</span></div>
+        <div class="nav-item" data-section="backlog"><span class="nav-txt">Análise de Backlog</span><span class="nav-badge" id="nav-backlog-badge" style="display:none">0</span></div>
+        <div class="nav-item" data-section="notasfiscais"><span class="nav-txt">Pagamentos</span><span class="nav-badge" id="nav-nf-badge" style="display:none">0</span></div>
         <div class="nav-item" data-section="crm"><span class="nav-txt">CRM</span></div>
         <div class="nav-item" data-section="historico"><span class="nav-txt">Inbound Pós-Fechamento</span></div>
         <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
@@ -4551,10 +4551,10 @@ function coEstado(r){
   if(/disabled/.test(s)) return "Disabled";
   return "Outros";
 }
-// A coluna "agencia" da aba PUP's é a transportadora que faz a coleta:
-// AVISTALOGISTICA = transportadora Avista · SPXOWNFLEET = frota própria (roda direto pra Shopee)
-const CO_TRANSP = { "AVISTALOGISTICA":"Avista (transportadora)", "SPXOWNFLEET":"SPX frota própria (direto Shopee)" };
-const coTransp = v => CO_TRANSP[String(v||"").toUpperCase().replace(/\s+/g,"")] || v;
+// A coluna "agencia" da aba PUP's é a transportadora que faz a coleta
+// (AVISTALOGISTICA = transportadora Avista · SPXOWNFLEET = frota própria).
+// Mostra o nome do jeito que vem da planilha.
+const coTransp = v => v;
 const coFalha = e => /No Show|Disabled/.test(e);
 const coHora = iso => iso ? iso.slice(11,16) : "";
 const coDiaHora = iso => {
