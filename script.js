@@ -2592,31 +2592,12 @@ function misScanDiaRef(){
   if(HIST_DIA){ const ate = dias.filter(d=>d<=HIST_DIA); return ate.length ? ate[ate.length-1] : ""; }
   return dias[dias.length-1];
 }
-// Card "Mis Scan" do Resumo Geral: dia anterior (D-1), da mesma base do Daily
-// OPS usada no card de FIFO (?tipo=fifo, coluna mis_scan). Antes vinha do
-// histórico HISTORICO_MIS_SCAN, que parou de ser gravado em 05/11 — se a base
-// do Daily OPS não responder, cai de volta pro histórico.
+// Card "Mis Scan" do Resumo Geral: sempre o dia anterior (D-1) — ou o dia
+// anterior ao escolhido no filtro Data. Base: ?tipo=misscan (MisScanOps.gs,
+// aba "Operação por DOP (DIA)" da planilha PUDO | Relatórios OPS).
 function kpiCardMisScan(rows){
-  const diaFd = fdDiaD1(), d = FD.dados[diaFd];
-  if(d){
-    const dops = new Set(rows.map(x=>dopKey(x.dop)));
-    const lista = [...d.m.entries()].filter(([k,v])=> dops.has(k) && v.mis>0).map(([k,v])=>v);
-    const total = lista.reduce((t,v)=>t+v.mis,0), inb = lista.reduce((t,v)=>t+v.inb,0);
-    const pior = lista.slice().sort((a,b)=>b.mis-a.mis)[0];
-    const n = v => Math.round(v||0).toLocaleString("pt-BR");
-    return {label:"Mis Scan (" + fmtDiaBR(diaFd) + ")", value: n(total), icon:"🔍", cls: total>0?"warn":"",
-      sub: total
-        ? lista.length + (lista.length===1?" DOP":" DOPs") + (inb ? " · " + (total/inb*100).toFixed(1).replace(".",",") + "% do inbound" : "")
-          + "<br>maior: DOP " + esc(pior.dop) + " <b>" + n(pior.mis) + "</b>"
-        : "nenhum pacote com mis scan",
-      title: "Pacotes com mis scan no dia anterior (base do Daily OPS: PUDO | OPS Reg4, coluna mis_scan)."};
-  }
-  if(!FD.erro[diaFd]){ fdCarregar(diaFd); if(!MS_ROWS) return {label:"Mis Scan (" + fmtDiaBR(diaFd) + ")", value:"…", icon:"🔍", sub:"carregando…"}; }
-  return kpiCardMisScanHist(rows);
-}
-function kpiCardMisScanHist(rows){
-  if(!MS_ROWS) return {label:"Mis Scan", value:"—", icon:"🔍", sub: MS_ERRO ? "histórico indisponível" : "carregando…"};
-  const dia = misScanDiaRef();
+  if(!MS_ROWS) return {label:"Mis Scan", value:"—", icon:"🔍", sub: MS_ERRO ? "base de mis scan indisponível" : "carregando…"};
+  const dia = fdDiaD1();
   const dops = new Set(rows.map(d=>dopKey(d.dop)));
   const lista = MS_ROWS.filter(r => r.data===dia && r.mis>0 && dops.has(dopKey(r.dop)));
   const total = lista.reduce((s,r)=>s+r.mis,0);
