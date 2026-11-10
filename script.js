@@ -390,6 +390,7 @@ if(!document.querySelector(".app")){
           <div class="filter"><label>Regional</label><select id="backlog-f-regional"><option value="">Todas</option></select></div>
           <div class="filter"><label>Sub-Regional</label><select id="backlog-f-subregional"><option value="">Todas</option></select></div>
           <div class="filter"><label>Analista</label><select id="backlog-f-analista"><option value="">Todos</option></select></div>
+          <div class="filter"><label>Station</label><div class="ms" id="backlog-ms-estacao"><button type="button" class="ms-btn"><span class="ms-txt">Todas</span><span class="ms-seta">▾</span></button><div class="ms-painel"></div></div></div>
         </div>
         <div class="search-box"><input id="backlog-search" placeholder="Buscar por analista, DOP ou nome da agência…"></div>
         <div class="col-head">Prioridade para pacotes D3 ou mais (D1-D2 ainda não são críticos) — clique no analista para ver os DOPs</div>
@@ -1723,7 +1724,7 @@ const BACKLOG_ANALISTA_PREVIEW = 8;
 // Filtros próprios dessa seção (Frente/Regional/Sub-Regional/Analista) —
 // independentes dos filtros do topo do painel, porque essa aba usa as
 // planilhas de frente direto.
-let backlogFilters = { frente:"", regional:"", subregional:"", analista:"" };
+let backlogFilters = { frente:"", regional:"", subregional:"", analista:"", estacao:[] };   // estacao: várias (caixinhas)
 function backlogUniq(rows, field){ return [...new Set(rows.map(d=>d[field]).filter(Boolean))].sort(); }
 // Mesma lógica em cascata do filtro de Notas Fiscais: cada select só mostra
 // as opções que ainda fazem sentido dado o que já foi escolhido nos outros.
@@ -1732,7 +1733,8 @@ function backlogFilteredExcept(exceptKey){
     (exceptKey==="frente" || !backlogFilters.frente || d.frente===backlogFilters.frente) &&
     (exceptKey==="regional" || !backlogFilters.regional || d.regional===backlogFilters.regional) &&
     (exceptKey==="subregional" || !backlogFilters.subregional || d.subRegional===backlogFilters.subregional) &&
-    (exceptKey==="analista" || !backlogFilters.analista || d.resp===backlogFilters.analista)
+    (exceptKey==="analista" || !backlogFilters.analista || d.resp===backlogFilters.analista) &&
+    (exceptKey==="estacao" || !backlogFilters.estacao.length || backlogFilters.estacao.includes(d.estacao))
   );
 }
 function populateBacklogFilters(){
@@ -1740,6 +1742,52 @@ function populateBacklogFilters(){
   populateSelect("backlog-f-regional", backlogUniq(backlogFilteredExcept("regional"),"regional"));
   populateSelect("backlog-f-subregional", backlogUniq(backlogFilteredExcept("subregional"),"subRegional"));
   populateSelect("backlog-f-analista", backlogUniq(backlogFilteredExcept("analista"),"resp"));
+  backlogMsEstacao(backlogUniq(backlogFilteredExcept("estacao"),"estacao"));
+}
+// Filtro Station com caixinhas (dá pra marcar várias — analista que olha mais
+// de uma station). Mesmo visual do filtro múltiplo do topo; nenhuma = Todas.
+function backlogMsEstacao(valores){
+  const box = document.getElementById("backlog-ms-estacao"); if(!box) return;
+  backlogFilters.estacao = backlogFilters.estacao.filter(v=>valores.includes(v));
+  const painel = box.querySelector(".ms-painel");
+  if(!box.dataset.ligado){
+    box.dataset.ligado = "1";
+    box.querySelector(".ms-btn").addEventListener("click", ev=>{
+      ev.stopPropagation();
+      const aberto = box.classList.contains("aberto");
+      document.querySelectorAll(".ms.aberto").forEach(m=>m.classList.remove("aberto"));
+      if(!aberto){ box.classList.add("aberto"); const b = box.querySelector(".ms-busca"); if(b) b.focus(); }
+    });
+    painel.addEventListener("click", ev=> ev.stopPropagation());
+  }
+  const aplicar = ()=>{
+    backlogFilters.estacao = [...painel.querySelectorAll(".ms-op input:checked")].map(c=>c.value);
+    backlogMsTexto();
+    populateBacklogFilters();
+    renderBacklogAnalise(backlogSearchInput ? backlogSearchInput.value : "");
+  };
+  painel.innerHTML = (valores.length > 8 ? `<input class="ms-busca" placeholder="Buscar station…">` : "")
+    + `<div class="ms-acoes"><a data-a="todos">Marcar todas</a><a data-a="limpar">Limpar</a></div>`
+    + `<div class="ms-lista">${valores.map(v=>`<label class="ms-op"><input type="checkbox" value="${esc(v)}" ${backlogFilters.estacao.includes(v)?"checked":""}><span>${esc(v)}</span></label>`).join("")}</div>`;
+  painel.querySelectorAll(".ms-op input").forEach(cb=> cb.addEventListener("change", aplicar));
+  painel.querySelectorAll(".ms-acoes a").forEach(a=> a.addEventListener("click", ()=>{
+    const vis = [...painel.querySelectorAll(".ms-op")].filter(o=>o.style.display!=="none").map(o=>o.querySelector("input"));
+    if(a.dataset.a==="todos") vis.forEach(c=>c.checked=true); else painel.querySelectorAll(".ms-op input").forEach(c=>c.checked=false);
+    aplicar();
+  }));
+  const b = painel.querySelector(".ms-busca");
+  if(b) b.addEventListener("input", ()=>{
+    const q = b.value.trim().toLowerCase();
+    painel.querySelectorAll(".ms-op").forEach(o=> o.style.display = o.textContent.toLowerCase().includes(q) ? "" : "none");
+  });
+  backlogMsTexto();
+}
+function backlogMsTexto(){
+  const box = document.getElementById("backlog-ms-estacao"); if(!box) return;
+  const v = backlogFilters.estacao;
+  box.querySelector(".ms-txt").textContent = !v.length ? "Todas" : v.length===1 ? v[0] : v.length + " selecionadas";
+  box.classList.toggle("ativo", v.length>0);
+  box.title = v.join(", ");
 }
 ["frente","regional","subregional","analista"].forEach(k=>{
   const elSel = document.getElementById("backlog-f-"+k);
@@ -1940,7 +1988,8 @@ function renderBacklogAnalise(filtro){
     (!backlogFilters.frente || b.frente===backlogFilters.frente) &&
     (!backlogFilters.regional || b.regional===backlogFilters.regional) &&
     (!backlogFilters.subregional || b.subRegional===backlogFilters.subregional) &&
-    (!backlogFilters.analista || b.resp===backlogFilters.analista)
+    (!backlogFilters.analista || b.resp===backlogFilters.analista) &&
+    (!backlogFilters.estacao.length || backlogFilters.estacao.includes(b.estacao))
   ).map(b => ({ ...b, d3Mais: backlogD3Mais(b) }));
   if(badge) badge.textContent = linhas.length;
   if(!linhas.length){
