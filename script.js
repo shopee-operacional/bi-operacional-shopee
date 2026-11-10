@@ -252,10 +252,6 @@ if(!document.querySelector(".app")){
           </div>
         </div>
         <div class="card" style="margin-bottom:14px">
-          <div class="card-head"><div class="card-title">Por analista</div><div class="sd-hint">clique para filtrar</div></div>
-          <div class="table-wrap"><table class="data" id="otp-tab-an"></table></div>
-        </div>
-        <div class="card" style="margin-bottom:14px">
           <div class="card-head"><div class="card-title">Lista de falhas</div><div class="losses-total" id="otp-lista-total"></div></div>
           <div class="search-box" style="margin:0 0 10px;"><input id="otp-busca" placeholder="Buscar task, DOP, motorista, station, ocorrência, justificativa…"></div>
           <div class="table-wrap"><table class="data" id="otp-tab-lista"></table></div>
@@ -4950,11 +4946,7 @@ function renderOtp(){
     "Nenhuma falha de OTP nesse recorte. 🎉");
   mais("otp-drv-more", drv.length, OTP_LIM, OTP_EXP.drv, "motoristas");
 
-  const an = otpAgrupar(lista, r=>r.analista).sort((a,b)=>b.f-a.f || b.t-a.t);
-  tab("otp-tab-an", ["Analista","Tasks","Falhas","% falha"],
-    an.map(g=>`<tr class="otp-an" data-v="${esc(g.k)}" style="cursor:pointer${OTP_F.analista===g.k?";background:var(--surface-2)":""}"><td><b>${esc(g.k)}</b></td><td>${sdNum(g.t)}</td><td>${g.f ? `<b style="color:var(--critical)">${sdNum(g.f)}</b>` : "0"}</td><td>${pctBadge(g)}</td></tr>`),
-    "Sem tasks nesse recorte.");
-  document.querySelectorAll("#otp-tab-an .otp-an").forEach(tr=> tr.onclick = ()=>{ OTP_F.analista = OTP_F.analista===tr.dataset.v ? "" : tr.dataset.v; renderOtp(); });
+  // (quadro "Por analista" retirado a pedido — o filtro Analista continua no topo)
 
   renderOtpLista(falhas);
 }
