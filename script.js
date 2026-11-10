@@ -56,6 +56,7 @@ if(!document.querySelector(".app")){
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
         <div class="nav-item" data-section="coletas"><span class="nav-txt">Coletas ao vivo</span></div>
+        <div class="nav-item" data-section="otp"><span class="nav-txt">Falha de OTP</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
@@ -209,6 +210,57 @@ if(!document.querySelector(".app")){
         <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
         <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
         <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- FALHA DE OTP (FM) -->
+    <div class="section" id="sec-otp">
+      <div class="section-title">Falha de OTP <span class="sd-sub" id="otp-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Período</label><select id="otp-f-per"><option value="hoje">Hoje</option><option value="ontem">D-1 (ontem)</option><option value="semana">Semana atual</option><option value="d7">Últimos 7 dias</option><option value="d30">Últimos 30 dias</option></select></div>
+        <div class="filter"><label>Sub-regional</label><select id="otp-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="otp-f-station"></select></div>
+        <div class="filter"><label>Transportadora</label><select id="otp-f-transp"></select></div>
+        <div class="filter"><label>Tipo</label><select id="otp-f-tipo"></select></div>
+        <div class="filter"><label>Analista</label><select id="otp-f-analista"></select></div>
+        <button class="theme-btn" id="otp-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="otp-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="otp-loading"></div>
+      <div id="otp-conteudo" style="display:none">
+        <div class="kpi-grid kpi-grid-secondary" id="otp-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">% Falha de OTP por dia</div><div class="sd-hint">últimos 14 dias · % e nº de falhas</div></div>
+            <div id="otp-chart-dia" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Falhas por Station</div><div class="sd-hint">no período · clique para filtrar</div></div>
+            <div id="otp-chart-station" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">DOPs com mais falha de OTP</div></div>
+            <div class="table-wrap"><table class="data" id="otp-tab-dop"></table></div>
+            <div class="card-expand-btn" id="otp-dop-more" style="display:none"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Motoristas com mais falha de OTP</div></div>
+            <div class="table-wrap"><table class="data" id="otp-tab-drv"></table></div>
+            <div class="card-expand-btn" id="otp-drv-more" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Por analista</div><div class="sd-hint">clique para filtrar</div></div>
+          <div class="table-wrap"><table class="data" id="otp-tab-an"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Lista de falhas</div><div class="losses-total" id="otp-lista-total"></div></div>
+          <div class="search-box" style="margin:0 0 10px;"><input id="otp-busca" placeholder="Buscar task, DOP, motorista, station, ocorrência, justificativa…"></div>
+          <div class="table-wrap"><table class="data" id="otp-tab-lista"></table></div>
+          <div class="card-expand-btn" id="otp-more" style="display:none"></div>
+        </div>
       </div>
     </div>
 
@@ -2796,6 +2848,7 @@ function kpiCardsSecondary(rows){
       info: CRIT_TEXTO,
       onClick: ()=>{ CRIT_ABERTO = !CRIT_ABERTO; renderAll(); }},
     kpiCardMisScan(rows),
+    kpiCardOtp(),
     {label:"Pacotes Perdidos (Total)", value: perdasQtdTotal.toLocaleString("pt-BR"), icon:"📉", cls: perdasQtdTotal>0?"warn":""},
     {label:"Valor Perdido (R$)", value: perdasValorTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}), icon:"💸", cls: perdasValorTotal>0?"crit":""},
   ];
@@ -3211,7 +3264,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "otp", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3235,6 +3288,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
+    if(item.dataset.section === "otp"){ if(!OTP) loadOtp(); else { renderOtp(); if(!OTP_PEND && otpVelho()) loadOtp(true); } }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
     if(item.dataset.section === "wbr"){ if(WBR) renderWbr(); else loadWbr(); }
@@ -4714,6 +4768,243 @@ function renderColetasTabela(){
     loadColetas(true);
   }, CO_REFRESH_MS);
 })();
+// ==================== FALHA DE OTP (FM) ====================
+// ?tipo=otp (OTP.gs) — planilha "[SPX BR] FM One Time Password", aba "BD PUDO".
+// Regional 4, últimos 35 dias. A planilha atualiza em tempo real: o painel
+// busca de novo a cada 5 min (o Apps Script guarda a leitura por 5 min).
+// Falha de OTP = otp_status "otp_fail". % falha = tasks com falha ÷ tasks.
+let OTP = null, OTP_PEND = null;
+const OTP_F = { sub:"__default__", station:"", transp:"", tipo:"", analista:"", per:"hoje", busca:"" };
+const OTP_EXP = { dop:false, drv:false, tab:false };
+const OTP_REFRESH_MS = 5 * 60 * 1000, OTP_LIM = 15, OTP_LIM_TAB = 100;
+const otpCacheLer = ()=> ldIdb("readonly", st=> st.get("otp")).catch(()=>null);
+const otpCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "otp")).catch(()=>{});
+const otpAddDia = (iso, n)=>{ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); };
+const otpPct = (f, t) => t ? (f/t*100).toFixed(1).replace(".",",") + "%" : "—";
+const otpVelho = ()=> !OTP || !OTP.em || Date.now() - new Date(OTP.em).getTime() > OTP_REFRESH_MS;
+
+// Sub-regional pela station (mesmo de/para do resto do painel); se a station
+// não aparecer em nenhuma outra base, usa a coluna "Regional PUDO" da planilha.
+function otpSubMap(){
+  const m = {};
+  try{ DATA.forEach(d=>{ if(d.estacao && d.subreg && d.subreg !== "Não informado" && !m[d.estacao]) m[d.estacao] = d.subreg; }); }catch(e){}
+  try{ CO_ROWS.forEach(r=>{ if(r.station && r.sub && !m[r.station]) m[r.station] = r.sub; }); }catch(e){}
+  try{ BL_ROWS.forEach(r=>{ if(r.station && r.sub && !m[r.station]) m[r.station] = r.sub; }); }catch(e){}
+  return m;
+}
+function otpAtualizarSubs(){
+  const m = otpSubMap();
+  OTP.rows.forEach(r=>{ r.sub = m[r.station] || r.regPudo || "—"; });
+}
+function otpAplicar(json){
+  const num = new Set(json.num || []);
+  const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+  OTP = { hoje: json.hoje || histHoje(), em: json.atualizadoEm || "", rows,
+          dias: [...new Set(rows.map(r=>r.data))].sort() };
+  otpAtualizarSubs();
+  if(OTP_F.sub === "__default__") OTP_F.sub = OTP.rows.some(r=>r.sub==="CO") ? "CO" : "";
+  const box = document.getElementById("otp-loading"); if(box) box.innerHTML = "";
+  const ct = document.getElementById("otp-conteudo"); if(ct) ct.style.display = "";
+  if(document.getElementById("sec-otp").classList.contains("active")) renderOtp();
+  try{ if(DATA && DATA.length) renderKpis("kpi-grid-extra", kpiCardsSecondary(CURRENT_ROWS || filtered())); }catch(e){}
+}
+function loadOtp(silencioso){
+  const box = document.getElementById("otp-loading");
+  if(!silencioso && !OTP){ box.innerHTML = loaderHtml("Carregando as falhas de OTP…"); document.getElementById("otp-conteudo").style.display = "none"; }
+  if(OTP_PEND) return OTP_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  OTP_PEND = fetchViaIframe(API_URL + sep + "tipo=otp", 120000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o OTP.gs e a rota ?tipo=otp do webapp.gs foram publicados");
+    otpAplicar(json);
+    otpCacheSalvar(json);
+  }).catch(err=>{
+    console.error("Falha de OTP:", err);
+    if(OTP){ const s = document.getElementById("otp-subtitle"); if(s) s.textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
+    if(!silencioso || document.getElementById("sec-otp").classList.contains("active")){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar as falhas de OTP (' + esc(err.message) + '). <a href="#" id="otp-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("otp-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadOtp(); };
+    }
+  }).finally(()=>{ OTP_PEND = null; });
+  return OTP_PEND;
+}
+async function otpCacheCarregar(){
+  const c = await otpCacheLer();
+  if(!c || !c.json || OTP) return;
+  try{ otpAplicar(c.json); }catch(e){ console.warn("OTP cache:", e); }
+}
+// (setTimeout: o ldIdb usa o LD_IDB, que é declarado mais abaixo no arquivo)
+setTimeout(otpCacheCarregar, 0);
+setTimeout(()=>{ if(!OTP_PEND && otpVelho()) loadOtp(true); }, 5000);
+// tempo real: busca de novo a cada 5 min enquanto a página está visível
+setInterval(()=>{ if(!document.hidden && !OTP_PEND) loadOtp(true); }, OTP_REFRESH_MS);
+
+function otpPassa(r, ignorar){
+  return (ignorar==="sub" || !OTP_F.sub || r.sub===OTP_F.sub)
+    && (ignorar==="station" || !OTP_F.station || r.station===OTP_F.station)
+    && (ignorar==="transp" || !OTP_F.transp || r.transp===OTP_F.transp)
+    && (ignorar==="tipo" || !OTP_F.tipo || r.tipo===OTP_F.tipo)
+    && (ignorar==="analista" || !OTP_F.analista || r.analista===OTP_F.analista);
+}
+// período escolhido → função que diz se o dia entra
+function otpPeriodo(){
+  const h = OTP.hoje, ontem = otpAddDia(h, -1);
+  const semHoje = (OTP.rows.find(r=>r.data===h) || OTP.rows.filter(r=>r.data<=h).sort((a,b)=>a.data<b.data?1:-1)[0] || {}).semana;
+  const P = {
+    hoje:   {rot:"hoje (" + fmtDiaBR(h) + ")", ok: r=> r.data===h},
+    ontem:  {rot:"D-1 (" + fmtDiaBR(ontem) + ")", ok: r=> r.data===ontem},
+    semana: {rot:"semana " + (semHoje||""), ok: r=> r.semana===semHoje},
+    d7:     {rot:"últimos 7 dias", ok: r=> r.data > otpAddDia(h,-7) && r.data <= h},
+    d30:    {rot:"últimos 30 dias", ok: r=> r.data > otpAddDia(h,-30) && r.data <= h}
+  };
+  return P[OTP_F.per] || P.hoje;
+}
+function otpAgrupar(lista, chave){
+  const m = new Map();
+  lista.forEach(r=>{
+    const k = chave(r) || "—";
+    const g = m.get(k) || {k, t:0, f:0, qtdF:0, ult:null, r};
+    g.t++; if(r.falha){ g.f++; g.qtdF += r.qtd; if(!g.ult || r.data >= g.ult.data) g.ult = r; }
+    m.set(k, g);
+  });
+  return [...m.values()];
+}
+// barras com % (cor pela gravidade); valor = falhas
+function otpBarras(elId, grupos, sel, onClick, vazio){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">' + (vazio || "Sem dados nesse filtro.") + '</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.v)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = sel && g.label===sel ? "sel" : (sel ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}" ${onClick?"":'style="cursor:default"'}>
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.v/max*100).toFixed(2)}%${g.cor?";background:"+g.cor:""}"></div></div>
+      <div class="sd-bar-val">${g.txt}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div><div class="r">Tasks <b>${sdNum(g.t)}</b></div><div class="r">Falhas de OTP <b>${sdNum(g.f)}</b></div><div class="r">% falha <b>${otpPct(g.f,g.t)}</b></div>`, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+const otpCor = (f,t) => !t ? "" : f/t >= 0.10 ? "var(--critical)" : f/t >= 0.05 ? "var(--warning)" : "var(--good)";
+
+function renderOtp(){
+  if(!OTP) return;
+  otpAtualizarSubs();
+  const $ = id => document.getElementById(id);
+  const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const opcoes = (id, valores, atual, vazio, rot) => { $(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(rot ? rot(v) : v)}</option>`).join(""); };
+  opcoes("otp-f-sub", u(OTP.rows,"sub"), OTP_F.sub, "Todas");
+  opcoes("otp-f-station", u(OTP.rows.filter(r=>otpPassa(r,"station")),"station"), OTP_F.station, "Todas");
+  opcoes("otp-f-transp", u(OTP.rows.filter(r=>otpPassa(r,"transp")),"transp"), OTP_F.transp, "Todas", v=> (typeof coTransp === "function" ? coTransp(v) : v));
+  opcoes("otp-f-tipo", u(OTP.rows.filter(r=>otpPassa(r,"tipo")),"tipo"), OTP_F.tipo, "Todos");
+  opcoes("otp-f-analista", u(OTP.rows.filter(r=>otpPassa(r,"analista")),"analista"), OTP_F.analista, "Todos");
+  $("otp-f-per").value = OTP_F.per;
+  const em = OTP.em ? new Date(OTP.em) : null;
+  $("otp-subtitle").textContent = "— planilha lida às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—") + " · atualiza sozinho a cada 5 min";
+
+  const per = otpPeriodo();
+  const base = OTP.rows.filter(r=>otpPassa(r));
+  const lista = base.filter(per.ok);
+  const falhas = lista.filter(r=>r.falha);
+  const ontem = otpAddDia(OTP.hoje, -1);
+  const bOntem = base.filter(r=>r.data===ontem), fOntem = bOntem.filter(r=>r.falha).length;
+  renderKpis("otp-kpis", [
+    {label:"Tasks · " + per.rot, value:sdNum(lista.length), icon:"📋", sub: sdNum(new Set(lista.map(r=>r.dop||r.pup)).size) + " DOPs · " + sdNum(new Set(lista.map(r=>r.driver)).size) + " motoristas"},
+    {label:"Falhas de OTP", value:sdNum(falhas.length), icon:"🔐", cls: falhas.length?"crit":"", sub: sdNum(new Set(falhas.map(r=>r.dop||r.pup)).size) + " DOPs com falha"},
+    {label:"% Falha de OTP", value:otpPct(falhas.length, lista.length), icon:"📉", cls: lista.length && falhas.length/lista.length>=0.05 ? "warn" : "",
+      sub: OTP_F.per==="ontem" ? "" : "D-1: " + otpPct(fOntem, bOntem.length)},
+    {label:"Pacotes nas tasks com falha", value:sdNum(falhas.reduce((t,r)=>t+r.qtd,0)), icon:"📦", sub: sdNum(falhas.reduce((t,r)=>t+r.onhold,0)) + " pedidos on hold"},
+    {label:"Falha por No Show", value:sdNum(falhas.filter(r=>/no show/i.test(r.occ)).length), icon:"🚫", sub:"das falhas, com ocorrência No Show"}
+  ]);
+
+  // % por dia (últimos 14 dias com dado), com os filtros mas sem o período
+  const dias = OTP.dias.filter(d=> d <= OTP.hoje).slice(-14).reverse();
+  const porDia = otpAgrupar(base.filter(r=>dias.includes(r.data)), r=>r.data);
+  const mDia = new Map(porDia.map(g=>[g.k,g]));
+  otpBarras("otp-chart-dia", dias.filter(d=>mDia.has(d)).map(d=>{ const g = mDia.get(d);
+    return {label: fmtDiaBR(d) + " " + ["dom","seg","ter","qua","qui","sex","sáb"][new Date(d+"T12:00:00Z").getUTCDay()], v: g.f/g.t, t:g.t, f:g.f,
+      txt: otpPct(g.f,g.t) + " · " + sdNum(g.f), cor: otpCor(g.f,g.t)}; }), "", null);
+  // falhas por station (no período) — clique filtra
+  const st = otpAgrupar(lista, r=>r.station).filter(g=>g.f>0).sort((a,b)=>b.f-a.f).slice(0,15);
+  otpBarras("otp-chart-station", st.map(g=>({label:g.k, v:g.f, t:g.t, f:g.f, txt: sdNum(g.f) + " · " + otpPct(g.f,g.t), cor: otpCor(g.f,g.t)})), OTP_F.station,
+    v=>{ OTP_F.station = OTP_F.station===v ? "" : v; renderOtp(); }, "Nenhuma falha de OTP nesse recorte. 🎉");
+
+  // rankings
+  const tab = (id, cab, linhas, vazio) => { $(id).innerHTML = "<thead><tr>" + cab.map(c=>`<th>${c}</th>`).join("") + "</tr></thead><tbody>" + (linhas.join("") || `<tr><td colspan="${cab.length}"><div class="empty-state">${vazio}</div></td></tr>`) + "</tbody>"; };
+  const pctBadge = g => `<span class="badge ${g.f/g.t>=0.10?"critical":g.f/g.t>=0.05?"warning":"good"}"><span class="ic"></span>${otpPct(g.f,g.t)}</span>`;
+  const mais = (id, n, lim, aberto, txt) => { const b = $(id); b.style.display = n > lim ? "" : "none"; b.textContent = aberto ? "− Mostrar só os " + lim + " primeiros" : "+ Ver todos os " + n + " " + txt; };
+
+  const dops = otpAgrupar(lista, r=>r.dop||r.pup).filter(g=>g.f>0).sort((a,b)=>b.f-a.f || b.f/b.t-a.f/a.t);
+  tab("otp-tab-dop", ["#","DOP","Station","Sub","Analista","Tasks","Falhas","% falha","Pacotes","Última ocorrência"],
+    (OTP_EXP.dop ? dops : dops.slice(0,OTP_LIM)).map((g,i)=>`<tr><td>${i+1}</td><td><b>${esc(g.k)}</b></td><td>${esc(g.r.station)}</td><td>${esc(g.r.sub)}</td><td>${esc(g.r.analista||"—")}</td><td>${sdNum(g.t)}</td><td><b style="color:var(--critical)">${sdNum(g.f)}</b></td><td>${pctBadge(g)}</td><td>${sdNum(g.qtdF)}</td><td>${g.ult ? fmtDiaBR(g.ult.data) + " · " + esc(g.ult.occ||"—") : "—"}</td></tr>`),
+    "Nenhuma falha de OTP nesse recorte. 🎉");
+  mais("otp-dop-more", dops.length, OTP_LIM, OTP_EXP.dop, "DOPs");
+
+  const drv = otpAgrupar(lista, r=>r.driver).filter(g=>g.f>0).sort((a,b)=>b.f-a.f || b.f/b.t-a.f/a.t);
+  tab("otp-tab-drv", ["#","Motorista","Transportadora","Station","Tasks","Falhas","% falha"],
+    (OTP_EXP.drv ? drv : drv.slice(0,OTP_LIM)).map((g,i)=>`<tr><td>${i+1}</td><td><b>${esc(g.k)}</b></td><td>${esc(typeof coTransp==="function" ? coTransp(g.r.transp) : g.r.transp)}</td><td>${esc(g.r.station)}</td><td>${sdNum(g.t)}</td><td><b style="color:var(--critical)">${sdNum(g.f)}</b></td><td>${pctBadge(g)}</td></tr>`),
+    "Nenhuma falha de OTP nesse recorte. 🎉");
+  mais("otp-drv-more", drv.length, OTP_LIM, OTP_EXP.drv, "motoristas");
+
+  const an = otpAgrupar(lista, r=>r.analista).sort((a,b)=>b.f-a.f || b.t-a.t);
+  tab("otp-tab-an", ["Analista","Tasks","Falhas","% falha"],
+    an.map(g=>`<tr class="otp-an" data-v="${esc(g.k)}" style="cursor:pointer${OTP_F.analista===g.k?";background:var(--surface-2)":""}"><td><b>${esc(g.k)}</b></td><td>${sdNum(g.t)}</td><td>${g.f ? `<b style="color:var(--critical)">${sdNum(g.f)}</b>` : "0"}</td><td>${pctBadge(g)}</td></tr>`),
+    "Sem tasks nesse recorte.");
+  document.querySelectorAll("#otp-tab-an .otp-an").forEach(tr=> tr.onclick = ()=>{ OTP_F.analista = OTP_F.analista===tr.dataset.v ? "" : tr.dataset.v; renderOtp(); });
+
+  renderOtpLista(falhas);
+}
+function renderOtpLista(falhas){
+  const q = OTP_F.busca.trim().toLowerCase();
+  let l = falhas.slice().sort((a,b)=> a.data<b.data ? 1 : a.data>b.data ? -1 : b.qtd-a.qtd);
+  if(q) l = l.filter(r=>[r.task, r.dop, r.pup, r.shop, r.station, r.driver, r.transp, r.occ, r.just, r.analista].join(" ").toLowerCase().includes(q));
+  document.getElementById("otp-lista-total").innerHTML = `<b>${l.length.toLocaleString("pt-BR")}</b> ${l.length===1?"falha":"falhas"}`;
+  const vis = OTP_EXP.tab ? l.slice(0, 3000) : l.slice(0, OTP_LIM_TAB);
+  document.getElementById("otp-tab-lista").innerHTML =
+    "<thead><tr><th>Data</th><th>Task</th><th>DOP</th><th>Shop</th><th>Station</th><th>Motorista</th><th>Transportadora</th><th>Pacotes</th><th>On hold</th><th>Ocorrência</th><th>Justificativa</th><th>Tipo</th><th>Analista</th></tr></thead><tbody>"
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.data)}</td><td style="font-size:11px">${esc(r.task||"—")}</td><td><b>${esc(r.dop||r.pup)}</b></td><td>${esc(r.shop)}</td><td>${esc(r.station)}</td>`
+      + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.driver)}">${esc(r.driver||"—")}</td><td>${esc(typeof coTransp==="function" ? coTransp(r.transp) : r.transp)}</td><td>${sdNum(r.qtd)}</td><td>${sdNum(r.onhold)}</td>`
+      + `<td>${esc(r.occ||"—")}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.just)}">${esc(r.just||"—")}</td><td>${esc(r.tipo)}</td><td>${esc(r.analista||"—")}</td></tr>`).join("")
+      || '<tr><td colspan="13"><div class="empty-state">Nenhuma falha de OTP nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  const b = document.getElementById("otp-more");
+  b.style.display = l.length > OTP_LIM_TAB ? "" : "none";
+  b.textContent = OTP_EXP.tab ? "− Mostrar só as " + OTP_LIM_TAB + " primeiras" : "+ Ver todas as " + l.length.toLocaleString("pt-BR") + " falhas" + (l.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("otp-f-sub")) return;
+  const re = ()=>{ OTP_EXP.dop = OTP_EXP.drv = OTP_EXP.tab = false; renderOtp(); };
+  $("otp-f-per").addEventListener("change", e=>{ OTP_F.per = e.target.value; re(); });
+  $("otp-f-sub").addEventListener("change", e=>{ OTP_F.sub = e.target.value; OTP_F.station = ""; re(); });
+  $("otp-f-station").addEventListener("change", e=>{ OTP_F.station = e.target.value; re(); });
+  $("otp-f-transp").addEventListener("change", e=>{ OTP_F.transp = e.target.value; re(); });
+  $("otp-f-tipo").addEventListener("change", e=>{ OTP_F.tipo = e.target.value; re(); });
+  $("otp-f-analista").addEventListener("change", e=>{ OTP_F.analista = e.target.value; re(); });
+  $("otp-limpar").addEventListener("click", ()=>{ Object.assign(OTP_F, {sub:"", station:"", transp:"", tipo:"", analista:"", per:"hoje", busca:""}); $("otp-busca").value = ""; re(); });
+  $("otp-refresh").addEventListener("click", ()=>{ $("otp-subtitle").textContent = "— atualizando…"; loadOtp(true); });
+  $("otp-dop-more").addEventListener("click", ()=>{ OTP_EXP.dop = !OTP_EXP.dop; renderOtp(); });
+  $("otp-drv-more").addEventListener("click", ()=>{ OTP_EXP.drv = !OTP_EXP.drv; renderOtp(); });
+  $("otp-more").addEventListener("click", ()=>{ OTP_EXP.tab = !OTP_EXP.tab; renderOtp(); });
+  let t; $("otp-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ OTP_F.busca = e.target.value; OTP_EXP.tab = false; renderOtp(); }, 200); });
+})();
+// Card do Resumo Geral: % de falha de OTP hoje (tempo real), com o D-1 embaixo.
+// Respeita os filtros Sub-Regional e Estação do topo.
+function kpiCardOtp(){
+  if(!OTP) return {label:"% Falha de OTP (hoje)", value:"…", icon:"🔐", sub:"carregando…"};
+  otpAtualizarSubs();
+  const subs = filters.subreg || [], ests = filters.estacao || [];
+  const l = OTP.rows.filter(r=> (!subs.length || subs.includes(r.sub)) && (!ests.length || ests.includes(r.station)));
+  const h = l.filter(r=>r.data===OTP.hoje), fh = h.filter(r=>r.falha).length;
+  const o = l.filter(r=>r.data===otpAddDia(OTP.hoje,-1)), fo = o.filter(r=>r.falha).length;
+  return {label:"% Falha de OTP (hoje)", value: otpPct(fh, h.length), icon:"🔐", cls: h.length && fh/h.length>=0.05 ? "warn" : "",
+    sub: sdNum(fh) + " falhas de " + sdNum(h.length) + " tasks<br>D-1 (" + fmtDiaBR(otpAddDia(OTP.hoje,-1)) + "): <b>" + otpPct(fo, o.length) + "</b>",
+    title:"Tasks de coleta com otp_fail ÷ total de tasks (planilha FM One Time Password, aba BD PUDO). Atualiza a cada 5 min.",
+    onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="otp"]'); if(n) n.click(); }};
+}
 // ==================== BACKLOG SELLER & PUDO ====================
 // ?tipo=backlogloja (BacklogLoja.gs) — planilha "backlog_regional4", aba "backlog overall".
 // Foto atual por loja (Seller e PUDO). Filtros próprios.
