@@ -51,6 +51,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="sameday"><span class="nav-txt">Same Day</span></div>
         <div class="nav-item" data-section="wbr"><span class="nav-txt">Análise WBR</span></div>
         <div class="nav-item" data-section="otp"><span class="nav-txt">Falha de OTP</span></div>
+        <div class="nav-item" data-section="losses"><span class="nav-txt">Losses</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="fm">
@@ -210,6 +211,56 @@ if(!document.querySelector(".app")){
         <div class="search-box"><input id="sd-busca" placeholder="Buscar por DOP, agência ou cidade…"></div>
         <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
         <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- LOSSES (SVP) -->
+    <div class="section" id="sec-losses">
+      <div class="section-title">Losses — pacotes perdidos <span class="sd-sub" id="ls-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Período</label><select id="ls-f-per"><option value="semana">Semana atual</option><option value="semant">Semana anterior</option><option value="d7">Últimos 7 dias</option><option value="d30">Últimos 30 dias</option><option value="mes">Mês atual</option><option value="tudo">Todo o histórico</option><option value="custom">Personalizado</option></select></div>
+        <div class="filter sd-data"><label>De</label><input type="date" id="ls-f-ini"></div>
+        <div class="filter sd-data"><label>Até</label><input type="date" id="ls-f-fim"></div>
+        <div class="filter"><label>Regional</label><select id="ls-f-reg"></select></div>
+        <div class="filter"><label>Sub-regional</label><select id="ls-f-sub"></select></div>
+        <div class="filter"><label>Coordenador</label><select id="ls-f-coord"></select></div>
+        <div class="filter"><label>Analista</label><select id="ls-f-analista"></select></div>
+        <div class="filter"><label>Canal</label><select id="ls-f-canal"></select></div>
+        <button class="theme-btn" id="ls-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="ls-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="ls-loading"></div>
+      <div id="ls-conteudo" style="display:none">
+        <div class="kpi-grid kpi-grid-secondary" id="ls-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Pacotes perdidos por dia</div><div class="sd-hint">no período · nº de pacotes e valor</div></div>
+            <div id="ls-chart-dia" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Por Sub-regional</div><div class="sd-hint">no período · clique para filtrar</div></div>
+            <div id="ls-chart-sub" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Losses por analista</div><div class="sd-hint">clique na linha para filtrar o analista</div></div>
+          <div class="table-wrap"><table class="data" id="ls-tab-analista"></table></div>
+          <div class="card-expand-btn" id="ls-analista-more" style="display:none"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">DOPs com mais pacotes perdidos</div></div>
+          <div class="table-wrap"><table class="data" id="ls-tab-dop"></table></div>
+          <div class="card-expand-btn" id="ls-dop-more" style="display:none"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Todos os pacotes perdidos</div><div class="losses-total" id="ls-lista-total"></div></div>
+          <div style="display:flex;gap:8px;align-items:center;margin:0 0 10px;flex-wrap:wrap">
+            <div class="search-box" style="margin:0;flex:1;min-width:220px"><input id="ls-busca" placeholder="Buscar pacote (BR…), DOP, agência, analista, cidade…"></div>
+            <button class="theme-btn" id="ls-csv">⬇ Baixar CSV</button>
+          </div>
+          <div class="table-wrap"><table class="data" id="ls-tab-lista"></table></div>
+          <div class="card-expand-btn" id="ls-more" style="display:none"></div>
+        </div>
       </div>
     </div>
 
@@ -3388,7 +3439,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "otp", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3412,6 +3463,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
+    if(item.dataset.section === "losses"){ if(!LS) loadLosses(); else { renderLosses(); if(!LS_PEND && lsVelho()) loadLosses(true); } }
     if(item.dataset.section === "otp"){ if(!OTP) loadOtp(); else { renderOtp(); if(!OTP_PEND && otpVelho()) loadOtp(true); } }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
@@ -5154,6 +5206,218 @@ function kpiCardOtp(){
     title:"Tasks de coleta com otp_fail ÷ total de tasks (planilha FM One Time Password, aba BD PUDO). Atualiza a cada 5 min.",
     onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="otp"]'); if(n) n.click(); }};
 }
+// ==================== LOSSES (SVP) ====================
+// ?tipo=losses (Losses.gs) — planilha "Check Losses", aba "O que foi baixado",
+// gravada em histórico na aba HIST_LOSSES (Projeto de acompanhamento).
+// Uma linha por pacote perdido: data, DOP, analista, coordenador, sub-regional,
+// regional (de/para da CRM), canal e valor (COGS).
+let LS = null, LS_PEND = null;
+const LS_F = { per:"d30", ini:"", fim:"", reg:"__default__", sub:"__default__", coord:"", analista:"", canal:"", busca:"" };
+const LS_EXP = { analista:false, dop:false, tab:false };
+const LS_REFRESH_MS = 30 * 60 * 1000, LS_LIM = 15, LS_LIM_TAB = 100;
+const lsCacheLer = ()=> ldIdb("readonly", st=> st.get("losses")).catch(()=>null);
+const lsCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "losses")).catch(()=>{});
+const lsVelho = ()=> !LS || !LS.em || Date.now() - new Date(LS.em).getTime() > LS_REFRESH_MS;
+const lsBRL = v => (v||0).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+const lsAdd = (iso, n)=>{ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); };
+const lsDow = iso => new Date(iso + "T12:00:00Z").getUTCDay();
+
+function lsAplicar(json){
+  const num = new Set(json.num || []);
+  const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; })
+    .filter(r=>r.data);
+  rows.forEach(r=>{ r.regional = r.regional || "Sem regional"; r.sub = r.sub || "—"; r.analista = r.analista || "Sem analista"; });
+  LS = { hoje: json.hoje || histHoje(), em: json.atualizadoEm || "", rows,
+         ult: rows.reduce((m,r)=> r.data > m ? r.data : m, "") };
+  if(LS_F.reg === "__default__") LS_F.reg = rows.some(r=>r.regional==="Regional 4") ? "Regional 4" : "";
+  if(LS_F.sub === "__default__") LS_F.sub = rows.some(r=>r.sub==="CO" && (!LS_F.reg || r.regional===LS_F.reg)) ? "CO" : "";
+  lsAplicarPeriodo();
+  const box = document.getElementById("ls-loading"); if(box) box.innerHTML = "";
+  const ct = document.getElementById("ls-conteudo"); if(ct) ct.style.display = "";
+  if(document.getElementById("sec-losses").classList.contains("active")) renderLosses();
+}
+function loadLosses(silencioso){
+  const box = document.getElementById("ls-loading");
+  if(!silencioso && !LS){ box.innerHTML = loaderHtml("Carregando os pacotes perdidos…"); document.getElementById("ls-conteudo").style.display = "none"; }
+  if(LS_PEND) return LS_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  LS_PEND = fetchViaIframe(API_URL + sep + "tipo=losses" + (silencioso==="forcar" ? "&forcar=1" : ""), 180000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Losses.gs e a rota ?tipo=losses do webapp.gs foram publicados");
+    lsAplicar(json);
+    lsCacheSalvar(json);
+  }).catch(err=>{
+    console.error("Losses:", err);
+    if(LS){ const s = document.getElementById("ls-subtitle"); if(s) s.textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
+    if(!silencioso || document.getElementById("sec-losses").classList.contains("active")){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar os losses (' + esc(err.message) + '). <a href="#" id="ls-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("ls-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadLosses(); };
+    }
+  }).finally(()=>{ LS_PEND = null; });
+  return LS_PEND;
+}
+setTimeout(async ()=>{ const c = await lsCacheLer(); if(c && c.json && !LS){ try{ lsAplicar(c.json); }catch(e){ console.warn("Losses cache:", e); } } }, 0);
+
+// período rápido → preenche De/Até. "Semana" = segunda a domingo.
+function lsAplicarPeriodo(){
+  if(!LS || LS_F.per === "custom") return;
+  const h = LS.hoje, seg = lsAdd(h, -((lsDow(h)+6)%7));
+  const P = {
+    semana: [seg, h],
+    semant: [lsAdd(seg,-7), lsAdd(seg,-1)],
+    d7:     [lsAdd(h,-6), h],
+    d30:    [lsAdd(h,-29), h],
+    mes:    [h.slice(0,8) + "01", h],
+    tudo:   ["", ""]
+  }[LS_F.per] || ["", ""];
+  LS_F.ini = P[0]; LS_F.fim = P[1];
+}
+function lsPassa(r, ignorar){
+  return (!LS_F.ini || r.data >= LS_F.ini) && (!LS_F.fim || r.data <= LS_F.fim)
+    && (ignorar==="reg" || !LS_F.reg || r.regional===LS_F.reg)
+    && (ignorar==="sub" || !LS_F.sub || r.sub===LS_F.sub)
+    && (ignorar==="coord" || !LS_F.coord || r.coord===LS_F.coord)
+    && (ignorar==="analista" || !LS_F.analista || r.analista===LS_F.analista)
+    && (ignorar==="canal" || !LS_F.canal || r.canal===LS_F.canal);
+}
+function lsAgrupar(lista, chave){
+  const m = new Map();
+  lista.forEach(r=>{
+    const k = chave(r) || "—";
+    const g = m.get(k) || {k, n:0, v:0, dops:new Set(), canais:{}, ult:"", prim:"", r};
+    g.n++; g.v += r.cogs; g.dops.add(r.dop); g.canais[r.canal] = (g.canais[r.canal]||0) + 1;
+    if(r.data > g.ult) g.ult = r.data; if(!g.prim || r.data < g.prim) g.prim = r.data;
+    m.set(k, g);
+  });
+  return [...m.values()];
+}
+function lsBarras(elId, grupos, sel, onClick, vazio){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">' + (vazio || "Nenhum pacote perdido nesse recorte. 🎉") + '</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.n)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = sel && g.label===sel ? "sel" : (sel ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}" ${onClick?"":'style="cursor:default"'}>
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.n/max*100).toFixed(2)}%;background:var(--critical)"></div></div>
+      <div class="sd-bar-val">${sdNum(g.n)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div><div class="r">Pacotes perdidos <b>${sdNum(g.n)}</b></div><div class="r">Valor (COGS) <b>${lsBRL(g.v)}</b></div><div class="r">DOPs <b>${sdNum(g.dops.size)}</b></div>`, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    if(onClick) row.addEventListener("click", ()=>{ sdTip(null); onClick(g.label); });
+  });
+}
+const lsCanais = g => ["FORWARD","RR","BSC"].map(c=> g.canais[c] ? `<span class="badge neutral" style="margin-right:3px">${c==="FORWARD"?"FWD":c} ${g.canais[c]}</span>` : "").join("") || "—";
+
+function lsFiltrados(){ return LS.rows.filter(r=>lsPassa(r)); }
+function renderLosses(){
+  if(!LS) return;
+  const $ = id => document.getElementById(id);
+  const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const opcoes = (id, valores, atual, vazio) => { $(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("ls-f-reg", u(LS.rows,"regional"), LS_F.reg, "Todas");
+  opcoes("ls-f-sub", u(LS.rows.filter(r=>lsPassa(r,"sub")),"sub"), LS_F.sub, "Todas");
+  opcoes("ls-f-coord", u(LS.rows.filter(r=>lsPassa(r,"coord")),"coord"), LS_F.coord, "Todos");
+  opcoes("ls-f-analista", u(LS.rows.filter(r=>lsPassa(r,"analista")),"analista"), LS_F.analista, "Todos");
+  opcoes("ls-f-canal", u(LS.rows.filter(r=>lsPassa(r,"canal")),"canal"), LS_F.canal, "Todos");
+  $("ls-f-per").value = LS_F.per; $("ls-f-ini").value = LS_F.ini; $("ls-f-fim").value = LS_F.fim;
+  const em = LS.em ? new Date(LS.em) : null;
+  $("ls-subtitle").textContent = "— última perda registrada: " + (LS.ult ? fmtDiaBR(LS.ult) + "/" + LS.ult.slice(0,4) : "—")
+    + " · lido às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—");
+
+  const lista = lsFiltrados();
+  const totV = lista.reduce((t,r)=>t+r.cogs,0);
+  const dias = new Set(lista.map(r=>r.data)).size;
+  const porCanal = c => lista.filter(r=>r.canal===c).length;
+  renderKpis("ls-kpis", [
+    {label:"Pacotes perdidos", value:sdNum(lista.length), icon:"📦", cls: lista.length?"crit":"", sub: (LS_F.ini||LS_F.fim) ? (LS_F.ini?fmtDiaBR(LS_F.ini):"início") + " a " + (LS_F.fim?fmtDiaBR(LS_F.fim):"hoje") : "todo o histórico"},
+    {label:"Valor perdido (COGS)", value:lsBRL(totV), icon:"💸", sub: lista.length ? "média " + lsBRL(totV/lista.length) + " por pacote" : ""},
+    {label:"DOPs com perda", value:sdNum(new Set(lista.map(r=>r.dop)).size), icon:"🏪", sub: sdNum(new Set(lista.map(r=>r.analista)).size) + " analistas"},
+    {label:"Média por dia", value: dias ? (lista.length/dias).toFixed(1).replace(".",",") : "—", icon:"📅", sub: sdNum(dias) + " dias com perda"},
+    {label:"Por canal", value:sdNum(porCanal("FORWARD")) + " FWD", icon:"🔀", sub: sdNum(porCanal("RR")) + " RR · " + sdNum(porCanal("BSC")) + " BSC"}
+  ]);
+
+  // por dia (mais recente em cima; até 31 dias)
+  const pd = lsAgrupar(lista, r=>r.data).sort((a,b)=> a.k < b.k ? 1 : -1).slice(0, 31);
+  lsBarras("ls-chart-dia", pd.map(g=>Object.assign(g, {label: fmtDiaBR(g.k) + " " + HIST_DIAS_SEMANA[lsDow(g.k)]})), "", null);
+  // por sub-regional
+  const ps = lsAgrupar(LS.rows.filter(r=>lsPassa(r,"sub")), r=>r.sub).sort((a,b)=>b.n-a.n);
+  lsBarras("ls-chart-sub", ps.map(g=>Object.assign(g, {label:g.k})), LS_F.sub, v=>{ LS_F.sub = LS_F.sub===v ? "" : v; LS_F.analista = ""; lsRe(); });
+
+  const tab = (id, cab, linhas, vazio) => { $(id).innerHTML = "<thead><tr>" + cab.map(c=>`<th>${c}</th>`).join("") + "</tr></thead><tbody>" + (linhas.join("") || `<tr><td colspan="${cab.length}"><div class="empty-state">${vazio}</div></td></tr>`) + "</tbody>"; };
+  const mais = (id, n, lim, aberto, txt) => { const b = $(id); b.style.display = n > lim ? "" : "none"; b.textContent = aberto ? "− Mostrar só os " + lim + " primeiros" : "+ Ver todos os " + n + " " + txt; };
+
+  const an = lsAgrupar(lista, r=>r.analista).sort((a,b)=>b.n-a.n || b.v-a.v);
+  tab("ls-tab-analista", ["#","Analista","Sub-regional","Regional","Coordenador","Pacotes","Valor","DOPs","Canais","Primeira perda","Última perda"],
+    (LS_EXP.analista ? an : an.slice(0,LS_LIM)).map((g,i)=>`<tr data-an="${esc(g.k)}" style="cursor:pointer" class="${LS_F.analista===g.k?"sel":""}"><td>${i+1}</td><td><b>${esc(g.k)}</b></td><td>${esc(g.r.sub)}</td><td>${esc(g.r.regional)}</td><td>${esc(g.r.coord||"—")}</td>`
+      + `<td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${lsBRL(g.v)}</td><td>${sdNum(g.dops.size)}</td><td>${lsCanais(g)}</td><td>${fmtDiaBR(g.prim)}</td><td>${fmtDiaBR(g.ult)}</td></tr>`),
+    "Nenhum pacote perdido nesse recorte. 🎉");
+  $("ls-tab-analista").querySelectorAll("tr[data-an]").forEach(tr=> tr.addEventListener("click", ()=>{ const a = tr.dataset.an; LS_F.analista = LS_F.analista===a ? "" : a; lsRe(); }));
+  mais("ls-analista-more", an.length, LS_LIM, LS_EXP.analista, "analistas");
+
+  const dp = lsAgrupar(lista, r=>r.dop).sort((a,b)=>b.n-a.n || b.v-a.v);
+  tab("ls-tab-dop", ["#","DOP","Agência","Cidade","Station","Analista","Sub","Pacotes","Valor","Canais","Última perda"],
+    (LS_EXP.dop ? dp : dp.slice(0,LS_LIM)).map((g,i)=>`<tr><td>${i+1}</td><td><b>${esc(g.k)}</b></td><td>${esc(g.r.nome||"—")}</td><td>${esc(g.r.cidade||"—")}</td><td>${esc(g.r.station||"—")}</td><td>${esc(g.r.analista)}</td><td>${esc(g.r.sub)}</td>`
+      + `<td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${lsBRL(g.v)}</td><td>${lsCanais(g)}</td><td>${fmtDiaBR(g.ult)}</td></tr>`),
+    "Nenhum pacote perdido nesse recorte. 🎉");
+  mais("ls-dop-more", dp.length, LS_LIM, LS_EXP.dop, "DOPs");
+
+  renderLsLista(lista);
+}
+function lsListaBuscada(lista){
+  const q = LS_F.busca.trim().toLowerCase();
+  let l = lista.slice().sort((a,b)=> a.data<b.data ? 1 : a.data>b.data ? -1 : b.cogs-a.cogs);
+  if(q) l = l.filter(r=>[r.id, r.dop, r.nome, r.cidade, r.station, r.analista, r.coord, r.sub, r.canal].join(" ").toLowerCase().includes(q));
+  return l;
+}
+function renderLsLista(lista){
+  const l = lsListaBuscada(lista);
+  document.getElementById("ls-lista-total").innerHTML = `<b>${l.length.toLocaleString("pt-BR")}</b> ${l.length===1?"pacote":"pacotes"} · <b>${lsBRL(l.reduce((t,r)=>t+r.cogs,0))}</b>`;
+  const vis = LS_EXP.tab ? l.slice(0, 5000) : l.slice(0, LS_LIM_TAB);
+  document.getElementById("ls-tab-lista").innerHTML =
+    "<thead><tr><th>Data</th><th>Sem.</th><th>Pacote</th><th>DOP</th><th>Agência</th><th>Cidade</th><th>Analista</th><th>Sub</th><th>Regional</th><th>Canal</th><th>Massivo</th><th>Valor</th><th>Aging</th><th>Último movimento</th></tr></thead><tbody>"
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.data)}/${r.data.slice(2,4)}</td><td>${r.semana||"—"}</td><td style="font-size:11px"><b>${esc(r.id)}</b></td><td>${esc(r.dop)}</td>`
+      + `<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.nome)}">${esc(r.nome||"—")}</td><td>${esc(r.cidade||"—")}</td><td>${esc(r.analista)}</td><td>${esc(r.sub)}</td><td>${esc(r.regional)}</td>`
+      + `<td>${esc(r.canal||"—")}</td><td>${esc(r.massivo||"—")}</td><td>${lsBRL(r.cogs)}</td><td>${r.aging ? r.aging + "d" : "—"}</td><td style="font-size:11px">${esc(r.ultMov||"—")}</td></tr>`).join("")
+      || '<tr><td colspan="14"><div class="empty-state">Nenhum pacote perdido nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  const b = document.getElementById("ls-more");
+  b.style.display = l.length > LS_LIM_TAB ? "" : "none";
+  b.textContent = LS_EXP.tab ? "− Mostrar só os " + LS_LIM_TAB + " primeiros" : "+ Ver todos os " + l.length.toLocaleString("pt-BR") + " pacotes" + (l.length>5000 ? " (até 5.000 — use o CSV para o resto)" : "");
+}
+function lsBaixarCsv(){
+  if(!LS) return;
+  const l = lsListaBuscada(lsFiltrados());
+  const cab = ["data","semana","shipment_id","dop","agencia","cidade","station","analista","coordenador","sub_regional","regional","canal","massivo","valor_cogs","aging","ultimo_movimento","projeto"];
+  const q = v => { const s = String(v==null?"":v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const linhas = l.map(r=>[r.data, r.semana, r.id, r.dop, r.nome, r.cidade, r.station, r.analista, r.coord, r.sub, r.regional, r.canal, r.massivo, String(r.cogs).replace(".",","), r.aging, r.ultMov, r.projeto].map(q).join(";"));
+  const blob = new Blob(["﻿" + cab.join(";") + "\n" + linhas.join("\n")], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "losses_" + (LS_F.ini||"inicio") + "_a_" + (LS_F.fim||LS.hoje) + ".csv";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function lsRe(){ LS_EXP.analista = LS_EXP.dop = LS_EXP.tab = false; renderLosses(); }
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("ls-f-per")) return;
+  $("ls-f-per").addEventListener("change", e=>{ LS_F.per = e.target.value; lsAplicarPeriodo(); lsRe(); });
+  $("ls-f-ini").addEventListener("change", e=>{ LS_F.ini = e.target.value; LS_F.per = "custom"; lsRe(); });
+  $("ls-f-fim").addEventListener("change", e=>{ LS_F.fim = e.target.value; LS_F.per = "custom"; lsRe(); });
+  $("ls-f-reg").addEventListener("change", e=>{ LS_F.reg = e.target.value; LS_F.sub = LS_F.coord = LS_F.analista = ""; lsRe(); });
+  $("ls-f-sub").addEventListener("change", e=>{ LS_F.sub = e.target.value; LS_F.analista = ""; lsRe(); });
+  $("ls-f-coord").addEventListener("change", e=>{ LS_F.coord = e.target.value; LS_F.analista = ""; lsRe(); });
+  $("ls-f-analista").addEventListener("change", e=>{ LS_F.analista = e.target.value; lsRe(); });
+  $("ls-f-canal").addEventListener("change", e=>{ LS_F.canal = e.target.value; lsRe(); });
+  $("ls-limpar").addEventListener("click", ()=>{ Object.assign(LS_F, {per:"d30", reg:"", sub:"", coord:"", analista:"", canal:"", busca:""}); $("ls-busca").value = ""; lsAplicarPeriodo(); lsRe(); });
+  $("ls-refresh").addEventListener("click", ()=>{ $("ls-subtitle").textContent = "— atualizando…"; loadLosses("forcar"); });
+  $("ls-analista-more").addEventListener("click", ()=>{ LS_EXP.analista = !LS_EXP.analista; renderLosses(); });
+  $("ls-dop-more").addEventListener("click", ()=>{ LS_EXP.dop = !LS_EXP.dop; renderLosses(); });
+  $("ls-more").addEventListener("click", ()=>{ LS_EXP.tab = !LS_EXP.tab; renderLosses(); });
+  $("ls-csv").addEventListener("click", lsBaixarCsv);
+  let t; $("ls-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ LS_F.busca = e.target.value; LS_EXP.tab = false; renderLsLista(lsFiltrados()); }, 200); });
+})();
 // ==================== BACKLOG SELLER & PUDO ====================
 // ?tipo=backlogloja (BacklogLoja.gs) — planilha "backlog_regional4", aba "backlog overall".
 // Foto atual por loja (Seller e PUDO). Filtros próprios.
