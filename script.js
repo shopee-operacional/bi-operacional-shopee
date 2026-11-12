@@ -2949,15 +2949,27 @@ function kpiCardForecast(){
   try{ void FC; }catch(e){ return {label:"Forecast x Coletado", value:"…", icon:"🎯", sub:"carregando…"}; }
   if(!FC || !FC.rows || !FC.rows.length) return {label:"Forecast x Coletado", value:"…", icon:"🎯", sub:"carregando…"};
   const dia = fcUltimoFechado();
-  const subs = (filters.subreg || []).filter(x=> FC.rows.some(r=>r.sub===x));
-  const lista = FC.rows.filter(r=> r.dia===dia && (!subs.length || subs.includes(r.sub)));
+  // A planilha Forecast_reg4 escreve a sub diferente do painel (CO/N, MG02...),
+  // então a sub de cada linha vem pela STATION (de/para do resto do painel);
+  // se a station não aparecer no painel, compara o nome da sub "normalizado".
+  const subs = filters.subreg || [], ests = filters.estacao || [];
+  const stSub = {};
+  try{ DATA.forEach(d=>{ if(d.estacao && d.subreg && d.subreg !== "Não informado" && !stSub[d.estacao]) stSub[d.estacao] = d.subreg; }); }catch(e){}
+  const norm = v => String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  const base = v => norm(String(v||"").split("/")[0]);
+  const casaSub = r => {
+    if(!subs.length) return true;
+    if(stSub[r.station]) return subs.includes(stSub[r.station]);
+    return subs.some(x=> norm(x)===norm(r.sub) || base(x)===base(r.sub));
+  };
+  const lista = FC.rows.filter(r=> r.dia===dia && casaSub(r) && (!ests.length || ests.includes(r.station)));
   const fc = lista.reduce((t,r)=>t+r.fc,0), col = lista.reduce((t,r)=>t+r.col,0);
   const ad = fcPct(col, fc);
   return {
     label: "Forecast x Coletado (" + fmtDiaBR(dia) + ")",
     value: fcPctTxt(ad), icon:"🎯",
     cls: ad==null ? "" : ad < FC_FAIXA.baixo ? "crit" : ad > FC_FAIXA.alto ? "warn" : "",
-    sub: "Forecast <b>" + sdNum(fc) + "</b><br>Coletado <b>" + sdNum(col) + "</b>" + (subs.length ? "<br>" + subs.join(", ") : ""),
+    sub: "Forecast <b>" + sdNum(fc) + "</b><br>Coletado <b>" + sdNum(col) + "</b>" + (subs.length || ests.length ? "<br>" + subs.concat(ests).join(", ") : ""),
     onClick: ()=>{ const it = document.querySelector('.nav-item[data-section="forecast"]'); if(it) it.click(); }
   };
 }
