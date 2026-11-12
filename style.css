@@ -530,3 +530,7 @@ table.data td.num, table.data th.num { text-align:right; }
 .kpi-grid-secondary { grid-template-columns: repeat(5, 1fr); }
 @media (max-width:1200px){ .kpi-grid-secondary{ grid-template-columns: repeat(3,1fr);} }
 @media (max-width:700px){ .kpi-grid-secondary{ grid-template-columns: repeat(2,1fr);} }
+/* Losses */
+.badge.neutral { color: var(--text-secondary); background: rgba(128,128,128,0.12); font-size:11px; padding:1px 6px; }
+#ls-tab-analista tr.sel td { background: var(--brand-bg); font-weight:600; }
+#ls-tab-analista tbody tr:hover td { background: rgba(128,128,128,0.06); }
