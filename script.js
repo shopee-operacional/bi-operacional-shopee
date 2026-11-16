@@ -63,6 +63,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
         <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
+        <div class="nav-item" data-section="planosab"><span class="nav-txt">Plano Sábado &amp; Feriados</span></div>
         <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
       </div>
     </div>
@@ -261,6 +262,39 @@ if(!document.querySelector(".app")){
           </div>
           <div class="table-wrap"><table class="data" id="ls-tab-lista"></table></div>
           <div class="card-expand-btn" id="ls-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLANO SÁBADO / FERIADO (FM) -->
+    <div class="section" id="sec-planosab">
+      <div class="section-title">Plano de Sábado &amp; Feriados <span class="sd-sub" id="ps-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Sub-regional</label><select id="ps-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="ps-f-station"></select></div>
+        <div class="filter"><label>3PL</label><select id="ps-f-tpl"></select></div>
+        <div class="filter"><label>Veículo</label><select id="ps-f-veic"></select></div>
+        <button class="theme-btn" id="ps-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="ps-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="ps-loading"></div>
+      <div id="ps-conteudo" style="display:none">
+        <div class="kpi-grid kpi-grid-secondary" id="ps-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Rotas por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="ps-chart-station" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Rotas por Veículo</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="ps-chart-veic" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Rotas planejadas</div><div class="sd-hint">clique na rota para ver as paradas na ordem</div></div>
+          <div class="search-box" style="margin:0 0 10px;"><input id="ps-busca" placeholder="Buscar rota, PUP/DOP, loja, bairro, cidade…"></div>
+          <div class="table-wrap"><table class="data" id="ps-tab-rotas"></table></div>
+          <div class="card-expand-btn" id="ps-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -3490,7 +3524,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "planosab", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3515,6 +3549,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
     if(item.dataset.section === "losses"){ if(!LS) loadLosses(); else { renderLosses(); if(!LS_PEND && lsVelho()) loadLosses(true); } }
+    if(item.dataset.section === "planosab"){ if(!PS) loadPlanoSab(); else { renderPlanoSab(); if(!PS_PEND && psVelho()) loadPlanoSab(true); } }
     if(item.dataset.section === "stuck"){ if(!ST) loadStuck(); else { renderStuck(); if(!ST_PEND && stVelho()) loadStuck(true); } }
     if(item.dataset.section === "otp"){ if(!OTP) loadOtp(); else { renderOtp(); if(!OTP_PEND && otpVelho()) loadOtp(true); } }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
@@ -5491,6 +5526,148 @@ function renderStuckLista(lista){
   $("st-more").addEventListener("click", ()=>{ ST_EXP.tab = !ST_EXP.tab; renderStuck(); });
   let t; $("st-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ ST_F.busca = e.target.value; ST_EXP.tab = false; renderStuck(); }, 200); });
 })();
+// ==================== PLANO DE SÁBADO & FERIADOS (FM) ====================
+// ?tipo=planosabado (PlanoSabado.gs) — planilha "NECO - [Planning] Planejamento de
+// Coleta - Sábado dd.mm.aaaa", aba "Planejamento Vigente". Uma linha por parada (PUP).
+// A planilha é a mesma toda semana, então a aba mostra sempre o plano vigente.
+let PS = null, PS_PEND = null;
+const PS_F = { sub:"__default__", station:"", tpl:"", veic:"", busca:"", aberta:"" };
+let PS_EXP = false;
+const PS_LIM = 30, PS_REFRESH_MS = 15 * 60 * 1000;
+const psCacheLer = ()=> ldIdb("readonly", st=> st.get("planosab")).catch(()=>null);
+const psCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "planosab")).catch(()=>{});
+const psVelho = ()=> !PS || !PS.em || Date.now() - new Date(PS.em).getTime() > PS_REFRESH_MS;
+const psKm = v => (v||0).toLocaleString("pt-BR",{maximumFractionDigits:1}) + " km";
+const psDop = r => /^DOP/i.test(r.pup) || /^DOP/i.test(r.shopId);
+
+function psAplicar(json){
+  const num = new Set(json.num || []);
+  const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+  const m = otpSubMap(); rows.forEach(r=>{ r.sub = m[r.station] || "Outras"; });
+  PS = { em: json.atualizadoEm || "", plano: json.plano || "", rows };
+  if(PS_F.sub === "__default__") PS_F.sub = rows.some(r=>r.sub==="CO") ? "CO" : "";
+  const box = document.getElementById("ps-loading"); if(box) box.innerHTML = "";
+  const ct = document.getElementById("ps-conteudo"); if(ct) ct.style.display = "";
+  if(document.getElementById("sec-planosab").classList.contains("active")) renderPlanoSab();
+}
+function loadPlanoSab(silencioso){
+  const box = document.getElementById("ps-loading");
+  if(!silencioso && !PS){ box.innerHTML = loaderHtml("Carregando o plano de sábado…"); document.getElementById("ps-conteudo").style.display = "none"; }
+  if(PS_PEND) return PS_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  PS_PEND = fetchViaIframe(API_URL + sep + "tipo=planosabado", 120000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o PlanoSabado.gs e a rota ?tipo=planosabado do webapp.gs foram publicados");
+    psAplicar(json); psCacheSalvar(json);
+  }).catch(err=>{
+    console.error("Plano sábado:", err);
+    if(PS){ const s = document.getElementById("ps-subtitle"); if(s) s.textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
+    box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar o plano de sábado (' + esc(err.message) + '). <a href="#" id="ps-retry">Tentar de novo</a></div>';
+    const a = document.getElementById("ps-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadPlanoSab(); };
+  }).finally(()=>{ PS_PEND = null; });
+  return PS_PEND;
+}
+setTimeout(async ()=>{ const c = await psCacheLer(); if(c && c.json && !PS){ try{ psAplicar(c.json); }catch(e){ console.warn("Plano sábado cache:", e); } } }, 0);
+
+function psPassa(r, ignorar){
+  return (ignorar==="sub" || !PS_F.sub || r.sub===PS_F.sub)
+    && (ignorar==="station" || !PS_F.station || r.station===PS_F.station)
+    && (ignorar==="tpl" || !PS_F.tpl || r.tpl===PS_F.tpl)
+    && (ignorar==="veic" || !PS_F.veic || r.veiculo===PS_F.veic);
+}
+function psRotas(lista){
+  const m = new Map();
+  lista.forEach(r=>{
+    const g = m.get(r.rota) || { rota:r.rota, station:r.station, tpl:r.tpl, veiculo:r.veiculo, tag:r.tag, tipoRota:r.tipoRota, paradas:[], pac:0, km:0, eta:"", etd:"", dops:0, sellers:0 };
+    g.paradas.push(r); g.pac += r.pacotes; g.km += r.km;
+    if(r.eta && (!g.eta || r.eta < g.eta)) g.eta = r.eta;
+    if(r.etd && (!g.etd || r.etd > g.etd)) g.etd = r.etd;
+    if(psDop(r)) g.dops++; else g.sellers++;
+    m.set(r.rota, g);
+  });
+  const l = [...m.values()];
+  l.forEach(g=> g.paradas.sort((a,b)=> a.seq-b.seq));
+  return l;
+}
+function renderPlanoSab(){
+  if(!PS) return;
+  const $ = id => document.getElementById(id);
+  const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const opcoes = (id, valores, atual, vazio) => { $(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("ps-f-sub", u(PS.rows,"sub"), PS_F.sub, "Todas");
+  opcoes("ps-f-station", u(PS.rows.filter(r=>psPassa(r,"station")),"station"), PS_F.station, "Todas");
+  opcoes("ps-f-tpl", u(PS.rows.filter(r=>psPassa(r,"tpl")),"tpl"), PS_F.tpl, "Todos");
+  opcoes("ps-f-veic", u(PS.rows.filter(r=>psPassa(r,"veic")),"veiculo"), PS_F.veic, "Todos");
+  const em = PS.em ? new Date(PS.em) : null;
+  const dataPlano = (/(\d{2}[.\/]\d{2}[.\/]\d{4})/.exec(PS.plano) || [])[1];
+  $("ps-subtitle").textContent = "— " + (dataPlano ? "plano de " + dataPlano.replace(/\./g,"/") : esc(PS.plano)) + " · lido às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—");
+
+  const lista = PS.rows.filter(r=>psPassa(r));
+  const rotas = psRotas(lista);
+  const pac = lista.reduce((t,r)=>t+r.pacotes,0), km = rotas.reduce((t,g)=>t+g.km,0);
+  const dops = lista.filter(psDop).length;
+  const etas = lista.map(r=>r.eta).filter(Boolean).sort(), etds = lista.map(r=>r.etd).filter(Boolean).sort();
+  renderKpis("ps-kpis", [
+    {label:"Rotas planejadas", value:sdNum(rotas.length), icon:"🚚", sub: sdNum(new Set(lista.map(r=>r.station)).size) + " stations · " + sdNum(new Set(lista.map(r=>r.tpl)).size) + " 3PLs"},
+    {label:"Paradas (PUPs)", value:sdNum(lista.length), icon:"📍", sub: sdNum(dops) + " DOPs · " + sdNum(lista.length-dops) + " sellers"},
+    {label:"Média de paradas por rota", value: rotas.length ? (lista.length/rotas.length).toFixed(1).replace(".",",") : "—", icon:"🔁", sub: rotas.length ? "maior rota: " + Math.max(...rotas.map(g=>g.paradas.length)) + " paradas" : ""},
+    {label:"Pacotes previstos", value:sdNum(pac), icon:"📦", sub: rotas.length ? sdNum(Math.round(pac/rotas.length)) + " por rota" : ""},
+    {label:"Janela da operação", value: etas.length ? etas[0] + " – " + etds[etds.length-1] : "—", icon:"🕘", sub: psKm(km) + " planejados"}
+  ]);
+
+  const barras = (elId, chave, sel, onClick) => {
+    const g = new Map(); rotas.forEach(r=>{ const k = r[chave] || "—"; const o = g.get(k) || {label:k, n:0, p:0}; o.n++; o.p += r.paradas.length; g.set(k,o); });
+    const l = [...g.values()].sort((a,b)=>b.n-a.n).slice(0,15), max = Math.max(1, ...l.map(o=>o.n));
+    const el = $(elId);
+    el.innerHTML = l.map((o,i)=>`<div class="sd-bar-row ${sel ? (o.label===sel?"sel":"dim") : ""}" data-i="${i}">
+      <div class="sd-bar-label" title="${esc(o.label)}">${esc(o.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(o.n/max*100).toFixed(2)}%"></div></div>
+      <div class="sd-bar-val">${sdNum(o.n)}</div></div>`).join("") || '<div class="empty-state">Nenhuma rota nesse filtro.</div>';
+    el.querySelectorAll(".sd-bar-row").forEach(row=>{
+      const o = l[+row.dataset.i];
+      row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(o.label)}</div><div class="r">Rotas <b>${sdNum(o.n)}</b></div><div class="r">Paradas <b>${sdNum(o.p)}</b></div>`, ev));
+      row.addEventListener("mouseleave", ()=> sdTip(null));
+      row.addEventListener("click", ()=>{ sdTip(null); onClick(o.label); });
+    });
+  };
+  barras("ps-chart-station", "station", PS_F.station, v=>{ PS_F.station = PS_F.station===v ? "" : v; PS_F.aberta = ""; renderPlanoSab(); });
+  barras("ps-chart-veic", "veiculo", PS_F.veic, v=>{ PS_F.veic = PS_F.veic===v ? "" : v; PS_F.aberta = ""; renderPlanoSab(); });
+
+  // tabela de rotas (com busca e paradas abrindo embaixo da rota)
+  const q = PS_F.busca.trim().toLowerCase();
+  let l = rotas.slice().sort((a,b)=> a.station.localeCompare(b.station) || a.rota.localeCompare(b.rota));
+  if(q) l = l.filter(g=> (g.rota + " " + g.station + " " + g.tpl + " " + g.veiculo + " " + g.paradas.map(r=>[r.pup,r.loja,r.bairro,r.cidade,r.endereco].join(" ")).join(" ")).toLowerCase().includes(q));
+  const vis = PS_EXP || q ? l : l.slice(0, PS_LIM);
+  const curta = r => r.replace(/^.*?_\d{4}_/, "");
+  const linhaParadas = g => `<tr class="ps-det"><td colspan="11" style="background:var(--surface-2,#fafafa);padding:8px 12px">
+      <table class="data" style="margin:0"><thead><tr><th>Seq.</th><th>PUP</th><th>Loja</th><th>Endereço</th><th>Bairro</th><th>Cidade</th><th>Chegada</th><th>Saída</th><th>Pacotes</th><th>Km</th></tr></thead><tbody>`
+      + g.paradas.map(r=>`<tr><td><b>${r.seq||""}</b></td><td>${esc(r.pup)}${psDop(r)?"":' <span class="badge" style="font-size:10px">seller</span>'}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.loja)}">${esc(r.loja||"—")}</td>`
+        + `<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.endereco + (r.numero?", "+r.numero:""))}">${esc(r.endereco||"—")}${r.numero?", "+esc(r.numero):""}</td><td>${esc(r.bairro||"—")}</td><td>${esc(r.cidade||"—")}</td><td>${esc(r.eta||"—")}</td><td>${esc(r.etd||"—")}</td><td>${sdNum(r.pacotes)}</td><td>${r.km ? psKm(r.km) : "—"}</td></tr>`).join("")
+      + `</tbody></table></td></tr>`;
+  $("ps-tab-rotas").innerHTML = "<thead><tr><th></th><th>Rota</th><th>Station</th><th>3PL</th><th>Veículo</th><th>Tipo</th><th>Paradas</th><th>DOPs / Sellers</th><th>Pacotes</th><th>Janela</th><th>Km</th></tr></thead><tbody>"
+    + (vis.map(g=>{ const ab = PS_F.aberta===g.rota || (q && l.length <= 3);
+        return `<tr class="ps-rota${ab?" sel":""}" data-r="${esc(g.rota)}" style="cursor:pointer${ab?";background:#fff4f0":""}"><td>${ab?"▾":"▸"}</td><td title="${esc(g.rota)}"><b>${esc(curta(g.rota))}</b></td><td>${esc(g.station)}</td><td>${esc(g.tpl||"—")}</td><td>${esc(g.veiculo||"—")}</td><td>${esc(g.tipoRota||g.tag||"—")}</td>`
+        + `<td><b>${g.paradas.length}</b></td><td>${g.dops} / ${g.sellers}</td><td>${sdNum(g.pac)}</td><td>${g.eta||"—"} – ${g.etd||"—"}</td><td>${g.km ? psKm(g.km) : "—"}</td></tr>` + (ab ? linhaParadas(g) : ""); }).join("")
+      || '<tr><td colspan="11"><div class="empty-state">Nenhuma rota nesse filtro.</div></td></tr>') + "</tbody>";
+  $("ps-tab-rotas").querySelectorAll(".ps-rota").forEach(tr=> tr.onclick = ()=>{ PS_F.aberta = PS_F.aberta===tr.dataset.r ? "" : tr.dataset.r; renderPlanoSab(); });
+  const b = $("ps-more");
+  b.style.display = !q && l.length > PS_LIM ? "" : "none";
+  b.textContent = PS_EXP ? "− Mostrar só as " + PS_LIM + " primeiras" : "+ Ver todas as " + l.length + " rotas";
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("ps-f-sub")) return;
+  const re = ()=>{ PS_F.aberta = ""; PS_EXP = false; renderPlanoSab(); };
+  $("ps-f-sub").addEventListener("change", e=>{ PS_F.sub = e.target.value; PS_F.station = ""; re(); });
+  $("ps-f-station").addEventListener("change", e=>{ PS_F.station = e.target.value; re(); });
+  $("ps-f-tpl").addEventListener("change", e=>{ PS_F.tpl = e.target.value; re(); });
+  $("ps-f-veic").addEventListener("change", e=>{ PS_F.veic = e.target.value; re(); });
+  $("ps-limpar").addEventListener("click", ()=>{ Object.assign(PS_F, {sub:"", station:"", tpl:"", veic:"", busca:"", aberta:""}); $("ps-busca").value = ""; re(); });
+  $("ps-refresh").addEventListener("click", ()=>{ $("ps-subtitle").textContent = "— atualizando…"; loadPlanoSab(true); });
+  $("ps-more").addEventListener("click", ()=>{ PS_EXP = !PS_EXP; renderPlanoSab(); });
+  let t; $("ps-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ PS_F.busca = e.target.value; renderPlanoSab(); }, 200); });
+})();
+
 // ==================== LOSSES (SVP) ====================
 // ?tipo=losses (Losses.gs) — planilha "Check Losses", aba "O que foi baixado",
 // gravada em histórico na aba HIST_LOSSES (Projeto de acompanhamento).
