@@ -6786,7 +6786,10 @@ function wbrAplicar(json){
   WBR = { em: json.atualizadoEm, rows, dias, semanas,
           ultBkl: dias.filter(d=> rows.some(r=>r.data===d && r.bkl>0)).pop() || dias[dias.length-1] };
   // primeira carga, ou estava no último dia: acompanha o dia novo
-  if(!WBR_F.sem || !semanas.includes(+WBR_F.sem)){ WBR_F.sem = String(wbrSemanaPadrao()); WBR_F.dBkl = ""; }
+  // segue a semana padrão sozinho (dia novo na base), a não ser que a semana tenha sido escolhida na mão
+  const novoPadrao = String(wbrSemanaPadrao());
+  if(!WBR_F.sem || !semanas.includes(+WBR_F.sem) || WBR_F.sem === WBR_F.semPadrao){ WBR_F.sem = novoPadrao; WBR_F.dBkl = ""; }
+  WBR_F.semPadrao = novoPadrao;
   if(!WBR_F.dBkl) wbrDatasPadrao();
   if(WBR_F.reg === "__default__") WBR_F.reg = rows.some(r=>r.reg==="CO") ? "CO" : "";
   document.getElementById("wbr-loading").innerHTML = "";
@@ -6797,7 +6800,7 @@ function wbrAplicar(json){
 // backlog = 1º dia da semana com backlog (a segunda) · inbound = dia útil
 // anterior com inbound (o sábado antes, pulando o domingo).
 function wbrDatasDaSemana(sem){
-  const dias = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===+sem && r.bkl>0));
+  const dias = WBR.dias.filter(d=> wbrDow(d)!==0 && WBR.rows.some(r=>r.data===d && r.semana===+sem && r.bkl>0));
   WBR_F.dBkl = dias[0] || WBR.ultBkl;
   WBR_F.dInb = wbrInbAnterior(WBR_F.dBkl);
 }
@@ -6806,19 +6809,12 @@ function wbrInbAnterior(dBkl){
   const comInb = WBR.dias.filter(d=> d < dBkl && wbrDow(d) !== 0 && WBR.rows.some(r=>r.data===d && r.inb>0));
   return comInb.pop() || dBkl;
 }
-// Semana fechada mais recente. O dia em que a semana termina é descoberto
-// pela própria base (último dia da semana anterior): antes o código supunha
-// semana de segunda a domingo, mas na base a semana vira no domingo — e aí
-// no domingo/segunda ele escolhia a semana nova, ainda sem dados (tudo zerado).
+// Semana padrão = semana do último dia com backlog na base (ex.: seg 16/11 → backlog 16/11 e
+// inbound do sábado 14/11). Se a semana nova ainda não tem backlog, ultBkl fica no último dia
+// com dados e o painel continua na semana anterior (não abre zerado).
 function wbrSemanaPadrao(){
-  const ult = WBR.dias[WBR.dias.length-1]; if(!ult) return "";
-  const semUlt = (WBR.rows.find(r=>r.data===ult) || {}).semana;
-  const ant = WBR.semanas.filter(w=> w < semUlt);
-  if(!ant.length) return semUlt;
-  const semAnt = ant[ant.length-1];
-  const diasAnt = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===semAnt));
-  const fimSemana = diasAnt.length ? wbrDow(diasAnt[diasAnt.length-1]) : 0;
-  return wbrDow(ult) === fimSemana ? semUlt : semAnt;
+  const d = WBR.ultBkl; if(!d) return "";
+  return (WBR.rows.find(r=>r.data===d) || {}).semana || "";
 }
 async function wbrCacheCarregar(){
   const c = await wbrCacheLer();
