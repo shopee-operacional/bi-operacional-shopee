@@ -7043,6 +7043,7 @@ function loadWbr(silencioso){
     if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o WBR.gs e a rota ?tipo=wbr do webapp.gs foram publicados");
     wbrAplicar(json);
     wbrCacheSalvar(json);
+    loadWbrJust();
   }).catch(err=>{
     console.error("Análise WBR:", err);
     if(!WBR && !silencioso){
@@ -7066,14 +7067,205 @@ const wbrForaSd = r => Math.max(0, r.out - r.outSd);
 function wbrDopTxt(r){ return `<b>${esc(r.dop)}</b>${r.nome ? " - " + esc(r.nome) : ""}<div class="alert-sub">${esc(r.station||"")} · ${esc(r.resp)}</div>`; }
 
 // tabela "por responsável": valor, % do total, % acumulado
-function wbrTabResp(lista, rotulo){
+// ---- justificativas por analista (WBR) ----
+// Cada analista escreve o porquê do número dele em cada indicador. Fica salvo na
+// aba WBR_JUSTIFICATIVAS (WbrJust.gs, rotas ?tipo=wbrjust e ?tipo=wbrjustsalvar).
+// Chave = indicador | período (dia ou semana) | sub-regional | responsável.
+let WBR_JUST = {}, WBR_JUST_PEND = null;
+const WBR_JUST_MAX = 600;
+const wbrJustChave = (ind, per, resp) => [ind, per, WBR_F.reg || "", resp].join("|");
+function loadWbrJust(){
+  if(WBR_JUST_PEND) return WBR_JUST_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  WBR_JUST_PEND = fetchViaIframe(API_URL + sep + "tipo=wbrjust", 60000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    const m = {}; (json && json.itens || []).forEach(o=> m[o.chave] = o);
+    WBR_JUST = m;
+    if(document.getElementById("sec-wbr").classList.contains("active")) renderWbr();
+  }).catch(err=> console.warn("Justificativas WBR:", err)).finally(()=>{ WBR_JUST_PEND = null; });
+  return WBR_JUST_PEND;
+}
+function salvarWbrJust(o, texto){
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  const q = ["chave","ind","per","sub","resp"].map(k=> k + "=" + encodeURIComponent(o[k])).join("&") + "&texto=" + encodeURIComponent(texto);
+  return fetchViaIframe(API_URL + sep + "tipo=wbrjustsalvar&" + q, 60000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(json && json.item && json.item.texto) WBR_JUST[o.chave] = json.item; else delete WBR_JUST[o.chave];
+  });
+}
+// coluna "Justificativa" da tabela por responsável
+function wbrJustCel(ind, per, resp){
+  const ch = wbrJustChave(ind, per, resp), j = WBR_JUST[ch];
+  const prev = j ? esc(j.texto.length > 38 ? j.texto.slice(0,38) + "…" : j.texto) : "";
+  return `<td class="wbr-just-td"><button type="button" class="wbr-just${j?" tem":""}" data-ch="${esc(ch)}" data-ind="${esc(ind)}" data-per="${esc(per)}" data-resp="${esc(resp)}">${j ? "💬 " + prev : "＋ justificar"}</button></td>`;
+}
+// ---- análise automática (base para a justificativa) ----
+// Lê os números do próprio analista no período e aponta de onde veio o resultado:
+// DOPs que concentram, pior dia, dias sem coleta, coleta parcial, inbound depois
+// da última coleta e DOP bipando depois do motorista.
+function wbrAnalise(ind, per, resp){
+  const base = WBR.rows.filter(r=> (!WBR_F.reg || r.reg===WBR_F.reg) && r.resp===resp);
+  const semanal = /^W/.test(per), sem = semanal ? +per.slice(1) : 0;
+  const R = semanal ? base.filter(r=>r.semana===sem) : base.filter(r=>r.data===per);
+  const semAnt = semanal ? WBR.semanas.filter(w=>w<sem).pop() : 0;
+  const Rant = semAnt ? base.filter(r=>r.semana===semAnt) : [];
+  const soma = (l, f) => l.reduce((t,r)=>t+f(r),0);
+  const pct = (a,b,d) => b ? (a/b*100).toFixed(d==null?1:d).replace(".",",") + "%" : "—";
+  const nomeDop = r => r.dop + (r.nome ? " " + String(r.nome).split(/\s+/).filter(w=> /[A-Za-zÀ-ú]/.test(w)).slice(0,3).join(" ") : "");
+  const dia = d => wbrDiaSemana(d) + " " + fmtDiaBR(d);
+  const porDop = f => wbrSomar(R, r=>r.dop, f);
+  const porDia = f => wbrSomar(R, r=>r.data, f);
+  const b = [];   // frases
+  const topTxt = (top, tot, extra) => {
+    const t3 = top.slice(0,3), s3 = t3.reduce((t,o)=>t+o.v,0);
+    if(!t3.length) return;
+    b.push((t3.length===1 ? "1 DOP concentra " : t3.length + " DOPs concentram ") + pct(s3,tot,0) + ": "
+      + t3.map(o=> nomeDop(o.r) + " (" + sdNum(o.v) + (extra ? extra(o) : "") + ")").join(", ") + ".");
+    return t3;
+  };
+  const semColeta = dop => R.filter(r=>r.dop===dop && !r.out && r.bkl>0).map(r=>r.data).sort();
+  const bipTarde = dop => R.filter(r=>r.dop===dop && wbrMin(r.bipDop)!=null && wbrMin(r.bipDrv)!=null && wbrMin(r.bipDop) > wbrMin(r.bipDrv))
+                          .map(r=> wbrMin(r.bipDop) - wbrMin(r.bipDrv));
+  const outDop = dop => soma(R.filter(r=>r.dop===dop), r=>r.out);
+
+  if(ind === "fifo"){
+    const tot = soma(R, r=>r.semFifo), out = soma(R, r=>r.out);
+    if(!tot) return { frases:["Nenhum pacote fora do FIFO na semana. 🎉"], texto:"" };
+    const ant = Rant.length ? pct(soma(Rant,r=>r.semFifo), soma(Rant,r=>r.out)) : "";
+    b.push(sdNum(tot) + " pacotes saíram fora do FIFO (" + pct(tot,out) + " do outbound da semana)" + (ant ? "; na semana anterior foi " + ant : "") + ".");
+    const t3 = topTxt(porDop(r=>r.semFifo), tot, o=> " · " + pct(o.v, outDop(o.k)) + " do outbound dele");
+    const pd = porDia(r=>r.semFifo)[0]; if(pd) b.push("Pior dia: " + dia(pd.k) + " com " + sdNum(pd.v) + ".");
+    (t3||[]).forEach(o=>{
+      const sc = semColeta(o.k);
+      if(sc.length) b.push(nomeDop(o.r) + ": " + sc.length + (sc.length===1?" dia":" dias") + " sem coleta com pacote no DOP (" + sc.map(fmtDiaBR).join(", ") + ") — os mais antigos ficaram para trás.");
+      const L = R.filter(r=>r.dop===o.k && r.bkl>0), mb = L.length ? soma(L,r=>r.bkl)/L.length : 0, mo = L.length ? soma(L,r=>r.out)/L.length : 0;
+      if(mb && mo && mo < mb*0.8) b.push(nomeDop(o.r) + ": coleta parcial — backlog médio de " + sdNum(mb) + "/dia e coleta média de " + sdNum(mo) + ".");
+    });
+  } else if(ind === "sd"){
+    const tot = soma(R, wbrForaSd), out = soma(R, r=>r.out);
+    if(!tot) return { frases:["Todo o outbound saiu no Same Day. 🎉"], texto:"" };
+    const ant = Rant.length ? pct(soma(Rant,wbrForaSd), soma(Rant,r=>r.out)) : "";
+    b.push(sdNum(tot) + " pacotes fora do Same Day (" + pct(tot,out) + " do outbound)" + (ant ? "; na semana anterior foi " + ant : "") + ".");
+    const pos = soma(R, r=>r.inbPos);
+    if(pos) b.push(sdNum(pos) + " pacotes chegaram ao DOP depois da última coleta FM" + (pos < tot ? " (" + pct(pos,tot,0) + " do fora do Same Day)" : "") + " — esses não tinham como sair no mesmo dia.");
+    const t3 = topTxt(porDop(wbrForaSd), tot, o=> " · " + pct(o.v, outDop(o.k)) + " do outbound dele");
+    const pd = porDia(wbrForaSd)[0]; if(pd) b.push("Pior dia: " + dia(pd.k) + " com " + sdNum(pd.v) + ".");
+    (t3||[]).forEach(o=>{
+      const bt = bipTarde(o.k);
+      if(bt.length) b.push(nomeDop(o.r) + ": DOP bipou depois do motorista em " + bt.length + (bt.length===1?" dia":" dias") + " (até " + wbrHHMM(Math.max(...bt)) + " depois).");
+      const sc = semColeta(o.k);
+      if(sc.length) b.push(nomeDop(o.r) + ": sem coleta em " + sc.map(fmtDiaBR).join(", ") + ".");
+    });
+  } else if(ind === "mis"){
+    const tot = soma(R, r=>r.mis);
+    if(!tot) return { frases:["Nenhum mis scan na semana. 🎉"], texto:"" };
+    const ant = Rant.length ? soma(Rant, r=>r.mis) : null;
+    b.push(sdNum(tot) + " pacotes com mis scan" + (ant!=null ? " (semana anterior: " + sdNum(ant) + ")" : "") + ".");
+    topTxt(porDop(r=>r.mis), tot);
+    const pd = porDia(r=>r.mis)[0]; if(pd) b.push("Pior dia: " + dia(pd.k) + " com " + sdNum(pd.v) + ".");
+  } else if(ind === "bkl"){
+    const tot = soma(R, r=>r.bkl);
+    if(!tot) return { frases:["Sem backlog no início do dia. 🎉"], texto:"" };
+    b.push(sdNum(tot) + " pacotes no início do dia em " + R.filter(r=>r.bkl>0).length + " DOPs.");
+    const t3 = topTxt(porDop(r=>r.bkl), tot);
+    // dia útil anterior: quem ficou sem coleta
+    const ant = WBR.dias.filter(d=> d < per && wbrDow(d)!==0).pop();
+    if(ant && t3){
+      const sc = t3.filter(o=> base.some(r=>r.dop===o.k && r.data===ant && !r.out && (r.bkl>0||r.inb>0)));
+      if(sc.length) b.push("Sem coleta em " + dia(ant) + ": " + sc.map(o=>nomeDop(o.r)).join(", ") + ".");
+      t3.forEach(o=>{ const p = base.find(r=>r.dop===o.k && r.data===ant); if(p && p.inbPos) b.push(nomeDop(o.r) + ": " + sdNum(p.inbPos) + " pacotes entraram depois da última coleta em " + dia(ant) + "."); });
+    }
+  } else if(ind === "inb"){
+    const tot = soma(R, r=>r.inb), pos = soma(R, r=>r.inbPos);
+    if(!tot) return { frases:["Sem inbound nesse dia."], texto:"" };
+    b.push(sdNum(tot) + " pacotes de inbound em " + R.filter(r=>r.inb>0).length + " DOPs" + (pos ? "; " + sdNum(pos) + " (" + pct(pos,tot,0) + ") entraram depois da última coleta" : "") + ".");
+    topTxt(porDop(r=>r.inb), tot);
+  }
+  // texto sugerido: frases inteiras até ~480 caracteres (sobra espaço pro analista completar)
+  let texto = "";
+  for(const f of b){ if((texto + " " + f).trim().length > 480) break; texto = (texto + " " + f).trim(); }
+  return { frases: b, texto };
+}
+
+function wbrJustTip(j, ev, an){
+  if(!j){ if(!an || !an.frases.length){ sdTip(null); return; }
+    sdTip(`<div class="t">📊 Análise automática</div><ul style="margin:4px 0 2px 16px;padding:0;max-width:340px;color:var(--text-primary)">${an.frases.slice(0,4).map(f=>`<li style="margin:2px 0">${esc(f)}</li>`).join("")}</ul><div style="font-size:11px;color:var(--text-secondary)">clique para justificar</div>`, ev); return; }
+  const quando = j.em ? new Date(j.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+  sdTip(`<div class="t">Justificativa · ${esc(j.resp)}</div><div style="max-width:320px;white-space:pre-wrap;color:var(--text-primary);margin:4px 0">${esc(j.texto)}</div><div style="font-size:11px;color:var(--text-secondary)">${esc(j.autor||"")}${j.autor&&quando?" · ":""}${quando}</div>`, ev);
+}
+const WBR_IND_NOME = { bkl:"Initial Backlog", inb:"Inbound", mis:"Mis-Scan", sd:"Same Day", fifo:"FIFO" };
+function wbrJustAbrir(btn){
+  sdTip(null);
+  const o = { chave: btn.dataset.ch, ind: btn.dataset.ind, per: btn.dataset.per, sub: WBR_F.reg || "", resp: btn.dataset.resp };
+  const j = WBR_JUST[o.chave];
+  const an = wbrAnalise(o.ind, o.per, o.resp);
+  const perTxt = /^W/.test(o.per) ? "Week " + o.per.slice(1) : wbrDiaSemana(o.per) + " " + fmtDiaBR(o.per);
+  const fundo = document.createElement("div");
+  fundo.className = "wbr-modal-fundo";
+  fundo.innerHTML = `<div class="wbr-modal" role="dialog">
+    <div class="wbr-modal-tit">Justificativa · ${esc(WBR_IND_NOME[o.ind]||o.ind)}</div>
+    <div class="wbr-modal-sub">${esc(o.resp)} · ${esc(perTxt)}${o.sub ? " · " + esc(o.sub) : ""}</div>
+    ${an.frases.length ? `<div class="wbr-an"><div class="wbr-an-tit">📊 Análise automática <button type="button" class="theme-btn wbr-usar">Usar no texto</button></div><ul>${an.frases.map(f=>`<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
+    <textarea maxlength="${WBR_JUST_MAX}" placeholder="Por que o número ficou assim? Ex.: DOP 8144 sem coleta na sexta por falta de veículo; rota extra programada para hoje.">${esc(j ? j.texto : "")}</textarea>
+    <div class="wbr-modal-rodape"><span class="wbr-modal-cont"></span>
+      <span style="flex:1"></span>
+      ${j ? '<button type="button" class="theme-btn wbr-apagar">Apagar</button>' : ""}
+      <button type="button" class="theme-btn wbr-cancelar">Cancelar</button>
+      <button type="button" class="theme-btn wbr-salvar" style="background:var(--accent,#ee4d2d);color:#fff;border-color:transparent">Salvar</button></div>
+    ${j && j.autor ? `<div class="wbr-modal-sub" style="margin-top:8px">Última edição: ${esc(j.autor)} · ${j.em ? new Date(j.em).toLocaleString("pt-BR") : ""}</div>` : ""}
+  </div>`;
+  document.body.appendChild(fundo);
+  const ta = fundo.querySelector("textarea"), cont = fundo.querySelector(".wbr-modal-cont");
+  const conta = ()=> cont.textContent = ta.value.length + "/" + WBR_JUST_MAX;
+  ta.addEventListener("input", conta); conta(); ta.focus();
+  const us = fundo.querySelector(".wbr-usar"); if(us) us.onclick = ()=>{ ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + an.texto; ta.value = ta.value.slice(0, WBR_JUST_MAX); conta(); ta.focus(); };
+  const fechar = ()=> fundo.remove();
+  fundo.addEventListener("click", e=>{ if(e.target === fundo) fechar(); });
+  fundo.querySelector(".wbr-cancelar").onclick = fechar;
+  const gravar = texto=>{
+    const b = fundo.querySelector(".wbr-salvar"); b.disabled = true; b.textContent = "Salvando…";
+    salvarWbrJust(o, texto).then(()=>{ fechar(); renderWbr(); })
+      .catch(err=>{ b.disabled = false; b.textContent = "Salvar"; cont.textContent = "⚠ não salvou: " + err.message; });
+  };
+  fundo.querySelector(".wbr-salvar").onclick = ()=> gravar(ta.value.trim());
+  const ap = fundo.querySelector(".wbr-apagar"); if(ap) ap.onclick = ()=> gravar("");
+}
+function wbrJustLigar(){
+  document.querySelectorAll("#sec-wbr .wbr-just").forEach(b=>{
+    b.onclick = e=>{ e.stopPropagation(); wbrJustAbrir(b); };
+    b.onmousemove = e=>{ const j = WBR_JUST[b.dataset.ch]; if(!j && !b._an) b._an = wbrAnalise(b.dataset.ind, b.dataset.per, b.dataset.resp); wbrJustTip(j, e, b._an); };
+    b.onmouseleave = ()=> sdTip(null);
+  });
+}
+(function(){
+  const st = document.createElement("style");
+  st.textContent = `
+  .wbr-just{border:1px dashed var(--border);background:transparent;color:var(--text-secondary);border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+  .wbr-just:hover{border-color:var(--accent,#ee4d2d);color:var(--accent,#ee4d2d)}
+  .wbr-just.tem{border-style:solid;border-color:#f6c3b5;background:#fff4f0;color:#b23a1d}
+  .wbr-modal-fundo{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100;display:flex;align-items:center;justify-content:center}
+  .wbr-modal{background:var(--surface,#fff);color:var(--text-primary);border-radius:12px;padding:18px 20px;width:min(520px,92vw);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  .wbr-modal-tit{font-weight:700;font-size:15px}
+  .wbr-modal-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
+  .wbr-modal textarea{width:100%;box-sizing:border-box;min-height:130px;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:13px;background:var(--surface-2,#fafafa);color:var(--text-primary);resize:vertical}
+  .wbr-modal-rodape{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .wbr-modal-cont{font-size:11px;color:var(--text-secondary)}
+  .wbr-modal{width:min(620px,94vw)}
+  .wbr-an{margin-top:12px;background:var(--surface-2,#f7f7f7);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;max-height:220px;overflow:auto}
+  .wbr-an-tit{display:flex;align-items:center;justify-content:space-between;font-weight:700;margin-bottom:4px}
+  .wbr-an-tit .theme-btn{font-size:11.5px;padding:3px 10px}
+  .wbr-an ul{margin:0 0 0 16px;padding:0}.wbr-an li{margin:3px 0}`;
+  document.head.appendChild(st);
+})();
+
+function wbrTabResp(lista, rotulo, ind, per){
   const tot = lista.reduce((t,o)=>t+o.v,0);
   if(!tot) return '<div class="empty-state">Sem dados para esse período.</div>';
   let acum = 0;
-  return `<div class="table-wrap"><table class="data"><thead><tr><th>Responsável</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th></tr></thead><tbody>`
+  return `<div class="table-wrap"><table class="data"><thead><tr><th>Responsável</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th>${ind ? "<th>Justificativa</th>" : ""}</tr></thead><tbody>`
     + lista.map(o=>{ acum += o.v; const sel = WBR_F.resp===o.k;
-        return `<tr class="wbr-resp${sel?" sel":""}" data-resp="${esc(o.k)}" style="cursor:pointer${sel?";background:var(--accent-soft, #fdece8)":""}" title="Clique para filtrar este responsável"><td><b>${esc(o.k)}</b></td><td>${sdNum(o.v)}</td><td>${wbrPct(o.v,tot)}</td><td>${wbrPct(acum,tot)}</td></tr>`; }).join("")
-    + `<tr style="font-weight:700"><td>Total</td><td>${sdNum(tot)}</td><td>100%</td><td></td></tr></tbody></table></div>`;
+        return `<tr class="wbr-resp${sel?" sel":""}" data-resp="${esc(o.k)}" style="cursor:pointer${sel?";background:var(--accent-soft, #fdece8)":""}" title="Clique para filtrar este responsável"><td><b>${esc(o.k)}</b></td><td>${sdNum(o.v)}</td><td>${wbrPct(o.v,tot)}</td><td>${wbrPct(acum,tot)}</td>${ind ? wbrJustCel(ind, per, o.k) : ""}</tr>`; }).join("")
+    + `<tr style="font-weight:700"><td>Total</td><td>${sdNum(tot)}</td><td>100%</td><td></td>${ind ? "<td></td>" : ""}</tr></tbody></table></div>`;
 }
 // rodapé dos Top 10: total top 10 · % do top 10 · total do escopo
 function wbrRodape(top, totEscopo, rotulo){
@@ -7121,7 +7313,7 @@ function renderWbr(){
   const bklTop = wbrSomar(esc_, r=>r.dop, bklDia).slice(0,10);
   const bklTot = esc_.reduce((t,r)=>t+bklDia(r),0);
   wbrCard("wbr-card-bkl", "📦 Initial Backlog", "backlog início do dia · " + wbrDiaSemana(F.dBkl) + " " + fmtDiaBR(F.dBkl),
-    wbrTabResp(wbrSomar(reg, r=>r.resp, bklDia), "Backlog início do dia")
+    wbrTabResp(wbrSomar(reg, r=>r.resp, bklDia), "Backlog início do dia", "bkl", F.dBkl)
     + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">Top 10 DOPs backlog</div>`
     + (bklTop.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>Backlog início do dia</th><th>% do total</th><th title="Inbound depois da última coleta FM no dia do inbound ÷ backlog">% inbound após última coleta</th><th title="Inbound do domingo entre as duas datas ÷ backlog">% inbound domingo/backlog</th></tr></thead><tbody>`
       + bklTop.map(o=>`<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(o.v)}</b></td><td>${wbrPct(o.v,bklTot)}</td><td>${wbrPct(inbPosDop.get(o.k)||0, o.v, 2)}</td><td>${domingos.length ? wbrPct(inbDomDop.get(o.k)||0, o.v, 2) : "—"}</td></tr>`).join("")
@@ -7130,7 +7322,7 @@ function renderWbr(){
   // 2) Inbound
   const inbV = r => r.data===F.dInb ? r.inb : 0;
   wbrCard("wbr-card-inb", "📥 Inbound", "volume inbound · " + wbrDiaSemana(F.dInb) + " " + fmtDiaBR(F.dInb),
-    wbrTabResp(wbrSomar(reg, r=>r.resp, inbV), "Inbound")
+    wbrTabResp(wbrSomar(reg, r=>r.resp, inbV), "Inbound", "inb", F.dInb)
     + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">Inbound após última coleta dos Top 10 DOPs backlog</div>`
     + (bklTop.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>Inbound após última coleta</th><th>Último bip motorista</th><th>Último bip DOP</th><th title="último bip do DOP − último bip do motorista">Diferença (hh:mm)</th><th>Inbound domingo</th></tr></thead><tbody>`
       + bklTop.map(o=>{
@@ -7146,21 +7338,22 @@ function renderWbr(){
   const semFech = (WBR.semanas.filter(w=> w < sem).pop()) || sem;
   const diasFech = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===semFech && (r.out || r.mis || r.semFifo)));
   const rotSem = "Week " + semFech + (diasFech.length ? " · " + fmtDiaBR(diasFech[0]) + " a " + fmtDiaBR(diasFech[diasFech.length-1]) : "");
-  const semanal = (id, titulo, rotulo, rotTop, fn) => {
+  const semanal = (id, titulo, rotulo, rotTop, fn, ind) => {
     const v = r => r.semana===semFech ? fn(r) : 0;
     const top = wbrSomar(esc_, r=>r.dop, v).slice(0,10);
     const tot = esc_.reduce((t,r)=>t+v(r),0);
     wbrCard(id, titulo, rotSem,
-      wbrTabResp(wbrSomar(reg, r=>r.resp, v), rotulo)
+      wbrTabResp(wbrSomar(reg, r=>r.resp, v), rotulo, ind, "W" + semFech)
       + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">${rotTop}</div>`
       + (top.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th></tr></thead><tbody>`
         + (()=>{ let a = 0; return top.map(o=>{ a += o.v; return `<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(o.v)}</b></td><td>${wbrPct(o.v,tot)}</td><td>${wbrPct(a,tot)}</td></tr>`; }).join(""); })()
         + `</tbody></table></div>` + wbrRodape(top, tot, rotulo.toLowerCase()) : '<div class="empty-state">Nada nessa semana. 🎉</div>'));
   };
-  semanal("wbr-card-mis", "🔍 Mis-Scan", "Mis Scan", "Top 10 Mis Scan", r=>r.mis);
-  semanal("wbr-card-sd", "⏱ Same Day", "Fora do Same Day", "Top 10 fora do Same Day", wbrForaSd);
-  semanal("wbr-card-fifo", "📅 FIFO", "Pacotes fora do FIFO", "Top 10 ofensores FIFO", r=>r.semFifo);
+  semanal("wbr-card-mis", "🔍 Mis-Scan", "Mis Scan", "Top 10 Mis Scan", r=>r.mis, "mis");
+  semanal("wbr-card-sd", "⏱ Same Day", "Fora do Same Day", "Top 10 fora do Same Day", wbrForaSd, "sd");
+  semanal("wbr-card-fifo", "📅 FIFO", "Pacotes fora do FIFO", "Top 10 ofensores FIFO", r=>r.semFifo, "fifo");
 
+  wbrJustLigar();
   document.querySelectorAll("#sec-wbr .wbr-resp").forEach(tr=> tr.onclick = ()=>{ F.resp = F.resp===tr.dataset.resp ? "" : tr.dataset.resp; renderWbr(); });
 }
 (function(){
