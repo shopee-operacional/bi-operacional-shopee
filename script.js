@@ -5339,7 +5339,7 @@ function stBarras(elId, grupos, sel, onClick, vazio){
     return `<div class="sd-bar-row ${cls}" data-i="${i}">
       <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
       <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.n/max*100).toFixed(2)}%${g.cor?";background:"+g.cor:""}"></div></div>
-      <div class="sd-bar-val">${sdNum(g.n)} · ${stBRL(g.v)}</div>
+      <div class="sd-bar-val">${sdNum(g.n)}</div>
     </div>`;
   }).join("");
   el.querySelectorAll(".sd-bar-row").forEach(row=>{
@@ -7140,12 +7140,17 @@ function renderWbr(){
           return `<tr><td>${wbrDopTxt(o.r)}</td><td><b>${sdNum(inbPosDop.get(o.k)||0)}</b></td><td>${esc(l.bipDrv||"")}</td><td>${esc(l.bipDop||"")}</td><td style="color:var(--critical)">${dif==null ? "—" : wbrHHMM(dif)}</td><td>${domingos.length ? sdNum(inbDomDop.get(o.k)||0) : "—"}</td></tr>`;
         }).join("") + `</tbody></table></div>` : '<div class="empty-state">Sem DOPs com backlog nesse dia.</div>'));
 
-  // 3) 4) 5) semanais
+  // 3) 4) 5) semanais — sempre da semana FECHADA anterior à semana escolhida
+  // (ex.: Week 47 → backlog seg 16/11 e inbound sáb 14/11; Mis-Scan, Same Day e
+  // FIFO da Week 46, de 09/11 a 14/11). Sem semana anterior na base, usa a própria.
+  const semFech = (WBR.semanas.filter(w=> w < sem).pop()) || sem;
+  const diasFech = WBR.dias.filter(d=> WBR.rows.some(r=>r.data===d && r.semana===semFech && (r.out || r.mis || r.semFifo)));
+  const rotSem = "Week " + semFech + (diasFech.length ? " · " + fmtDiaBR(diasFech[0]) + " a " + fmtDiaBR(diasFech[diasFech.length-1]) : "");
   const semanal = (id, titulo, rotulo, rotTop, fn) => {
-    const v = r => r.semana===sem ? fn(r) : 0;
+    const v = r => r.semana===semFech ? fn(r) : 0;
     const top = wbrSomar(esc_, r=>r.dop, v).slice(0,10);
     const tot = esc_.reduce((t,r)=>t+v(r),0);
-    wbrCard(id, titulo, "Week " + sem,
+    wbrCard(id, titulo, rotSem,
       wbrTabResp(wbrSomar(reg, r=>r.resp, v), rotulo)
       + `<div class="card-title" style="margin:14px 0 6px;font-size:13px">${rotTop}</div>`
       + (top.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>DOP</th><th>${rotulo}</th><th>% do total</th><th>% acumulado</th></tr></thead><tbody>`
