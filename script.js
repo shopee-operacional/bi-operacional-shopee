@@ -58,6 +58,7 @@ if(!document.querySelector(".app")){
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span class="nav-group-name">FM<small class="nav-group-sub">First Mile · Coletas</small></span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
         <div class="nav-item" data-section="coletas"><span class="nav-txt">Coletas ao vivo</span></div>
+        <div class="nav-item" data-section="stuck"><span class="nav-txt">Stuck</span></div>
         <div class="nav-item" data-section="leadtime"><span class="nav-txt">Lead Time</span></div>
         <div class="nav-item" data-section="backlogloja"><span class="nav-txt">Backlog Seller &amp; PUDO</span></div>
         <div class="nav-item" data-section="forecast"><span class="nav-txt">Forecast x Coletado</span></div>
@@ -260,6 +261,44 @@ if(!document.querySelector(".app")){
           </div>
           <div class="table-wrap"><table class="data" id="ls-tab-lista"></table></div>
           <div class="card-expand-btn" id="ls-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STUCK (FM) -->
+    <div class="section" id="sec-stuck">
+      <div class="section-title">Stuck · pacotes pendentes com motorista <span class="sd-sub" id="st-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter"><label>Sub-regional</label><select id="st-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="st-f-station"></select></div>
+        <div class="filter"><label>Transportador</label><select id="st-f-transp"></select></div>
+        <div class="filter"><label>Aging</label><select id="st-f-aging"><option value="">Todos</option><option value="1">1 dia</option><option value="2">2 dias</option><option value="3">3 dias ou mais</option><option value="7">7 dias ou mais</option></select></div>
+        <button class="theme-btn" id="st-limpar">Limpar filtros</button>
+        <button class="theme-btn" id="st-refresh">⟳ Atualizar</button>
+      </div>
+      <div id="st-loading"></div>
+      <div id="st-conteudo" style="display:none">
+        <div class="kpi-grid kpi-grid-secondary" id="st-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Pacotes por aging</div><div class="sd-hint">dias parados com o motorista · clique para filtrar</div></div>
+            <div id="st-chart-aging" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Pacotes por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="st-chart-station" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Motoristas com pacotes stuck</div></div>
+          <div class="table-wrap"><table class="data" id="st-tab-drv"></table></div>
+          <div class="card-expand-btn" id="st-drv-more" style="display:none"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Lista de pacotes</div><div class="losses-total" id="st-lista-total"></div></div>
+          <div class="search-box" style="margin:0 0 10px;"><input id="st-busca" placeholder="Buscar pacote (BR), pedido, motorista, loja, DOP, station…"></div>
+          <div class="table-wrap"><table class="data" id="st-tab-lista"></table></div>
+          <div class="card-expand-btn" id="st-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -3451,7 +3490,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3476,6 +3515,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
     if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
     if(item.dataset.section === "losses"){ if(!LS) loadLosses(); else { renderLosses(); if(!LS_PEND && lsVelho()) loadLosses(true); } }
+    if(item.dataset.section === "stuck"){ if(!ST) loadStuck(); else { renderStuck(); if(!ST_PEND && stVelho()) loadStuck(true); } }
     if(item.dataset.section === "otp"){ if(!OTP) loadOtp(); else { renderOtp(); if(!OTP_PEND && otpVelho()) loadOtp(true); } }
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
@@ -5218,6 +5258,179 @@ function kpiCardOtp(){
     title:"Tasks de coleta com otp_fail ÷ total de tasks (planilha FM One Time Password, aba BD PUDO). Atualiza a cada 5 min.",
     onClick: ()=>{ const n = document.querySelector('.nav-item[data-section="otp"]'); if(n) n.click(); }};
 }
+// ==================== STUCK (FM) ====================
+// ?tipo=stuck (Stuck.gs) — planilha "SPXOWNFLEET_STUCK", aba "SPXOWNFLEET".
+// Uma linha por pacote que ficou pendente no nome do motorista (data da
+// coleta, pacote BR, pedido, motorista, transportador, station, loja, valor,
+// aging). A sub-regional vem da station (mesmo de/para da aba Falha de OTP).
+let ST = null, ST_PEND = null;
+const ST_F = { sub:"__default__", station:"", transp:"", aging:"", busca:"" };
+const ST_EXP = { drv:false, tab:false };
+const ST_REFRESH_MS = 15 * 60 * 1000, ST_LIM = 15, ST_LIM_TAB = 100;
+const stCacheLer = ()=> ldIdb("readonly", st=> st.get("stuck")).catch(()=>null);
+const stCacheSalvar = json => ldIdb("readwrite", st=> st.put({ salvoEm: Date.now(), json }, "stuck")).catch(()=>{});
+const stVelho = ()=> !ST || !ST.em || Date.now() - new Date(ST.em).getTime() > ST_REFRESH_MS;
+const stBRL = v => (v||0).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+const stCor = a => a >= 7 ? "var(--critical)" : a >= 3 ? "var(--warning)" : "var(--good)";
+const stFaixa = a => a >= 8 ? "8+ dias" : a >= 4 ? "4 a 7 dias" : a + (a===1 ? " dia" : " dias");
+const ST_FAIXAS = ["1 dia","2 dias","3 dias","4 a 7 dias","8+ dias"];
+
+function stAtualizarSubs(){
+  const m = otpSubMap();
+  ST.rows.forEach(r=>{ r.sub = m[r.station] || "Outras"; });
+}
+function stAplicar(json){
+  const num = new Set(json.num || []);
+  const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; });
+  rows.forEach(r=>{ if(r.aging < 1) r.aging = 1; });
+  ST = { hoje: json.hoje || histHoje(), em: json.atualizadoEm || "", upd: json.dataUpdate || "", rows };
+  stAtualizarSubs();
+  if(ST_F.sub === "__default__") ST_F.sub = rows.some(r=>r.sub==="CO") ? "CO" : "";
+  const box = document.getElementById("st-loading"); if(box) box.innerHTML = "";
+  const ct = document.getElementById("st-conteudo"); if(ct) ct.style.display = "";
+  if(document.getElementById("sec-stuck").classList.contains("active")) renderStuck();
+}
+function loadStuck(silencioso){
+  const box = document.getElementById("st-loading");
+  if(!silencioso && !ST){ box.innerHTML = loaderHtml("Carregando os pacotes stuck…"); document.getElementById("st-conteudo").style.display = "none"; }
+  if(ST_PEND) return ST_PEND;
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  ST_PEND = fetchViaIframe(API_URL + sep + "tipo=stuck", 120000).then(json=>{
+    if(json && json.erro) throw new Error(json.erro);
+    if(!json || !json.cols || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Stuck.gs e a rota ?tipo=stuck do webapp.gs foram publicados");
+    stAplicar(json);
+    stCacheSalvar(json);
+  }).catch(err=>{
+    console.error("Stuck:", err);
+    if(ST){ const s = document.getElementById("st-subtitle"); if(s) s.textContent = "— ⚠ não consegui atualizar agora (" + err.message + ")"; return; }
+    if(!silencioso || document.getElementById("sec-stuck").classList.contains("active")){
+      box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar os pacotes stuck (' + esc(err.message) + '). <a href="#" id="st-retry">Tentar de novo</a></div>';
+      const a = document.getElementById("st-retry"); if(a) a.onclick = ev=>{ ev.preventDefault(); loadStuck(); };
+    }
+  }).finally(()=>{ ST_PEND = null; });
+  return ST_PEND;
+}
+setTimeout(async ()=>{ const c = await stCacheLer(); if(c && c.json && !ST){ try{ stAplicar(c.json); }catch(e){ console.warn("Stuck cache:", e); } } }, 0);
+setInterval(()=>{ if(!document.hidden && !ST_PEND && ST && document.getElementById("sec-stuck").classList.contains("active")) loadStuck(true); }, ST_REFRESH_MS);
+
+function stPassa(r, ignorar){
+  return (ignorar==="sub" || !ST_F.sub || r.sub===ST_F.sub)
+    && (ignorar==="station" || !ST_F.station || r.station===ST_F.station)
+    && (ignorar==="transp" || !ST_F.transp || r.transp===ST_F.transp)
+    && (ignorar==="aging" || !ST_F.aging || (+ST_F.aging >= 3 ? r.aging >= +ST_F.aging : r.aging === +ST_F.aging));
+}
+function stAgrupar(lista, chave){
+  const m = new Map();
+  lista.forEach(r=>{
+    const k = chave(r) || "—";
+    const g = m.get(k) || {k, n:0, v:0, maxAg:0, lojas:new Set(), prim:"", r};
+    g.n++; g.v += r.valor; g.maxAg = Math.max(g.maxAg, r.aging); g.lojas.add(r.shopId || r.loja);
+    if(!g.prim || (r.dataColeta && r.dataColeta < g.prim)) g.prim = r.dataColeta;
+    m.set(k, g);
+  });
+  return [...m.values()];
+}
+function stBarras(elId, grupos, sel, onClick, vazio){
+  const el = document.getElementById(elId); if(!el) return;
+  if(!grupos.length){ el.innerHTML = '<div class="empty-state">' + (vazio || "Sem dados nesse filtro.") + '</div>'; return; }
+  const max = Math.max(...grupos.map(g=>g.n)) || 1;
+  el.innerHTML = grupos.map((g,i)=>{
+    const cls = sel && g.label===sel ? "sel" : (sel ? "dim" : "");
+    return `<div class="sd-bar-row ${cls}" data-i="${i}">
+      <div class="sd-bar-label" title="${esc(g.label)}">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.n/max*100).toFixed(2)}%${g.cor?";background:"+g.cor:""}"></div></div>
+      <div class="sd-bar-val">${sdNum(g.n)} · ${stBRL(g.v)}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".sd-bar-row").forEach(row=>{
+    const g = grupos[+row.dataset.i];
+    row.addEventListener("mousemove", ev=> sdTip(`<div class="t">${esc(g.label)}</div><div class="r">Pacotes <b>${sdNum(g.n)}</b></div><div class="r">Valor <b>${stBRL(g.v)}</b></div>`, ev));
+    row.addEventListener("mouseleave", ()=> sdTip(null));
+    row.addEventListener("click", ()=>{ sdTip(null); onClick(g); });
+  });
+}
+
+function renderStuck(){
+  if(!ST) return;
+  stAtualizarSubs();
+  const $ = id => document.getElementById(id);
+  const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const opcoes = (id, valores, atual, vazio) => { $(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
+  opcoes("st-f-sub", u(ST.rows,"sub"), ST_F.sub, "Todas");
+  opcoes("st-f-station", u(ST.rows.filter(r=>stPassa(r,"station")),"station"), ST_F.station, "Todas");
+  opcoes("st-f-transp", u(ST.rows.filter(r=>stPassa(r,"transp")),"transp"), ST_F.transp, "Todos");
+  $("st-f-aging").value = ST_F.aging;
+  const em = ST.em ? new Date(ST.em) : null;
+  $("st-subtitle").textContent = "— planilha lida às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—")
+    + (ST.upd ? " · base de " + fmtDiaBR(ST.upd) : "");
+
+  const lista = ST.rows.filter(r=>stPassa(r));
+  const valor = lista.reduce((t,r)=>t+r.valor,0);
+  const ag3 = lista.filter(r=>r.aging>=3), ag7 = lista.filter(r=>r.aging>=7);
+  const motoristas = new Set(lista.map(r=>r.driverId || r.motorista)).size;
+  renderKpis("st-kpis", [
+    {label:"Pacotes stuck", value:sdNum(lista.length), icon:"📦", cls: lista.length ? "crit" : "", sub: sdNum(new Set(lista.map(r=>r.shopId||r.loja)).size) + " lojas · " + sdNum(new Set(lista.map(r=>r.station)).size) + " stations"},
+    {label:"Valor dos pacotes", value:stBRL(valor), icon:"💰", sub:"soma do valor_pacote_brl"},
+    {label:"Motoristas com stuck", value:sdNum(motoristas), icon:"🚚", sub: motoristas ? (lista.length/motoristas).toFixed(1).replace(".",",") + " pacotes por motorista" : ""},
+    {label:"Aging 3+ dias", value:sdNum(ag3.length), icon:"⏳", cls: ag3.length ? "warn" : "", sub: lista.length ? (ag3.length/lista.length*100).toFixed(0) + "% dos pacotes · " + stBRL(ag3.reduce((t,r)=>t+r.valor,0)) : ""},
+    {label:"Aging 7+ dias", value:sdNum(ag7.length), icon:"🚨", cls: ag7.length ? "crit" : "", sub: stBRL(ag7.reduce((t,r)=>t+r.valor,0))}
+  ]);
+
+  // por faixa de aging (sem o filtro de aging, pra mostrar a distribuição toda)
+  const semAging = ST.rows.filter(r=>stPassa(r,"aging"));
+  const porFaixa = new Map(stAgrupar(semAging, r=>stFaixa(r.aging)).map(g=>[g.k,g]));
+  const faixaSel = !ST_F.aging ? "" : ({"1":"1 dia","2":"2 dias"})[ST_F.aging] || "";
+  stBarras("st-chart-aging", ST_FAIXAS.filter(f=>porFaixa.has(f)).map(f=>{ const g = porFaixa.get(f);
+    return {label:f, n:g.n, v:g.v, cor: stCor(g.maxAg)}; }), faixaSel,
+    g=>{ const v = {"1 dia":"1","2 dias":"2","3 dias":"3","4 a 7 dias":"3","8+ dias":"7"}[g.label]; ST_F.aging = ST_F.aging===v ? "" : v; ST_EXP.drv = ST_EXP.tab = false; renderStuck(); },
+    "Nenhum pacote stuck nesse recorte. 🎉");
+  const st = stAgrupar(lista, r=>r.station).sort((a,b)=>b.n-a.n).slice(0,15);
+  stBarras("st-chart-station", st.map(g=>({label:g.k, n:g.n, v:g.v, cor: stCor(g.maxAg)})), ST_F.station,
+    g=>{ ST_F.station = ST_F.station===g.label ? "" : g.label; ST_EXP.drv = ST_EXP.tab = false; renderStuck(); },
+    "Nenhum pacote stuck nesse recorte. 🎉");
+
+  // motoristas
+  const agBadge = a => `<span class="badge ${a>=7?"critical":a>=3?"warning":"good"}"><span class="ic"></span>${a} ${a===1?"dia":"dias"}</span>`;
+  const drv = stAgrupar(lista, r=>r.driverId || r.motorista).sort((a,b)=>b.n-a.n || b.maxAg-a.maxAg);
+  $("st-tab-drv").innerHTML = "<thead><tr><th>#</th><th>Motorista</th><th>Driver ID</th><th>Transportador</th><th>Station</th><th>Pacotes</th><th>Lojas</th><th>Valor</th><th>Maior aging</th><th>Coleta mais antiga</th></tr></thead><tbody>"
+    + ((ST_EXP.drv ? drv : drv.slice(0,ST_LIM)).map((g,i)=>`<tr><td>${i+1}</td><td><b>${esc(g.r.motorista||"—")}</b></td><td>${esc(g.r.driverId||"—")}</td><td>${esc(g.r.transp||"—")}</td><td>${esc(g.r.station)}</td><td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${sdNum(g.lojas.size)}</td><td>${stBRL(g.v)}</td><td>${agBadge(g.maxAg)}</td><td>${g.prim ? fmtDiaBR(g.prim) : "—"}</td></tr>`).join("")
+      || '<tr><td colspan="10"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  const b = $("st-drv-more");
+  b.style.display = drv.length > ST_LIM ? "" : "none";
+  b.textContent = ST_EXP.drv ? "− Mostrar só os " + ST_LIM + " primeiros" : "+ Ver todos os " + drv.length + " motoristas";
+
+  renderStuckLista(lista);
+}
+function renderStuckLista(lista){
+  const q = ST_F.busca.trim().toLowerCase();
+  let l = lista.slice().sort((a,b)=> b.aging-a.aging || (a.dataColeta<b.dataColeta ? -1 : 1));
+  if(q) l = l.filter(r=>[r.codigo, r.pedido, r.motorista, r.driverId, r.transp, r.station, r.baseEntrega, r.shopId, r.loja, r.cidade].join(" ").toLowerCase().includes(q));
+  document.getElementById("st-lista-total").innerHTML = `<b>${l.length.toLocaleString("pt-BR")}</b> ${l.length===1?"pacote":"pacotes"} · ${stBRL(l.reduce((t,r)=>t+r.valor,0))}`;
+  const vis = ST_EXP.tab ? l.slice(0, 3000) : l.slice(0, ST_LIM_TAB);
+  const ell = (v, w) => `<td style="max-width:${w}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v)}">${esc(v||"—")}</td>`;
+  document.getElementById("st-tab-lista").innerHTML =
+    "<thead><tr><th>Coleta</th><th>Aging</th><th>Pacote (BR)</th><th>Pedido</th><th>Motorista</th><th>Transportador</th><th>Station</th><th>Base de entrega</th><th>DOP / Shop</th><th>Loja</th><th>Cidade</th><th>Valor</th></tr></thead><tbody>"
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.dataColeta)}</td><td><b style="color:${stCor(r.aging)}">${r.aging}</b></td><td style="font-size:11px">${esc(r.codigo)}</td><td style="font-size:11px">${esc(r.pedido)}</td>`
+      + ell(r.motorista, 180) + `<td>${esc(r.transp||"—")}</td><td>${esc(r.station)}</td>` + ell(r.baseEntrega, 180) + `<td>${esc(r.shopId||"—")}</td>` + ell(r.loja, 180) + `<td>${esc(r.cidade||"—")}</td><td>${stBRL(r.valor)}</td></tr>`).join("")
+      || '<tr><td colspan="12"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  const b = document.getElementById("st-more");
+  b.style.display = l.length > ST_LIM_TAB ? "" : "none";
+  b.textContent = ST_EXP.tab ? "− Mostrar só os " + ST_LIM_TAB + " primeiros" : "+ Ver todos os " + l.length.toLocaleString("pt-BR") + " pacotes" + (l.length>3000 ? " (até 3.000)" : "");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("st-f-sub")) return;
+  const re = ()=>{ ST_EXP.drv = ST_EXP.tab = false; renderStuck(); };
+  $("st-f-sub").addEventListener("change", e=>{ ST_F.sub = e.target.value; ST_F.station = ""; re(); });
+  $("st-f-station").addEventListener("change", e=>{ ST_F.station = e.target.value; re(); });
+  $("st-f-transp").addEventListener("change", e=>{ ST_F.transp = e.target.value; re(); });
+  $("st-f-aging").addEventListener("change", e=>{ ST_F.aging = e.target.value; re(); });
+  $("st-limpar").addEventListener("click", ()=>{ Object.assign(ST_F, {sub:"", station:"", transp:"", aging:"", busca:""}); $("st-busca").value = ""; re(); });
+  $("st-refresh").addEventListener("click", ()=>{ $("st-subtitle").textContent = "— atualizando…"; loadStuck(true); });
+  $("st-drv-more").addEventListener("click", ()=>{ ST_EXP.drv = !ST_EXP.drv; renderStuck(); });
+  $("st-more").addEventListener("click", ()=>{ ST_EXP.tab = !ST_EXP.tab; renderStuck(); });
+  let t; $("st-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ ST_F.busca = e.target.value; ST_EXP.tab = false; renderStuck(); }, 200); });
+})();
 // ==================== LOSSES (SVP) ====================
 // ?tipo=losses (Losses.gs) — planilha "Check Losses", aba "O que foi baixado",
 // gravada em histórico na aba HIST_LOSSES (Projeto de acompanhamento).
