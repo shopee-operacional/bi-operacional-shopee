@@ -279,6 +279,7 @@ if(!document.querySelector(".app")){
       </div>
       <div id="ps-loading"></div>
       <div id="ps-conteudo" style="display:none">
+        <div id="ps-vigencia"></div>
         <div class="kpi-grid kpi-grid-secondary" id="ps-kpis"></div>
         <div class="grid2">
           <div class="card">
@@ -5602,6 +5603,28 @@ function renderPlanoSab(){
   const dataPlano = (/(\d{2}[.\/]\d{2}[.\/]\d{4})/.exec(PS.plano) || [])[1];
   $("ps-subtitle").textContent = "— " + (dataPlano ? "plano de " + dataPlano.replace(/\./g,"/") : esc(PS.plano)) + " · lido às " + (em ? em.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "—");
 
+  // vigência do plano: data que vem no nome da planilha ("... Sábado 21.11.2026")
+  { const m = /(\d{2})[.\/](\d{2})[.\/](\d{4})/.exec(PS.plano), el = $("ps-vigencia");
+    if(m){
+      const iso = m[3] + "-" + m[2] + "-" + m[1];
+      const hojeIso = new Date(Date.now() - 3*3600*1000).toISOString().slice(0,10);
+      const dias = Math.round((new Date(iso + "T12:00:00Z") - new Date(hojeIso + "T12:00:00Z")) / 86400000);
+      const tipo = /feriado/i.test(PS.plano) ? "Feriado" : (wbrDow(iso) === 6 ? "Sábado" : wbrDiaSemana(iso));
+      const tags = [...new Set(PS.rows.map(r=>r.tag).filter(Boolean))].join(" · ");
+      const st = dias > 1 ? {txt:"faltam " + dias + " dias", cor:"var(--good,#1a8f4c)", bg:"#eefaf2"}
+              : dias === 1 ? {txt:"é amanhã", cor:"#b26a00", bg:"#fff6e5"}
+              : dias === 0 ? {txt:"vigente hoje", cor:"#b23a1d", bg:"#fff4f0"}
+              : {txt:"⚠ esse sábado já passou — o plano novo ainda não foi publicado na planilha", cor:"var(--critical,#c62828)", bg:"#fdecec"};
+      el.innerHTML = `<div class="card" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px;padding:14px 18px;border-left:4px solid ${st.cor};background:${st.bg}">
+        <div style="font-size:26px">🗓</div>
+        <div><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)">Vigência do plano</div>
+          <div style="font-size:20px;font-weight:700">${tipo} · ${fmtDiaBR(iso)}/${m[3]}</div></div>
+        <div style="font-weight:600;color:${st.cor}">${st.txt}</div>
+        <div style="flex:1"></div>
+        <div style="font-size:12px;color:var(--text-secondary);text-align:right">${tags ? "TAG: " + esc(tags) + "<br>" : ""}planilha: ${esc(PS.plano)}</div>
+      </div>`;
+    } else el.innerHTML = "";
+  }
   const lista = PS.rows.filter(r=>psPassa(r));
   const rotas = psRotas(lista);
   const pac = lista.reduce((t,r)=>t+r.pacotes,0), km = rotas.reduce((t,g)=>t+g.km,0);
