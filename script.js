@@ -5350,6 +5350,50 @@ function stBarras(elId, grupos, sel, onClick, vazio){
   });
 }
 
+// ---- mensagem de WhatsApp para o motorista (todas as BRs dele) ----
+function stMsgTexto(drvKey){
+  const l = ST.rows.filter(r=> (r.driverId || r.motorista)===drvKey)
+    .sort((a,b)=> (a.dataColeta+(a.hora||"")).localeCompare(b.dataColeta+(b.hora||"")) || a.codigo.localeCompare(b.codigo));
+  if(!l.length) return "";
+  const nome = String(l[0].motorista || "").trim();
+  const primeiro = nome ? nome.split(/\s+/)[0].charAt(0).toUpperCase() + nome.split(/\s+/)[0].slice(1).toLowerCase() : "";
+  const n = l.length;
+  const linhas = l.map((r,i)=> `${i+1}. *${r.codigo}* — coletado em ${fmtDiaBR(r.dataColeta)}${r.hora ? " às " + r.hora : ""}${r.loja ? " · " + r.loja : ""}`);
+  return `Olá${primeiro ? ", " + primeiro : ""}! Tudo bem?\n\n`
+    + `${n === 1 ? "Consta no sistema 1 pacote pendente" : "Constam no sistema " + n + " pacotes pendentes"} no seu nome (${esc_txt(nome)}${l[0].driverId ? " · ID " + l[0].driverId : ""}), `
+    + `coletado${n===1?"":"s"} e ainda não ${n===1?"recebido":"recebidos"} na base. Pode procurar no veículo e nos avisar, por favor?\n\n`
+    + linhas.join("\n")
+    + `\n\nTotal: ${n} ${n===1?"pacote":"pacotes"}. Assim que localizar, responde aqui. Obrigado!`;
+}
+function esc_txt(s){ return String(s||""); }
+function stMsgAbrir(drvKey){
+  const texto = stMsgTexto(drvKey); if(!texto) return;
+  const r0 = ST.rows.find(r=> (r.driverId || r.motorista)===drvKey) || {};
+  const n = ST.rows.filter(r=> (r.driverId || r.motorista)===drvKey).length;
+  const fundo = document.createElement("div");
+  fundo.className = "wbr-modal-fundo";
+  fundo.innerHTML = `<div class="wbr-modal" role="dialog" style="width:min(640px,94vw)">
+    <div class="wbr-modal-tit">📱 Mensagem para o motorista</div>
+    <div class="wbr-modal-sub">${esc(r0.motorista||"—")}${r0.driverId ? " · ID " + esc(r0.driverId) : ""} · ${n} ${n===1?"BR":"BRs"} · ${esc(r0.transp||"")}</div>
+    <textarea style="min-height:280px;font-size:12.5px">${esc(texto)}</textarea>
+    <div class="wbr-modal-rodape"><span class="wbr-modal-cont">dá para editar o texto antes de enviar</span><span style="flex:1"></span>
+      <button type="button" class="theme-btn st-wa-fechar">Fechar</button>
+      <button type="button" class="theme-btn st-wa-copiar">Copiar</button>
+      <button type="button" class="theme-btn st-wa-abrir" style="background:#25D366;color:#fff;border-color:transparent">Abrir no WhatsApp</button></div>
+  </div>`;
+  document.body.appendChild(fundo);
+  const ta = fundo.querySelector("textarea"), info = fundo.querySelector(".wbr-modal-cont");
+  const fechar = ()=> fundo.remove();
+  fundo.addEventListener("click", e=>{ if(e.target === fundo) fechar(); });
+  fundo.querySelector(".st-wa-fechar").onclick = fechar;
+  fundo.querySelector(".st-wa-copiar").onclick = ()=>{
+    const ok = ()=>{ info.textContent = "✓ copiado — é só colar na conversa do motorista"; };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(ok, ()=>{ ta.select(); document.execCommand("copy"); ok(); });
+    else { ta.select(); document.execCommand("copy"); ok(); }
+  };
+  fundo.querySelector(".st-wa-abrir").onclick = ()=> window.open("https://wa.me/?text=" + encodeURIComponent(ta.value), "_blank", "noopener");
+}
+
 function renderStuck(){
   if(!ST) return;
   stAtualizarSubs();
@@ -5392,9 +5436,10 @@ function renderStuck(){
   // motoristas
   const agBadge = a => `<span class="badge ${a>=7?"critical":a>=3?"warning":"good"}"><span class="ic"></span>${a} ${a===1?"dia":"dias"}</span>`;
   const drv = stAgrupar(lista, r=>r.driverId || r.motorista).sort((a,b)=>b.n-a.n || b.maxAg-a.maxAg);
-  $("st-tab-drv").innerHTML = "<thead><tr><th>#</th><th>Motorista</th><th>Driver ID</th><th>Transportador</th><th>Station</th><th>Pacotes</th><th>Lojas</th><th>Valor</th><th>Maior aging</th><th>Coleta mais antiga</th></tr></thead><tbody>"
-    + ((ST_EXP.drv ? drv : drv.slice(0,ST_LIM)).map((g,i)=>`<tr class="st-drv-row${ST_F.drv===g.k?" sel":""}" data-k="${esc(g.k)}" style="cursor:pointer${ST_F.drv===g.k?";background:#fff4f0":""}" title="Clique para ver só os pacotes deste motorista"><td>${i+1}</td><td><b>${esc(g.r.motorista||"—")}</b></td><td>${esc(g.r.driverId||"—")}</td><td>${esc(g.r.transp||"—")}</td><td>${esc(g.r.station)}</td><td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${sdNum(g.lojas.size)}</td><td>${stBRL(g.v)}</td><td>${agBadge(g.maxAg)}</td><td>${g.prim ? fmtDiaBR(g.prim) : "—"}</td></tr>`).join("")
-      || '<tr><td colspan="10"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  $("st-tab-drv").innerHTML = "<thead><tr><th>#</th><th>Motorista</th><th>Driver ID</th><th>Transportador</th><th>Station</th><th>Pacotes</th><th>Lojas</th><th>Valor</th><th>Maior aging</th><th>Coleta mais antiga</th><th>WhatsApp</th></tr></thead><tbody>"
+    + ((ST_EXP.drv ? drv : drv.slice(0,ST_LIM)).map((g,i)=>`<tr class="st-drv-row${ST_F.drv===g.k?" sel":""}" data-k="${esc(g.k)}" style="cursor:pointer${ST_F.drv===g.k?";background:#fff4f0":""}" title="Clique para ver só os pacotes deste motorista"><td>${i+1}</td><td><b>${esc(g.r.motorista||"—")}</b></td><td>${esc(g.r.driverId||"—")}</td><td>${esc(g.r.transp||"—")}</td><td>${esc(g.r.station)}</td><td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${sdNum(g.lojas.size)}</td><td>${stBRL(g.v)}</td><td>${agBadge(g.maxAg)}</td><td>${g.prim ? fmtDiaBR(g.prim) : "—"}</td><td><button type="button" class="theme-btn st-wa" data-k="${esc(g.k)}" style="padding:3px 10px;font-size:12px" title="Gerar mensagem com todas as BRs deste motorista">📱 Mensagem</button></td></tr>`).join("")
+      || '<tr><td colspan="11"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  $("st-tab-drv").querySelectorAll(".st-wa").forEach(bt=> bt.onclick = e=>{ e.stopPropagation(); stMsgAbrir(bt.dataset.k); });
   const b = $("st-drv-more");
   b.style.display = drv.length > ST_LIM ? "" : "none";
   b.textContent = ST_EXP.drv ? "− Mostrar só os " + ST_LIM + " primeiros" : "+ Ver todos os " + drv.length + " motoristas";
@@ -5414,12 +5459,14 @@ function renderStuckLista(lista){
   const q = ST_F.busca.trim().toLowerCase();
   let l = lista.slice().sort((a,b)=> b.aging-a.aging || (a.dataColeta<b.dataColeta ? -1 : 1));
   if(q) l = l.filter(r=>[r.codigo, r.pedido, r.motorista, r.driverId, r.transp, r.station, r.baseEntrega, r.shopId, r.loja, r.cidade].join(" ").toLowerCase().includes(q));
-  document.getElementById("st-lista-total").innerHTML = `<b>${l.length.toLocaleString("pt-BR")}</b> ${l.length===1?"pacote":"pacotes"} · ${stBRL(l.reduce((t,r)=>t+r.valor,0))}`;
+  document.getElementById("st-lista-total").innerHTML = (ST_F.drv ? `<button type="button" class="theme-btn" id="st-wa-lista" style="padding:3px 10px;font-size:12px;margin-right:10px">📱 Mensagem para o motorista</button>` : "")
+    + `<b>${l.length.toLocaleString("pt-BR")}</b> ${l.length===1?"pacote":"pacotes"} · ${stBRL(l.reduce((t,r)=>t+r.valor,0))}`;
+  { const bw = document.getElementById("st-wa-lista"); if(bw) bw.onclick = ()=> stMsgAbrir(ST_F.drv); }
   const vis = ST_EXP.tab ? l.slice(0, 3000) : l.slice(0, ST_LIM_TAB);
   const ell = (v, w) => `<td style="max-width:${w}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v)}">${esc(v||"—")}</td>`;
   document.getElementById("st-tab-lista").innerHTML =
     "<thead><tr><th>Coleta</th><th>Aging</th><th>Pacote (BR)</th><th>Pedido</th><th style='padding:4px 6px'>" + drvSel + "</th><th>Transportador</th><th>Station</th><th>Base de entrega</th><th>DOP / Shop</th><th>Loja</th><th>Cidade</th><th>Valor</th></tr></thead><tbody>"
-    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.dataColeta)}</td><td><b style="color:${stCor(r.aging)}">${r.aging}</b></td><td style="font-size:11px">${esc(r.codigo)}</td><td style="font-size:11px">${esc(r.pedido)}</td>`
+    + (vis.map(r=>`<tr><td>${fmtDiaBR(r.dataColeta)}${r.hora ? `<div class="alert-sub">${esc(r.hora)}</div>` : ""}</td><td><b style="color:${stCor(r.aging)}">${r.aging}</b></td><td style="font-size:11px">${esc(r.codigo)}</td><td style="font-size:11px">${esc(r.pedido)}</td>`
       + ell(r.motorista, 180) + `<td>${esc(r.transp||"—")}</td><td>${esc(r.station)}</td>` + ell(r.baseEntrega, 180) + `<td>${esc(r.shopId||"—")}</td>` + ell(r.loja, 180) + `<td>${esc(r.cidade||"—")}</td><td>${stBRL(r.valor)}</td></tr>`).join("")
       || '<tr><td colspan="12"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
   const sel = document.getElementById("st-f-drv");
