@@ -5264,7 +5264,7 @@ function kpiCardOtp(){
 // coleta, pacote BR, pedido, motorista, transportador, station, loja, valor,
 // aging). A sub-regional vem da station (mesmo de/para da aba Falha de OTP).
 let ST = null, ST_PEND = null;
-const ST_F = { sub:"__default__", station:"", transp:"", aging:"", busca:"" };
+const ST_F = { sub:"__default__", station:"", transp:"", drv:"", aging:"", busca:"" };
 const ST_EXP = { drv:false, tab:false };
 const ST_REFRESH_MS = 15 * 60 * 1000, ST_LIM = 15, ST_LIM_TAB = 100;
 const stCacheLer = ()=> ldIdb("readonly", st=> st.get("stuck")).catch(()=>null);
@@ -5393,15 +5393,24 @@ function renderStuck(){
   const agBadge = a => `<span class="badge ${a>=7?"critical":a>=3?"warning":"good"}"><span class="ic"></span>${a} ${a===1?"dia":"dias"}</span>`;
   const drv = stAgrupar(lista, r=>r.driverId || r.motorista).sort((a,b)=>b.n-a.n || b.maxAg-a.maxAg);
   $("st-tab-drv").innerHTML = "<thead><tr><th>#</th><th>Motorista</th><th>Driver ID</th><th>Transportador</th><th>Station</th><th>Pacotes</th><th>Lojas</th><th>Valor</th><th>Maior aging</th><th>Coleta mais antiga</th></tr></thead><tbody>"
-    + ((ST_EXP.drv ? drv : drv.slice(0,ST_LIM)).map((g,i)=>`<tr><td>${i+1}</td><td><b>${esc(g.r.motorista||"—")}</b></td><td>${esc(g.r.driverId||"—")}</td><td>${esc(g.r.transp||"—")}</td><td>${esc(g.r.station)}</td><td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${sdNum(g.lojas.size)}</td><td>${stBRL(g.v)}</td><td>${agBadge(g.maxAg)}</td><td>${g.prim ? fmtDiaBR(g.prim) : "—"}</td></tr>`).join("")
+    + ((ST_EXP.drv ? drv : drv.slice(0,ST_LIM)).map((g,i)=>`<tr class="st-drv-row${ST_F.drv===g.k?" sel":""}" data-k="${esc(g.k)}" style="cursor:pointer${ST_F.drv===g.k?";background:#fff4f0":""}" title="Clique para ver só os pacotes deste motorista"><td>${i+1}</td><td><b>${esc(g.r.motorista||"—")}</b></td><td>${esc(g.r.driverId||"—")}</td><td>${esc(g.r.transp||"—")}</td><td>${esc(g.r.station)}</td><td><b style="color:var(--critical)">${sdNum(g.n)}</b></td><td>${sdNum(g.lojas.size)}</td><td>${stBRL(g.v)}</td><td>${agBadge(g.maxAg)}</td><td>${g.prim ? fmtDiaBR(g.prim) : "—"}</td></tr>`).join("")
       || '<tr><td colspan="10"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
   const b = $("st-drv-more");
   b.style.display = drv.length > ST_LIM ? "" : "none";
   b.textContent = ST_EXP.drv ? "− Mostrar só os " + ST_LIM + " primeiros" : "+ Ver todos os " + drv.length + " motoristas";
+  $("st-tab-drv").querySelectorAll(".st-drv-row").forEach(tr=> tr.onclick = ()=>{
+    ST_F.drv = ST_F.drv===tr.dataset.k ? "" : tr.dataset.k; ST_EXP.tab = false; renderStuck();
+    if(ST_F.drv) document.getElementById("st-tab-lista").scrollIntoView({behavior:"smooth", block:"start"}); });
 
   renderStuckLista(lista);
 }
 function renderStuckLista(lista){
+  // filtro de motorista: só na lista de pacotes (cada opção mostra quantos BRs ele tem)
+  { const m = new Map(); lista.forEach(r=>{ const k = r.driverId || r.motorista; const o = m.get(k) || {k, nome:r.motorista||k, n:0}; o.n++; m.set(k,o); });
+    const l = [...m.values()].sort((a,b)=> b.n-a.n || a.nome.localeCompare(b.nome,"pt-BR"));
+    if(ST_F.drv && !m.has(ST_F.drv)) ST_F.drv = "";
+    var drvSel = `<select id="st-f-drv" class="st-th-sel" title="Filtrar motorista"><option value="">Motorista ▾ (${l.length})</option>` + l.map(o=>`<option value="${esc(o.k)}"${o.k===ST_F.drv?" selected":""}>${esc(o.nome)} · ${o.n} ${o.n===1?"BR":"BRs"}</option>`).join("") + `</select>`;
+    if(ST_F.drv) lista = lista.filter(r=> (r.driverId || r.motorista)===ST_F.drv); }
   const q = ST_F.busca.trim().toLowerCase();
   let l = lista.slice().sort((a,b)=> b.aging-a.aging || (a.dataColeta<b.dataColeta ? -1 : 1));
   if(q) l = l.filter(r=>[r.codigo, r.pedido, r.motorista, r.driverId, r.transp, r.station, r.baseEntrega, r.shopId, r.loja, r.cidade].join(" ").toLowerCase().includes(q));
@@ -5409,10 +5418,13 @@ function renderStuckLista(lista){
   const vis = ST_EXP.tab ? l.slice(0, 3000) : l.slice(0, ST_LIM_TAB);
   const ell = (v, w) => `<td style="max-width:${w}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v)}">${esc(v||"—")}</td>`;
   document.getElementById("st-tab-lista").innerHTML =
-    "<thead><tr><th>Coleta</th><th>Aging</th><th>Pacote (BR)</th><th>Pedido</th><th>Motorista</th><th>Transportador</th><th>Station</th><th>Base de entrega</th><th>DOP / Shop</th><th>Loja</th><th>Cidade</th><th>Valor</th></tr></thead><tbody>"
+    "<thead><tr><th>Coleta</th><th>Aging</th><th>Pacote (BR)</th><th>Pedido</th><th style='padding:4px 6px'>" + drvSel + "</th><th>Transportador</th><th>Station</th><th>Base de entrega</th><th>DOP / Shop</th><th>Loja</th><th>Cidade</th><th>Valor</th></tr></thead><tbody>"
     + (vis.map(r=>`<tr><td>${fmtDiaBR(r.dataColeta)}</td><td><b style="color:${stCor(r.aging)}">${r.aging}</b></td><td style="font-size:11px">${esc(r.codigo)}</td><td style="font-size:11px">${esc(r.pedido)}</td>`
       + ell(r.motorista, 180) + `<td>${esc(r.transp||"—")}</td><td>${esc(r.station)}</td>` + ell(r.baseEntrega, 180) + `<td>${esc(r.shopId||"—")}</td>` + ell(r.loja, 180) + `<td>${esc(r.cidade||"—")}</td><td>${stBRL(r.valor)}</td></tr>`).join("")
       || '<tr><td colspan="12"><div class="empty-state">Nenhum pacote stuck nesse recorte. 🎉</div></td></tr>') + "</tbody>";
+  const sel = document.getElementById("st-f-drv");
+  sel.onchange = e=>{ ST_F.drv = e.target.value; ST_EXP.tab = false; renderStuckLista(ST.rows.filter(r=>stPassa(r))); };
+  if(ST_F.drv){ sel.style.borderColor = "var(--accent,#ee4d2d)"; sel.style.color = "var(--accent,#ee4d2d)"; }
   const b = document.getElementById("st-more");
   b.style.display = l.length > ST_LIM_TAB ? "" : "none";
   b.textContent = ST_EXP.tab ? "− Mostrar só os " + ST_LIM_TAB + " primeiros" : "+ Ver todos os " + l.length.toLocaleString("pt-BR") + " pacotes" + (l.length>3000 ? " (até 3.000)" : "");
@@ -5424,8 +5436,9 @@ function renderStuckLista(lista){
   $("st-f-sub").addEventListener("change", e=>{ ST_F.sub = e.target.value; ST_F.station = ""; re(); });
   $("st-f-station").addEventListener("change", e=>{ ST_F.station = e.target.value; re(); });
   $("st-f-transp").addEventListener("change", e=>{ ST_F.transp = e.target.value; re(); });
+
   $("st-f-aging").addEventListener("change", e=>{ ST_F.aging = e.target.value; re(); });
-  $("st-limpar").addEventListener("click", ()=>{ Object.assign(ST_F, {sub:"", station:"", transp:"", aging:"", busca:""}); $("st-busca").value = ""; re(); });
+  $("st-limpar").addEventListener("click", ()=>{ Object.assign(ST_F, {sub:"", station:"", transp:"", drv:"", aging:"", busca:""}); $("st-busca").value = ""; re(); });
   $("st-refresh").addEventListener("click", ()=>{ $("st-subtitle").textContent = "— atualizando…"; loadStuck(true); });
   $("st-drv-more").addEventListener("click", ()=>{ ST_EXP.drv = !ST_EXP.drv; renderStuck(); });
   $("st-more").addEventListener("click", ()=>{ ST_EXP.tab = !ST_EXP.tab; renderStuck(); });
@@ -7246,6 +7259,7 @@ function wbrJustLigar(){
   .wbr-modal-fundo{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100;display:flex;align-items:center;justify-content:center}
   .wbr-modal{background:var(--surface,#fff);color:var(--text-primary);border-radius:12px;padding:18px 20px;width:min(520px,92vw);box-shadow:0 12px 40px rgba(0,0,0,.25)}
   .wbr-modal-tit{font-weight:700;font-size:15px}
+  .st-th-sel{font:inherit;font-weight:600;font-size:12px;color:inherit;background:transparent;border:1px dashed var(--border);border-radius:6px;padding:3px 4px;max-width:210px;cursor:pointer}
   .wbr-modal-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
   .wbr-modal textarea{width:100%;box-sizing:border-box;min-height:130px;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:13px;background:var(--surface-2,#fafafa);color:var(--text-primary);resize:vertical}
   .wbr-modal-rodape{display:flex;gap:8px;align-items:center;margin-top:10px}
