@@ -5669,7 +5669,7 @@ function renderPlanoSab(){
       + `</tbody></table></td></tr>`;
   $("ps-tab-rotas").innerHTML = "<thead><tr><th></th><th>Rota</th><th>Station</th><th>3PL</th><th>Veículo</th><th>Tipo</th><th>Paradas</th><th>DOPs / Sellers</th><th>Pacotes</th><th>Janela</th><th>Km</th></tr></thead><tbody>"
     + (vis.map(g=>{ const ab = PS_F.aberta===g.rota || (q && l.length <= 3);
-        return `<tr class="ps-rota${ab?" sel":""}" data-r="${esc(g.rota)}" style="cursor:pointer${ab?";background:#fff4f0":""}"><td>${ab?"▾":"▸"}</td><td title="${esc(g.rota)}"><b>${esc(curta(g.rota))}</b></td><td>${esc(g.station)}</td><td>${esc(g.tpl||"—")}</td><td>${esc(g.veiculo||"—")}</td><td>${esc(g.tipoRota||g.tag||"—")}</td>`
+        return `<tr class="ps-rota${ab?" sel":""}" data-r="${esc(g.rota)}" style="cursor:pointer${ab?";background:#fff4f0":""}"><td>${ab?"▾":"▸"}</td><td title="${esc(g.rota)}"><b style="white-space:nowrap">${esc(g.rota)}</b></td><td>${esc(g.station)}</td><td>${esc(g.tpl||"—")}</td><td>${esc(g.veiculo||"—")}</td><td>${esc(g.tipoRota||g.tag||"—")}</td>`
         + `<td><b>${g.paradas.length}</b></td><td>${g.dops} / ${g.sellers}</td><td>${sdNum(g.pac)}</td><td>${g.eta||"—"} – ${g.etd||"—"}</td><td>${g.km ? psKm(g.km) : "—"}</td></tr>` + (ab ? linhaParadas(g) : ""); }).join("")
       || '<tr><td colspan="11"><div class="empty-state">Nenhuma rota nesse filtro.</div></td></tr>') + "</tbody>";
   $("ps-tab-rotas").querySelectorAll(".ps-rota").forEach(tr=> tr.onclick = ()=>{ PS_F.aberta = PS_F.aberta===tr.dataset.r ? "" : tr.dataset.r; renderPlanoSab(); });
