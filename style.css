@@ -633,3 +633,9 @@ table.data td.num, table.data th.num { text-align:right; }
   body.ju-imprimindo .ju-modal{position:absolute;inset:0;background:none;padding:0}
   body.ju-imprimindo .ju-modal-topo button, body.ju-imprimindo .ju-modal-acoes, body.ju-imprimindo .sd-hint{display:none}
 }
+.ju-add-botoes{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
+.ju-btn-alin{border-color:var(--text-muted);background:var(--surface-1);color:var(--text-secondary)}
+.ju-alin-ico{width:18px;height:18px;border-radius:5px;background:var(--brand-bg);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.ju-alin-box{background:var(--surface-1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px}
+.ju-alin-box .q{color:var(--text-secondary)}
+.ju-form-alin{background:var(--surface-1)}
