@@ -255,9 +255,9 @@ if(!document.querySelector(".app")){
       <div class="ju-modal" id="ju-modal" hidden>
         <div class="ju-modal-caixa" role="dialog" aria-label="Resumo do dia">
           <div class="ju-modal-topo"><div class="ju-modal-tit" id="ju-modal-tit">Resumo do dia</div><button type="button" class="theme-btn" id="ju-modal-fechar">Fechar</button></div>
-          <div class="sd-hint">Texto pronto para mandar para a gestora.</div>
-          <pre class="ju-resumo" id="ju-resumo-txt"></pre>
-          <div class="ju-modal-acoes"><button type="button" class="theme-btn" id="ju-imprimir">Exportar PDF</button><button type="button" class="theme-btn primary" id="ju-copiar">Copiar texto</button></div>
+          <div class="sd-hint">Relatório pronto para mandar para a gestora — "Copiar" mantém a formatação ao colar no Docs, Gmail ou SeaTalk.</div>
+          <div class="ju-resumo" id="ju-resumo-txt"></div>
+          <div class="ju-modal-acoes"><button type="button" class="theme-btn" id="ju-imprimir">Exportar PDF</button><button type="button" class="theme-btn primary" id="ju-copiar">Copiar relatório</button></div>
         </div>
       </div>
       <datalist id="ju-analistas"></datalist>
@@ -8182,26 +8182,66 @@ function juAtualizarAnalistas(){
   const dl = document.getElementById("ju-analistas");
   if(dl) dl.innerHTML = [...JU.analistas].filter(Boolean).sort((a,b) => a.localeCompare(b, "pt-BR")).map(a => `<option value="${esc(a)}">`).join("");
 }
+// Resumo do dia: relatório organizado (HTML com estilos na linha, para colar
+// no Docs/e-mail mantendo a formatação) + versão em texto simples.
 function juResumo(){
   const ests = JU.ultimo || [], rs = JU.sd[JU.dia] || [];
   const out = rs.reduce((t,r) => t + (+r.outD || 0), 0), sd = rs.reduce((t,r) => t + (+r.sdD || 0), 0);
-  const L = ["Sub-regional " + JU_SUB + " · " + fmtDiaBR(JU.dia) + "/" + JU.dia.slice(0,4)];
-  if(out) L.push("Same Day: " + juPct(sd / out) + " (meta " + Math.round(JU_META_SD*100) + "%)");
-  ests.forEach(s => {
-    const prob = s.inds.filter(i => !i.ok && !i.carregando);
-    const alin = JU.just[juChave(JU.dia, s.nome, "alinhamentos")];
+  const e = v => esc(v);
+  const VERM = "#c0281b", CINZA = "#6b6a65", LARANJA = "#ee4d2d";
+  const dataTxt = fmtDiaBR(JU.dia) + "/" + JU.dia.slice(0,4);
+  const p = juPendencias(ests);
+  const H = [], T = [];
+  const sdOk = out && sd / out > JU_META_SD;
+  H.push(`<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.45">`);
+  H.push(`<div style="font-size:18px;font-weight:bold;color:${LARANJA};margin:0 0 2px">Justificativas · Sub-regional ${e(JU_SUB)} · ${dataTxt}</div>`);
+  T.push("JUSTIFICATIVAS · SUB-REGIONAL " + JU_SUB + " · " + dataTxt);
+  if(out){
+    H.push(`<div style="margin:0 0 2px">Same Day ${e(JU_SUB)}: <b style="color:${sdOk ? "#0a7a0a" : VERM}">${juPct(sd / out)}</b> <span style="color:${CINZA}">(target acima de ${Math.round(JU_META_SD*100)}%)</span></div>`);
+    T.push("Same Day " + JU_SUB + ": " + juPct(sd / out) + " (target acima de " + Math.round(JU_META_SD*100) + "%)");
+  }
+  H.push(`<div style="color:${CINZA};margin:0 0 14px">${p.total ? (p.total - p.pend) + " de " + p.total + " indicadores justificados" + (p.pend ? ` · <b style="color:${VERM}">${p.pend} pendente${p.pend === 1 ? "" : "s"}</b>` : "") : "Nenhum indicador fora da meta"}</div>`);
+  if(p.total) T.push((p.total - p.pend) + " de " + p.total + " justificados" + (p.pend ? " · " + p.pend + " pendente(s)" : ""));
+
+  let algum = false;
+  ests.forEach(st => {
+    const prob = st.inds.filter(i => !i.ok && !i.carregando);
+    const alin = JU.just[juChave(JU.dia, st.nome, "alinhamentos")];
     if(!prob.length && !alin) return;
-    L.push("", s.nome.toUpperCase() + " — " + juNum(s.out) + " pacotes coletados");
+    algum = true;
+    const sdSt = st.out ? juPct(st.sd / st.out) : "—";
+    H.push(`<div style="margin:16px 0 6px;padding:0 0 4px;border-bottom:2px solid ${LARANJA}"><span style="font-size:15px;font-weight:bold">${e(st.nome)}</span> <span style="color:${CINZA}">· ${st.out ? juNum(st.out) + " pacotes coletados · Same Day " + sdSt : "sem pickup no dia"}</span></div>`);
+    T.push("", "━━ " + st.nome + " — " + (st.out ? juNum(st.out) + " pacotes · Same Day " + sdSt : "sem pickup no dia"));
     prob.forEach(i => {
       const j = JU.just[i.chave];
-      L.push("• " + i.nome + (i.valor ? " (" + i.valor + ")" : ""));
-      if(i.itens.length) L.push("   " + i.itens.slice(0, JU_N_OFENSORES).map(l => l[0] + (l[1] && l[1] !== "—" ? " - " + l[1] : "")).join("; "));
-      L.push("   " + (j ? j.texto.replace(/\n+/g, " ") + " — " + j.resp : "PENDENTE de justificativa"));
+      H.push(`<div style="margin:10px 0 0"><b>${e(i.nome)}</b>${i.valor ? ` <span style="color:${CINZA}">— ${e(i.valor)}</span>` : ""}</div>`);
+      T.push("", "▸ " + i.nome + (i.valor ? " — " + i.valor : ""));
+      if(i.itens.length){
+        const lista = i.itens.slice(0, i.id === "sd" || i.id === "lt" ? JU_N_OFENSORES : 10);
+        H.push(`<ul style="margin:4px 0 4px 18px;padding:0">` + lista.map(l => {
+          const extra = [l[1], l[2]].filter(x => x && x !== "—");
+          return `<li style="margin:1px 0"><b>${e(l[0])}</b>${extra.length ? " — " + extra.map(e).join(" · ") : ""}</li>`;
+        }).join("") + (i.itens.length > lista.length ? `<li style="margin:1px 0;color:${CINZA}">+ ${i.itens.length - lista.length} outras</li>` : "") + `</ul>`);
+        lista.forEach(l => { const extra = [l[1], l[2]].filter(x => x && x !== "—"); T.push("   • " + l[0] + (extra.length ? " — " + extra.join(" · ") : "")); });
+        if(i.itens.length > lista.length) T.push("   • + " + (i.itens.length - lista.length) + " outras");
+      }
+      if(j){
+        H.push(`<div style="margin:4px 0 0;color:${VERM}"><b>Justificativa:</b> ${e(j.texto).replace(/\n/g, "<br>")}</div>`);
+        H.push(`<div style="color:${CINZA};font-size:12px">Justificado por ${e(j.resp)} · ${e(juQuando(j.em))}</div>`);
+        T.push("   Justificativa: " + j.texto.replace(/\n+/g, " "), "   (" + j.resp + " · " + juQuando(j.em) + ")");
+      } else {
+        H.push(`<div style="margin:4px 0 0"><span style="background:${VERM};color:#fff;font-weight:bold;font-size:11px;padding:2px 7px;border-radius:4px">PENDENTE DE JUSTIFICATIVA</span></div>`);
+        T.push("   ⚠ PENDENTE DE JUSTIFICATIVA");
+      }
     });
-    if(alin) L.push("• Alinhamentos: " + alin.texto.replace(/\n+/g, " ") + " — " + alin.resp);
+    if(alin){
+      H.push(`<div style="margin:10px 0 0"><b>Alinhamentos</b></div><div style="margin:2px 0 0">${e(alin.texto).replace(/\n/g, "<br>")}</div><div style="color:${CINZA};font-size:12px">Registrado por ${e(alin.resp)} · ${e(juQuando(alin.em))}</div>`);
+      T.push("", "▸ Alinhamentos", "   " + alin.texto.replace(/\n+/g, " "), "   (" + alin.resp + " · " + juQuando(alin.em) + ")");
+    }
   });
-  if(L.length <= 2) L.push("", "Todas as stations dentro da meta.");
-  return L.join("\n");
+  if(!algum){ H.push(`<div style="margin:14px 0 0;color:#0a7a0a;font-weight:bold">Todas as stations dentro da meta.</div>`); T.push("", "Todas as stations dentro da meta."); }
+  H.push(`</div>`);
+  return { html: H.join(""), texto: T.join("\n") };
 }
 (function(){
   const $ = id => document.getElementById(id);
@@ -8217,14 +8257,20 @@ function juResumo(){
   document.querySelectorAll(".ju-pill[data-juf]").forEach(b => b.addEventListener("click", () => {
     JU.filtro = b.dataset.juf; document.querySelectorAll(".ju-pill[data-juf]").forEach(x => x.classList.toggle("ativo", x === b)); juRender();
   }));
-  $("ju-btn-resumo").addEventListener("click", () => { $("ju-modal-tit").textContent = "Resumo do dia · " + fmtDiaBR(JU.dia); $("ju-resumo-txt").textContent = juResumo(); $("ju-modal").hidden = false; });
+  $("ju-btn-resumo").addEventListener("click", () => { $("ju-modal-tit").textContent = "Resumo do dia · " + fmtDiaBR(JU.dia); JU.resumo = juResumo(); $("ju-resumo-txt").innerHTML = JU.resumo.html; $("ju-modal").hidden = false; });
   $("ju-modal-fechar").addEventListener("click", () => { $("ju-modal").hidden = true; });
   $("ju-modal").addEventListener("click", e => { if(e.target === $("ju-modal")) $("ju-modal").hidden = true; });
   $("ju-copiar").addEventListener("click", async () => {
     const b = $("ju-copiar");
-    try{ await navigator.clipboard.writeText($("ju-resumo-txt").textContent); b.textContent = "Copiado ✓"; }
+    try{
+      const r = JU.resumo || juResumo();
+      if(window.ClipboardItem && navigator.clipboard.write){
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([r.html], {type:"text/html"}), "text/plain": new Blob([r.texto], {type:"text/plain"}) })]);
+      } else await navigator.clipboard.writeText(r.texto);
+      b.textContent = "Copiado ✓";
+    }
     catch(e){ const r = document.createRange(); r.selectNodeContents($("ju-resumo-txt")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selecionado — Ctrl+C"; }
-    setTimeout(() => { b.textContent = "Copiar texto"; }, 2000);
+    setTimeout(() => { b.textContent = "Copiar relatório"; }, 2000);
   });
   $("ju-imprimir").addEventListener("click", () => { document.body.classList.add("ju-imprimindo"); window.print(); setTimeout(() => document.body.classList.remove("ju-imprimindo"), 500); });
 })();
