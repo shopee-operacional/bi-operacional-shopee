@@ -244,7 +244,7 @@ if(!document.querySelector(".app")){
         <div class="ju-kpis" id="ju-kpis"></div>
         <div class="card ju-sdsub" id="ju-sdsub"></div>
         <div class="ju-barra">
-          <div class="ju-h2">Stations · da maior para a menor em volume</div>
+          <div></div>
           <div class="ju-filtro" role="group" aria-label="Mostrar">
             <button type="button" class="ju-pill ativo" data-juf="todas">Todos os indicadores</button>
             <button type="button" class="ju-pill" data-juf="pendentes">Só pendentes</button>
@@ -7858,6 +7858,9 @@ function juMontarDia(dia){
     if(r.perf === "No Show 3PL") pega(r.station || "—").ns.push(r);
     else if(r.perf === "Partial Pickup") pega(r.station || "—").pp.push(r);
   });
+  // todas as stations da sub aparecem, mesmo sem movimento no dia (vão para o fim)
+  juStationsDaSub().forEach(nome => pega(nome));
+  delete st["—"];
   const lista = Object.values(st).sort((a,b) => b.out - a.out || a.nome.localeCompare(b.nome));
   lista.forEach(s => {
     s.inds = JU_INDS.map(def => juMontarInd(def, s, dia, otpOk, ldOk));
@@ -7867,6 +7870,26 @@ function juMontarDia(dia){
       s.inds.push({ id:"x:" + nome, nome, chave:k, extra:true, ok:false, valor:JU.just[k].valor || "", cab:[], itens:[], nota:"" });
     });
   });
+  return lista;
+}
+// Stations da sub-regional, juntando todas as bases que o painel já tem
+// (BASE_TRATADA, Same Day, Lead Time, OTP, Desempenho por Loja, Coletas, Backlog).
+// Guarda a lista no navegador para nenhuma sumir num dia sem dados.
+function juStationsDaSub(){
+  const set = new Set();
+  const add = (st, sub) => { st = String(st || "").trim(); if(st && st !== "—" && sub === JU_SUB) set.add(st); };
+  try{ (DATA || []).forEach(d => add(d.estacao, d.subreg)); }catch(e){}
+  Object.keys(JU.subPorStation).forEach(st => add(st, JU.subPorStation[st]));
+  Object.values(JU.lt).forEach(rs => (rs || []).forEach(r => add(r.station, r.subreg || JU.subPorStation[r.station])));
+  try{ if(OTP && OTP.rows) OTP.rows.forEach(r => add(r.station, juSubDe(r))); }catch(e){}
+  try{ (LD_AGG || []).forEach(r => add(r.station, r.sub)); (LD_DET || []).forEach(r => add(r.station, r.sub)); }catch(e){}
+  try{ (CO_ROWS || []).forEach(r => add(r.station, r.sub)); }catch(e){}
+  try{ (BL_ROWS || []).forEach(r => add(r.station, r.sub)); }catch(e){}
+  let salvas = [];
+  try{ salvas = JSON.parse(localStorage.getItem("ju_stations_" + JU_SUB) || "[]"); }catch(e){}
+  salvas.forEach(st => set.add(st));
+  const lista = [...set].sort();
+  if(lista.length !== salvas.length){ try{ localStorage.setItem("ju_stations_" + JU_SUB, JSON.stringify(lista)); }catch(e){} }
   return lista;
 }
 function juMontarInd(def, s, dia, otpOk, ldOk){
@@ -8002,7 +8025,7 @@ function juRenderEstacoes(ests){
       <div class="ju-st-topo">
         <div class="ju-st-id"><div class="ju-st-pos">${i + 1}</div><div>
           <div class="ju-st-nome">${esc(s.nome)}</div>
-          <div class="sd-hint">${juNum(s.out)} pacotes coletados · Same Day ${s.out ? juPct(s.sd / s.out) : "—"}</div></div></div>
+          <div class="sd-hint">${s.out ? juNum(s.out) + " pacotes coletados · Same Day " + juPct(s.sd / s.out) : "sem pickup registrado no dia"}</div></div></div>
         <span class="ju-tag grande ${pendSt ? "pend" : "ok"}">${pendSt ? pendSt + (pendSt === 1 ? " pendente" : " pendentes") : "Tudo justificado"}</span>
       </div>
       ${inds.map(juRenderInd).join("")}
