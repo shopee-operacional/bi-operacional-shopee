@@ -71,6 +71,7 @@ if(!document.querySelector(".app")){
       <button type="button" class="nav-group-head"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/><path d="M4 11.5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></svg><span class="nav-group-name">Dados</span><span class="nav-group-alert"></span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="nav-group-items">
         <div class="nav-item" data-section="base"><span class="nav-txt">Base de Dados</span></div>
+        <div class="nav-item" data-section="justificativas"><span class="nav-txt">Justificativas 🔒</span></div>
       </div>
     </div>
     <div class="nav-empty" id="nav-empty">Nenhuma aba encontrada</div>
@@ -214,6 +215,52 @@ if(!document.querySelector(".app")){
         <div class="table-wrap"><table class="data" id="sd-ranking"></table></div>
         <div class="card-expand-btn" id="sd-ranking-more" style="display:none"></div>
       </div>
+    </div>
+
+    <!-- JUSTIFICATIVAS (Dados) — protegida por senha de 4 dígitos -->
+    <div class="section" id="sec-justificativas">
+      <div class="section-title">Justificativas do dia <span class="sd-sub" id="ju-subtitle"></span></div>
+      <div id="ju-gate" class="ju-gate">
+        <form class="ju-gate-caixa" id="ju-gate-form" autocomplete="off">
+          <div class="ju-gate-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+          <div class="ju-gate-tit">Área restrita</div>
+          <div class="ju-gate-desc">Digite a senha de 4 dígitos para ver e responder as justificativas.</div>
+          <label class="ju-sr" for="ju-pin">Senha</label>
+          <input id="ju-pin" class="ju-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off">
+          <button type="submit" class="theme-btn primary ju-gate-btn" id="ju-pin-btn">Entrar</button>
+          <div class="ju-gate-erro" id="ju-pin-erro" role="alert"></div>
+        </form>
+      </div>
+      <div id="ju-app" style="display:none">
+        <div class="ju-barra-topo">
+          <nav class="ju-dias" id="ju-dias" aria-label="Dias"></nav>
+          <div class="ju-acoes">
+            <button type="button" class="theme-btn" id="ju-refresh">⟳ Atualizar</button>
+            <button type="button" class="theme-btn primary" id="ju-btn-resumo">Gerar resumo do dia</button>
+            <button type="button" class="theme-btn" id="ju-sair" title="Bloquear de novo">🔒 Sair</button>
+          </div>
+        </div>
+        <div id="ju-aviso"></div>
+        <div class="ju-kpis" id="ju-kpis"></div>
+        <div class="card ju-sdsub" id="ju-sdsub"></div>
+        <div class="ju-barra">
+          <div class="ju-h2">Stations · da maior para a menor em volume</div>
+          <div class="ju-filtro" role="group" aria-label="Mostrar">
+            <button type="button" class="ju-pill ativo" data-juf="todas">Todos os indicadores</button>
+            <button type="button" class="ju-pill" data-juf="pendentes">Só pendentes</button>
+          </div>
+        </div>
+        <div id="ju-estacoes"></div>
+      </div>
+      <div class="ju-modal" id="ju-modal" hidden>
+        <div class="ju-modal-caixa" role="dialog" aria-label="Resumo do dia">
+          <div class="ju-modal-topo"><div class="ju-modal-tit" id="ju-modal-tit">Resumo do dia</div><button type="button" class="theme-btn" id="ju-modal-fechar">Fechar</button></div>
+          <div class="sd-hint">Texto pronto para mandar para a gestora.</div>
+          <pre class="ju-resumo" id="ju-resumo-txt"></pre>
+          <div class="ju-modal-acoes"><button type="button" class="theme-btn" id="ju-imprimir">Exportar PDF</button><button type="button" class="theme-btn primary" id="ju-copiar">Copiar texto</button></div>
+        </div>
+      </div>
+      <datalist id="ju-analistas"></datalist>
     </div>
 
     <!-- LOSSES (SVP) -->
@@ -3526,7 +3573,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "planosab", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "planosab", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm", "justificativas"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3557,6 +3604,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "backlogloja"){ if(!BL_LOADED) loadBacklogLoja(); else renderBacklogLoja(); }
     if(item.dataset.section === "volume"){ if(!VC_LOADED){ if(!VC_PEND) loadVolume(); } else renderVolume(); }
     if(item.dataset.section === "wbr"){ if(WBR) renderWbr(); else loadWbr(); }
+    if(item.dataset.section === "justificativas"){ juAbrirAba(); }
     if(item.dataset.section === "forecast"){ if(!FC_LOADED) loadForecast(); else renderForecast(); }
   });
 });
@@ -7645,3 +7693,471 @@ function renderWbr(){
 wbrCacheCarregar();
 setTimeout(()=>{ if(!WBR_PEND) loadWbr(true); }, 8000);
 setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
+// ==================== JUSTIFICATIVAS (grupo Dados) ====================
+// Justificativas diárias da sub-regional CO, por station (da maior para a
+// menor em volume), para No Show 3PL, Partial Pickup, OTP, Lead Time e Same Day,
+// + indicadores extras ("+ Adicionar indicador").
+// Protegida por senha de 4 dígitos. A senha é conferida no Apps Script
+// (Justificativas.gs, propriedade do script JUST_PIN) — não fica no site.
+// Salvo na aba JUSTIFICATIVAS_CO (rotas ?tipo=justlistar e ?tipo=justsalvar).
+const JU_SUB = "CO";          // sub-regional desta aba
+const JU_META_SD = 0.80;      // Same Day abaixo disso pede justificativa
+const JU_META_LT = 2.0;       // Lead Time (dias) acima disso pede justificativa
+const JU_N_OFENSORES = 5;
+const JU_DIAS_ABAS = 7;
+const JU_LIM_LINHAS = 15;
+const JU_INDS = [
+  { id:"ns",  nome:"No Show 3PL" },
+  { id:"pp",  nome:"Partial Pickup" },
+  { id:"otp", nome:"Falha de OTP" },
+  { id:"lt",  nome:"Lead Time" },
+  { id:"sd",  nome:"Same Day" }
+];
+const JU = {
+  pin: "", liberado: false, dia: "", diasDisp: [], filtro: "todas",
+  sd: {}, lt: {}, just: {}, justErro: "",
+  editando: {}, rascunho: {}, abertos: {}, novos: {},
+  subPorStation: {}, nomePorDop: {}, analistas: new Set(), ultimo: null, iniciado: false
+};
+try{ JU.pin = sessionStorage.getItem("ju_pin") || ""; }catch(e){}
+const juPct = v => (v * 100).toFixed(2).replace(".", ",") + "%";
+const juDias = v => v.toFixed(2).replace(".", ",") + (v < 1.995 ? " dia" : " dias");
+const juNum = n => (n || 0).toLocaleString("pt-BR");
+const juDow = iso => new Date(iso + "T12:00:00Z").getUTCDay();
+const JU_SEMANA = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+const juKey = v => String(v == null ? "" : v).replace(/\D/g, "");
+const juDop = v => { const s = String(v == null ? "" : v).trim(); return /^dop/i.test(s) ? s.toUpperCase() : (/^\d{1,5}$/.test(s) ? "DOP" + s : s); };
+const juChave = (dia, station, ind) => [dia, JU_SUB, station, ind].join("|");
+function juApi(params, timeout){
+  const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+  const q = Object.keys(params).map(k => k + "=" + encodeURIComponent(params[k])).join("&");
+  return fetchViaIframe(API_URL + sep + q, timeout || 60000).then(json => {
+    if(json && json.pinErrado){ const e = new Error(json.erro || "senha incorreta"); e.pin = true; throw e; }
+    if(json && json.erro) throw new Error(json.erro);
+    return json;
+  });
+}
+const juLinhas = json => (json.rows || []).map(r => { const o = {}; json.cols.forEach((c,i) => o[c] = r[i]); return o; });
+
+// ---- senha ----
+function juMostrarGate(msg){
+  JU.liberado = false;
+  document.getElementById("ju-gate").style.display = "";
+  document.getElementById("ju-app").style.display = "none";
+  document.getElementById("ju-pin-erro").textContent = msg || "";
+  document.getElementById("ju-subtitle").textContent = "";
+  const inp = document.getElementById("ju-pin"); inp.value = ""; setTimeout(()=> inp.focus(), 50);
+}
+async function juEntrar(pin){
+  const btn = document.getElementById("ju-pin-btn"), erro = document.getElementById("ju-pin-erro");
+  if(!/^\d{4}$/.test(pin)){ erro.textContent = "A senha tem 4 números."; return; }
+  btn.disabled = true; btn.textContent = "Conferindo…"; erro.textContent = "";
+  try{
+    const json = await juApi({ tipo:"justlistar", sub:JU_SUB, pin });
+    JU.pin = pin; try{ sessionStorage.setItem("ju_pin", pin); }catch(e){}
+    juGuardarJust(json);
+    JU.liberado = true;
+    document.getElementById("ju-gate").style.display = "none";
+    document.getElementById("ju-app").style.display = "";
+    juIniciar();
+  } catch(err){
+    if(err.pin){ JU.pin = ""; try{ sessionStorage.removeItem("ju_pin"); }catch(e){} erro.textContent = err.message === "senha incorreta" ? "Senha incorreta." : err.message; }
+    else erro.textContent = "Não consegui conferir agora (" + err.message + ").";
+    const inp = document.getElementById("ju-pin"); inp.value = ""; inp.focus();
+  } finally { btn.disabled = false; btn.textContent = "Entrar"; }
+}
+function juAbrirAba(){
+  if(JU.liberado){ juRender(); return; }
+  if(JU.pin){ juEntrar(JU.pin); juMostrarGate(""); document.getElementById("ju-pin-erro").textContent = "Conferindo a senha…"; return; }
+  juMostrarGate("");
+}
+
+// ---- carga ----
+async function juIniciar(){
+  if(JU.iniciado){ juRender(); return; }
+  JU.iniciado = true;
+  document.getElementById("ju-estacoes").innerHTML = loaderHtml("Carregando o Same Day…");
+  try{
+    const sd = await fetchViaIframe(API_URL + (API_URL.indexOf("?") >= 0 ? "&" : "?") + "tipo=sameday", 90000);
+    JU.diasDisp = (sd.diasDisponiveis || []).slice().sort();
+    const ult = sd.ultimoDia || sd.refDia || JU.diasDisp[JU.diasDisp.length - 1];
+    if((sd.periodoIni || sd.refDia) === ult && (sd.periodoFim || sd.refDia) === ult) juGuardarSd(ult, sd);
+    // bases grandes: as mesmas das abas OTP e Desempenho por Loja (com cache do navegador)
+    if(!OTP && !OTP_PEND) loadOtp(true);
+    if(OTP_PEND) OTP_PEND.then(()=> juRender()).catch(()=> juRender());
+    if(!LD_LOADED){ const p = loadLoja(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
+    await juAbrirDia(ult);
+  } catch(err){
+    JU.iniciado = false;
+    document.getElementById("ju-estacoes").innerHTML = `<div class="empty-state">⚠ Não foi possível carregar (${esc(err.message)}). <a href="#" id="ju-retry">Tentar de novo</a></div>`;
+    const a = document.getElementById("ju-retry"); if(a) a.onclick = ev => { ev.preventDefault(); juIniciar(); };
+  }
+}
+function juGuardarSd(dia, json){
+  const rs = juLinhas(json);
+  rs.forEach(r => {
+    if(r.station && r.subreg) JU.subPorStation[r.station] = r.subreg;
+    if(r.id && r.nome) JU.nomePorDop[juKey(r.id)] = r.nome;
+    if(r.subreg === JU_SUB && r.resp) JU.analistas.add(String(r.resp).trim());
+  });
+  JU.sd[dia] = rs.filter(r => r.subreg === JU_SUB);
+  juAtualizarAnalistas();
+}
+async function juCarregarSd(dia){
+  if(JU.sd[dia]) return;
+  const json = SD_CACHE_DATAS[dia + "_" + dia] || await juApi({ tipo:"sameday", ini:dia, fim:dia }, 90000);
+  juGuardarSd(dia, json);
+}
+async function juCarregarLt(dia){
+  if(JU.lt[dia]) return;
+  try{
+    const json = LT_CACHE[dia + "_" + dia] || await juApi({ tipo:"leadtime", ini:dia, fim:dia }, 90000);
+    const rs = juLinhas(json).filter(r => (r.subreg || JU.subPorStation[r.station]) === JU_SUB);
+    if(json.periodoIni && json.periodoIni !== dia) rs.aviso = "o Lead Time desse dia ainda não está na base";
+    JU.lt[dia] = rs;
+  } catch(err){ const rs = []; rs.erro = err.message; JU.lt[dia] = rs; }
+}
+function juGuardarJust(json){
+  JU.just = {};
+  (json && json.itens || []).forEach(o => { JU.just[o.chave] = o; if(o.resp) JU.analistas.add(o.resp); });
+  JU.justErro = "";
+  juAtualizarAnalistas();
+}
+async function juCarregarJust(){
+  try{ juGuardarJust(await juApi({ tipo:"justlistar", sub:JU_SUB, pin:JU.pin })); }
+  catch(err){ if(err.pin){ juMostrarGate("A senha mudou. Digite a nova senha."); return; } JU.justErro = err.message; }
+  juRender();
+}
+async function juAbrirDia(dia){
+  JU.dia = dia; JU.abertos = {};
+  juRenderDias();
+  document.getElementById("ju-estacoes").innerHTML = loaderHtml("Carregando " + fmtDiaBR(dia) + "…");
+  document.getElementById("ju-kpis").innerHTML = ""; document.getElementById("ju-sdsub").innerHTML = "";
+  try{
+    await Promise.all([juCarregarSd(dia), juCarregarLt(dia)]);
+    if(JU.dia !== dia) return;
+    juRender();
+  } catch(err){
+    if(JU.dia !== dia) return;
+    document.getElementById("ju-estacoes").innerHTML = `<div class="empty-state">⚠ Não consegui carregar ${fmtDiaBR(dia)} (${esc(err.message)}).</div>`;
+  }
+}
+
+// ---- montagem do dia ----
+function juSubDe(r){ return r.sub || r.subreg || JU.subPorStation[r.station] || r.regPudo || ""; }
+function juMontarDia(dia){
+  const sd = JU.sd[dia] || [], lt = JU.lt[dia] || [];
+  const otpOk = OTP && OTP.rows, ldOk = LD_LOADED;
+  const st = {};
+  const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[] });
+  sd.forEach(r => { const o = pega(r.station || "—"); o.out += +r.outD || 0; o.sd += +r.sdD || 0; o.linhasSd.push(r); });
+  lt.forEach(r => pega(r.station || "—").ltRows.push(r));
+  if(otpOk) OTP.rows.forEach(r => { if(r.data === dia && r.falha && juSubDe(r) === JU_SUB) pega(r.station || "—").otp.push(r); });
+  if(ldOk) LD_DET.forEach(r => {
+    if(r.data !== dia || juSubDe(r) !== JU_SUB) return;
+    if(r.perf === "No Show 3PL") pega(r.station || "—").ns.push(r);
+    else if(r.perf === "Partial Pickup") pega(r.station || "—").pp.push(r);
+  });
+  const lista = Object.values(st).sort((a,b) => b.out - a.out || a.nome.localeCompare(b.nome));
+  lista.forEach(s => {
+    s.inds = JU_INDS.map(def => juMontarInd(def, s, dia, otpOk, ldOk));
+    const pre = juChave(dia, s.nome, "x:");
+    Object.keys(JU.just).filter(k => k.startsWith(pre)).sort().forEach(k => {
+      const nome = k.slice(pre.length);
+      s.inds.push({ id:"x:" + nome, nome, chave:k, extra:true, ok:false, valor:JU.just[k].valor || "", cab:[], itens:[], nota:"" });
+    });
+  });
+  return lista;
+}
+function juMontarInd(def, s, dia, otpOk, ldOk){
+  const o = { id:def.id, nome:def.nome, chave:juChave(dia, s.nome, def.id), ok:true, valor:"", cab:[], itens:[], nota:"" };
+  if(def.id === "ns" || def.id === "pp"){
+    if(!ldOk){ o.carregando = true; o.valor = "carregando…"; return o; }
+    const l = def.id === "ns" ? s.ns : s.pp, lojas = new Set(l.map(r => r.loja));
+    o.ok = !l.length;
+    o.valor = o.ok ? "nenhuma ocorrência" : lojas.size + (lojas.size === 1 ? " loja" : " lojas");
+    o.cab = ["Loja / DOP", "Nome", "Rota · Transportadora", def.id === "ns" ? "Justificativa do motorista" : "Motivo"];
+    o.itens = l.map(r => [juDop(r.loja), (typeof ldNome === "function" && ldNome(r.loja)) || "—",
+      [r.rota, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", [r.just, r.raio].filter(Boolean).join(" · ") || "—"]);
+  }
+  else if(def.id === "otp"){
+    if(!otpOk){ o.carregando = true; o.valor = "carregando…"; return o; }
+    o.ok = !s.otp.length;
+    o.valor = o.ok ? "nenhuma falha" : s.otp.length + (s.otp.length === 1 ? " falha" : " falhas");
+    o.cab = ["DOP", "Shop", "Motorista · Transportadora", "Ocorrência"];
+    o.itens = s.otp.map(r => [juDop(r.dop || r.pup), r.shop || JU.nomePorDop[juKey(r.dop)] || "—",
+      [r.driver, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", [r.occ, r.just].filter(Boolean).join(" · ") || "—"]);
+  }
+  else if(def.id === "lt"){
+    const ltDia = JU.lt[dia] || [];
+    if(ltDia.erro){ o.nota = "não carregou: " + ltDia.erro; o.valor = "—"; return o; }
+    if(ltDia.aviso){ o.nota = ltDia.aviso; o.valor = "—"; return o; }
+    let ord = 0, tempo = 0; const porDop = {};
+    s.ltRows.forEach(r => {
+      ord += +r.orders || 0; tempo += +r.tempo || 0;
+      const id = r.id || r.dop || "—";
+      const g = porDop[id] || (porDop[id] = { id, nome: r.nome || JU.nomePorDop[juKey(id)] || "", ord:0, tempo:0 });
+      g.ord += +r.orders || 0; g.tempo += +r.tempo || 0;
+    });
+    if(!ord){ o.valor = "sem pedidos no dia"; return o; }
+    const lead = tempo / ord;
+    o.ok = lead <= JU_META_LT;
+    o.valor = juDias(lead) + " · meta " + JU_META_LT.toFixed(1).replace(".", ",");
+    if(!o.ok){
+      o.cab = ["DOP", "Agência", "Lead time", "Pedidos"];
+      o.itens = Object.values(porDop).filter(g => g.ord > 0).map(g => Object.assign(g, { lead: g.tempo / g.ord }))
+        .sort((a,b) => b.lead - a.lead).slice(0, JU_N_OFENSORES).map(g => [juDop(g.id), g.nome || "—", juDias(g.lead), juNum(g.ord)]);
+    }
+  }
+  else if(def.id === "sd"){
+    if(!s.out){ o.valor = "sem pickup no dia"; return o; }
+    const v = s.sd / s.out;
+    o.ok = v >= JU_META_SD;
+    o.valor = juPct(v) + " · meta " + Math.round(JU_META_SD * 100) + "%";
+    if(!o.ok){
+      o.cab = ["DOP", "Agência · Responsável", "Fora do Same Day", "Inbound pós-coleta"];
+      o.itens = s.linhasSd.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0)
+        .sort((a,b) => b.fora - a.fora).slice(0, JU_N_OFENSORES)
+        .map(x => [juDop(x.r.id), (x.r.nome || "—") + (x.r.resp ? " · " + x.r.resp : ""), juNum(x.fora) + " pacotes", juNum(+x.r.posColD || 0)]);
+    }
+  }
+  return o;
+}
+
+// ---- render ----
+function juAtiva(){ const s = document.getElementById("sec-justificativas"); return s && s.classList.contains("active"); }
+function juRender(){
+  if(!JU.liberado || !JU.dia || !JU.sd[JU.dia] || !juAtiva()) return;
+  const ests = juMontarDia(JU.dia);
+  JU.ultimo = ests;
+  juRenderDias(); juRenderAviso(); juRenderKpis(ests); juRenderSdSub(); juRenderEstacoes(ests);
+  const p = juPendencias(ests);
+  document.getElementById("ju-subtitle").textContent = "— " + JU_SUB + " · " + fmtDiaBR(JU.dia) + " · " + (p.total ? (p.total - p.pend) + " de " + p.total + " justificadas" : "nada a justificar");
+}
+function juPendencias(ests){
+  let total = 0, pend = 0;
+  ests.forEach(s => s.inds.forEach(i => { if(!i.ok && !i.carregando){ total++; if(!JU.just[i.chave]) pend++; } }));
+  return { total, pend };
+}
+function juRenderDias(){
+  const dias = JU.diasDisp.slice(-JU_DIAS_ABAS);
+  if(JU.dia && !dias.includes(JU.dia)) dias.push(JU.dia);
+  dias.sort();
+  const qtd = d => Object.keys(JU.just).filter(k => k.startsWith(d + "|")).length;
+  document.getElementById("ju-dias").innerHTML = dias.map(d => {
+    let st = "", cls = "";
+    if(d === JU.dia && JU.ultimo){ const p = juPendencias(JU.ultimo); st = p.pend ? p.pend + (p.pend === 1 ? " pendente" : " pendentes") : "Completo"; cls = p.pend ? "pend" : "ok"; }
+    else { const n = qtd(d); st = n ? n + (n === 1 ? " justificativa" : " justificativas") : "abrir"; }
+    return `<button type="button" class="ju-dia${d === JU.dia ? " ativo" : ""}" data-judia="${d}"><span class="ds">${JU_SEMANA[juDow(d)]}</span><span class="dd">${fmtDiaBR(d)}</span><span class="dst ${cls}">${st}</span></button>`;
+  }).join("") + `<label class="ju-dia-outra"><span>Outra data</span><input type="date" id="ju-outra" value="${JU.dia}" min="${JU.diasDisp[0] || ""}" max="${JU.diasDisp[JU.diasDisp.length-1] || ""}"></label>`;
+  document.querySelectorAll("#ju-dias [data-judia]").forEach(b => b.onclick = () => { if(b.dataset.judia !== JU.dia) juAbrirDia(b.dataset.judia); });
+  document.getElementById("ju-outra").onchange = e => { if(e.target.value) juAbrirDia(e.target.value); };
+}
+function juRenderAviso(){
+  const a = [];
+  if(JU.justErro) a.push(`<div class="ju-aviso erro">⚠ Não consegui ler as justificativas salvas (${esc(JU.justErro)}).</div>`);
+  if(!(OTP && OTP.rows) || !LD_LOADED) a.push(`<div class="ju-aviso">Carregando OTP e Desempenho por Loja (No Show 3PL / Partial Pickup)… pode levar até 1 minuto.</div>`);
+  document.getElementById("ju-aviso").innerHTML = a.join("");
+}
+function juRenderKpis(ests){
+  const p = juPendencias(ests);
+  const out = ests.reduce((t,s) => t + s.out, 0), sd = ests.reduce((t,s) => t + s.sd, 0);
+  const abaixo = ests.filter(s => s.out && s.sd / s.out < JU_META_SD).length;
+  const conta = id => { let n = 0, st = 0; ests.forEach(s => { const i = s.inds.find(x => x.id === id); if(i && !i.ok && i.itens.length){ n += new Set(i.itens.map(x => x[0])).size; st++; } }); return { n, st }; };
+  const ns = conta("ns"), pp = conta("pp"), ot = conta("otp");
+  let ltO = 0, ltT = 0; (JU.lt[JU.dia] || []).forEach(r => { ltO += +r.orders || 0; ltT += +r.tempo || 0; });
+  const ltAcima = ests.filter(s => { const i = s.inds.find(x => x.id === "lt"); return i && !i.ok; }).length;
+  const ld = LD_LOADED, otp = OTP && OTP.rows;
+  const plural = (n, a, b) => n + " " + (n === 1 ? a : b);
+  const k = [
+    { l:"Justificativas", v: p.total ? (p.total - p.pend) + " de " + p.total : "—", s: p.pend ? p.pend + " ainda pendentes" : (p.total ? "todas respondidas" : "nada a justificar"), c: p.pend ? "crit" : "ok" },
+    { l:"Same Day " + JU_SUB, v: out ? juPct(sd / out) : "—", s: abaixo ? plural(abaixo, "station abaixo", "stations abaixo") + " de " + Math.round(JU_META_SD*100) + "%" : "todas na meta" },
+    { l:"No Show 3PL", v: ld ? juNum(ns.n) : "…", s: !ld ? "carregando" : ns.n ? "lojas em " + plural(ns.st, "station", "stations") : "nenhuma ocorrência" },
+    { l:"Partial Pickup", v: ld ? juNum(pp.n) : "…", s: !ld ? "carregando" : pp.n ? "lojas em " + plural(pp.st, "station", "stations") : "nenhuma ocorrência" },
+    { l:"Falha de OTP", v: otp ? juNum(ests.reduce((t,s) => t + s.otp.length, 0)) : "…", s: !otp ? "carregando" : ot.st ? "em " + plural(ot.st, "station", "stations") : "nenhuma falha" },
+    { l:"Lead Time " + JU_SUB, v: ltO ? juDias(ltT / ltO) : "—", s: ltAcima ? plural(ltAcima, "station acima", "stations acima") + " da meta" : "dentro da meta" }
+  ];
+  document.getElementById("ju-kpis").innerHTML = k.map(x => `<div class="kpi"><div class="kpi-label">${x.l}</div><div class="kpi-value ju-v-${x.c || ""}">${x.v}</div><div class="kpi-delta">${x.s}</div></div>`).join("");
+}
+function juRenderSdSub(){
+  const el = document.getElementById("ju-sdsub"), rs = JU.sd[JU.dia] || [];
+  const out = rs.reduce((t,r) => t + (+r.outD || 0), 0), sd = rs.reduce((t,r) => t + (+r.sdD || 0), 0);
+  if(!out){ el.innerHTML = `<div class="sd-hint">Sem dados de Same Day para ${fmtDiaBR(JU.dia)}.</div>`; return; }
+  const v = sd / out;
+  const top = rs.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0).sort((a,b) => b.fora - a.fora).slice(0, JU_N_OFENSORES);
+  el.innerHTML = `
+    <div class="ju-sdnum"><div class="l">Same Day · ${JU_SUB}</div><div class="v">${juPct(v)}</div>
+      <div class="m ${v >= JU_META_SD ? "ok" : "crit"}">${v >= JU_META_SD ? "Acima" : "Abaixo"} da meta de ${Math.round(JU_META_SD*100)}%</div>
+      <div class="ju-trilho"><div class="enc" style="width:${Math.min(100, v*100).toFixed(1)}%"></div><div class="meta" style="left:${JU_META_SD*100}%"></div></div></div>
+    <div class="ju-ofens"><div class="ju-ofens-t">${JU_N_OFENSORES} maiores ofensores do dia · <span>${juNum(top.reduce((t,x) => t + x.fora, 0))} pacotes fora do Same Day</span></div>
+      <div class="ju-ofens-g">${top.map(x => `<div class="ju-ofens-i"><span><b>${esc(x.r.nome || "—")}</b> <span class="sd-hint">${esc(juDop(x.r.id))}</span></span><span class="p">${juNum(x.fora)} pac.</span></div>`).join("") || '<div class="sd-hint">Nenhum pacote fora do Same Day.</div>'}</div></div>`;
+}
+function juRenderEstacoes(ests){
+  const filtrar = JU.filtro === "pendentes";
+  const html = ests.map((s, i) => {
+    const pendSt = s.inds.filter(x => !x.ok && !x.carregando && !JU.just[x.chave]).length;
+    const inds = filtrar ? s.inds.filter(x => !x.ok && !x.carregando && (!JU.just[x.chave] || JU.editando[x.chave])) : s.inds;
+    if(filtrar && !inds.length) return "";
+    return `<section class="card ju-st">
+      <div class="ju-st-topo">
+        <div class="ju-st-id"><div class="ju-st-pos">${i + 1}</div><div>
+          <div class="ju-st-nome">${esc(s.nome)}</div>
+          <div class="sd-hint">${juNum(s.out)} pacotes coletados · Same Day ${s.out ? juPct(s.sd / s.out) : "—"}</div></div></div>
+        <span class="ju-tag grande ${pendSt ? "pend" : "ok"}">${pendSt ? pendSt + (pendSt === 1 ? " pendente" : " pendentes") : "Tudo justificado"}</span>
+      </div>
+      ${inds.map(juRenderInd).join("")}
+      ${filtrar ? "" : juRenderNovo(s.nome)}
+    </section>`;
+  }).join("");
+  document.getElementById("ju-estacoes").innerHTML = html || `<div class="empty-state">${ests.length ? "Tudo justificado neste dia. 🎉" : "Nenhuma station da " + JU_SUB + " com dados em " + fmtDiaBR(JU.dia) + "."}</div>`;
+  juLigar();
+}
+function juQuando(s){ const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/); return m ? m[3] + "/" + m[2] + " às " + m[4] : (s || ""); }
+function juRespPadrao(){ try{ return localStorage.getItem("ju_resp") || ""; }catch(e){ return ""; } }
+function juRenderInd(i){
+  const j = JU.just[i.chave], ed = !!JU.editando[i.chave];
+  const est = i.carregando ? "" : i.ok ? "ok" : (j && !ed ? "just" : "pend");
+  const tag = i.carregando ? "" : i.ok ? "Dentro da meta" : (j && !ed ? (i.extra ? "Indicador extra · justificado" : "Justificado") : "Pendente");
+  let c = "";
+  if(i.nota) c += `<div class="sd-hint">⚠ ${esc(i.nota)}</div>`;
+  if(!i.ok && i.itens.length){
+    const ab = JU.abertos[i.chave], vis = ab ? i.itens : i.itens.slice(0, JU_LIM_LINHAS);
+    c += `<div class="table-wrap ju-tab"><table class="data"><thead><tr>${i.cab.map(x => `<th>${esc(x)}</th>`).join("")}</tr></thead><tbody>`
+      + vis.map(l => `<tr>${l.map((x, n) => `<td${n === 0 ? ' style="font-weight:600"' : ""}>${esc(x)}</td>`).join("")}</tr>`).join("") + `</tbody></table></div>`
+      + (i.itens.length > JU_LIM_LINHAS ? `<div class="card-expand-btn" data-juabrir="${esc(i.chave)}">${ab ? "− mostrar menos" : "+ ver todas as " + i.itens.length + " linhas"}</div>` : "");
+  }
+  if(!i.ok && !i.carregando){
+    if(j && !ed){
+      c += `<div class="ju-feito"><div class="ju-feito-txt"><div class="t">${esc(j.texto)}</div>
+        <div class="q">Justificado por ${esc(j.resp)} · ${esc(juQuando(j.em))}${j.temHistorico ? " · editado" : ""}</div></div>
+        <button type="button" class="ju-btn-ed" data-jueditar="${esc(i.chave)}">Editar</button></div>`;
+    } else {
+      const r = JU.rascunho[i.chave] || {};
+      const t = r.t != null ? r.t : (j ? j.texto : ""), rp = r.r != null ? r.r : (j ? j.resp : juRespPadrao());
+      c += `<form class="ju-form" data-juchave="${esc(i.chave)}">
+        <label>Justificativa<textarea name="t" rows="2" maxlength="2000" placeholder="O que aconteceu e qual ação foi tomada">${esc(t)}</textarea></label>
+        <div class="ju-form-linha">
+          <label>Responsável pela justificativa<input name="r" list="ju-analistas" placeholder="Seu nome" value="${esc(rp)}" autocomplete="off"></label>
+          <button type="submit" class="theme-btn primary">Salvar justificativa</button>
+          ${ed ? `<button type="button" class="theme-btn" data-jucancelar="${esc(i.chave)}">Cancelar</button>` : ""}
+          <span class="ju-form-aviso"></span>
+        </div></form>`;
+    }
+  }
+  return `<div class="ju-ind"><div class="ju-ind-topo">
+      <div class="ju-ind-id"><span class="ju-farol ${est}"></span><span class="ju-ind-nome">${esc(i.nome)}</span><span class="ju-ind-val">${esc(i.valor)}</span></div>
+      ${tag ? `<span class="ju-tag ${est}">${tag}</span>` : ""}</div>${c}</div>`;
+}
+function juRenderNovo(station){
+  if(!JU.novos[station]) return `<div class="ju-ind ju-add"><button type="button" class="ju-btn-add" data-junovo="${esc(station)}">+ Adicionar indicador</button></div>`;
+  const r = JU.rascunho["novo|" + station] || {};
+  return `<div class="ju-ind"><form class="ju-form" data-junovo-form="${esc(station)}">
+    <div class="ju-form-linha">
+      <label style="flex:1 1 240px">Indicador<input name="n" maxlength="80" placeholder="Ex.: Mis-scan, Stuck, FIFO…" value="${esc(r.n || "")}" autocomplete="off"></label>
+      <label style="flex:1 1 200px">Resultado (opcional)<input name="v" maxlength="120" placeholder="Ex.: 12 pacotes, 3,4%" value="${esc(r.v || "")}" autocomplete="off"></label>
+    </div>
+    <label>Justificativa<textarea name="t" rows="2" maxlength="2000" placeholder="O que aconteceu e qual ação foi tomada">${esc(r.t || "")}</textarea></label>
+    <div class="ju-form-linha">
+      <label>Responsável pela justificativa<input name="r" list="ju-analistas" placeholder="Seu nome" value="${esc(r.r != null ? r.r : juRespPadrao())}" autocomplete="off"></label>
+      <button type="submit" class="theme-btn primary">Salvar indicador</button>
+      <button type="button" class="theme-btn" data-junovo-cancelar="${esc(station)}">Cancelar</button>
+      <span class="ju-form-aviso"></span>
+    </div></form></div>`;
+}
+function juLigar(){
+  const box = document.getElementById("ju-estacoes");
+  box.querySelectorAll("[data-juabrir]").forEach(b => b.onclick = () => { const k = b.dataset.juabrir; JU.abertos[k] = !JU.abertos[k]; juRender(); });
+  box.querySelectorAll("[data-jueditar]").forEach(b => b.onclick = () => { JU.editando[b.dataset.jueditar] = true; juRender(); });
+  box.querySelectorAll("[data-jucancelar]").forEach(b => b.onclick = () => { delete JU.editando[b.dataset.jucancelar]; delete JU.rascunho[b.dataset.jucancelar]; juRender(); });
+  box.querySelectorAll("[data-junovo]").forEach(b => b.onclick = () => {
+    JU.novos[b.dataset.junovo] = true; juRender();
+    const f = [...box.querySelectorAll("form[data-junovo-form]")].find(x => x.dataset.junovoForm === b.dataset.junovo); if(f) f.elements.n.focus();
+  });
+  box.querySelectorAll("[data-junovo-cancelar]").forEach(b => b.onclick = () => { const s = b.dataset.junovoCancelar; delete JU.novos[s]; delete JU.rascunho["novo|" + s]; juRender(); });
+  box.querySelectorAll("form[data-juchave], form[data-junovo-form]").forEach(f => {
+    const k = f.dataset.juchave || ("novo|" + f.dataset.junovoForm);
+    ["n","v","t","r"].forEach(c => { const el = f.elements[c]; if(el) el.oninput = () => { (JU.rascunho[k] = JU.rascunho[k] || {})[c] = el.value; }; });
+    f.onsubmit = ev => { ev.preventDefault(); juSalvar(f); };
+  });
+}
+async function juSalvar(f){
+  const E = f.elements, aviso = f.querySelector(".ju-form-aviso"), btn = f.querySelector("button[type=submit]");
+  const novo = !!f.dataset.junovoForm, txtBtn = btn.textContent;
+  let k, station, ind, valor = "";
+  if(novo){
+    station = f.dataset.junovoForm;
+    const nome = E.n.value.trim().replace(/\|/g, "/");
+    if(!nome){ aviso.textContent = "Dê um nome ao indicador."; E.n.focus(); return; }
+    if(JU_INDS.some(d => d.nome.toLowerCase() === nome.toLowerCase())){ aviso.textContent = "Esse indicador já existe no bloco."; E.n.focus(); return; }
+    ind = "x:" + nome; valor = E.v.value.trim(); k = juChave(JU.dia, station, ind);
+    if(JU.just[k]){ aviso.textContent = "Esse indicador já foi adicionado nesta station — use Editar nele."; return; }
+  } else {
+    k = f.dataset.juchave; const p = k.split("|"); station = p[2]; ind = p.slice(3).join("|");
+    if(ind.startsWith("x:") && JU.just[k]) valor = JU.just[k].valor || "";
+  }
+  const texto = E.t.value.trim(), resp = E.r.value.trim();
+  if(!texto){ aviso.textContent = "Escreva a justificativa."; E.t.focus(); return; }
+  if(!resp){ aviso.textContent = "Coloque o seu nome."; E.r.focus(); return; }
+  btn.disabled = true; btn.textContent = "Salvando…"; aviso.textContent = "";
+  try{
+    const data = k.split("|")[0];
+    const json = await juApi({ tipo:"justsalvar", pin:JU.pin, data, sub:JU_SUB, station, ind, valor, texto, resp });
+    if(!json || !json.item) throw new Error("o Apps Script não confirmou o salvamento");
+    JU.just[k] = json.item; JU.analistas.add(resp); juAtualizarAnalistas();
+    try{ localStorage.setItem("ju_resp", resp); }catch(e){}
+    delete JU.editando[k]; delete JU.rascunho[k];
+    if(novo){ delete JU.novos[station]; delete JU.rascunho["novo|" + station]; }
+    juRender();
+  } catch(err){
+    if(err.pin){ juMostrarGate("A senha mudou. Digite a nova senha."); return; }
+    btn.disabled = false; btn.textContent = txtBtn; aviso.textContent = "Não salvou: " + err.message;
+  }
+}
+function juAtualizarAnalistas(){
+  const dl = document.getElementById("ju-analistas");
+  if(dl) dl.innerHTML = [...JU.analistas].filter(Boolean).sort((a,b) => a.localeCompare(b, "pt-BR")).map(a => `<option value="${esc(a)}">`).join("");
+}
+function juResumo(){
+  const ests = JU.ultimo || [], rs = JU.sd[JU.dia] || [];
+  const out = rs.reduce((t,r) => t + (+r.outD || 0), 0), sd = rs.reduce((t,r) => t + (+r.sdD || 0), 0);
+  const L = ["Sub-regional " + JU_SUB + " · " + fmtDiaBR(JU.dia) + "/" + JU.dia.slice(0,4)];
+  if(out) L.push("Same Day: " + juPct(sd / out) + " (meta " + Math.round(JU_META_SD*100) + "%)");
+  ests.forEach(s => {
+    const prob = s.inds.filter(i => !i.ok && !i.carregando);
+    if(!prob.length) return;
+    L.push("", s.nome.toUpperCase() + " — " + juNum(s.out) + " pacotes coletados");
+    prob.forEach(i => {
+      const j = JU.just[i.chave];
+      L.push("• " + i.nome + (i.valor ? " (" + i.valor + ")" : ""));
+      if(i.itens.length) L.push("   " + i.itens.slice(0, JU_N_OFENSORES).map(l => l[0] + (l[1] && l[1] !== "—" ? " - " + l[1] : "")).join("; "));
+      L.push("   " + (j ? j.texto.replace(/\n+/g, " ") + " — " + j.resp : "PENDENTE de justificativa"));
+    });
+  });
+  if(L.length <= 2) L.push("", "Todas as stations dentro da meta.");
+  return L.join("\n");
+}
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$("sec-justificativas")) return;
+  $("ju-gate-form").addEventListener("submit", ev => { ev.preventDefault(); juEntrar($("ju-pin").value.trim()); });
+  $("ju-pin").addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4); if(e.target.value.length === 4) juEntrar(e.target.value); });
+  $("ju-sair").addEventListener("click", () => { JU.pin = ""; try{ sessionStorage.removeItem("ju_pin"); }catch(e){} juMostrarGate(""); });
+  $("ju-refresh").addEventListener("click", () => {
+    if(!JU.dia) return;
+    delete JU.sd[JU.dia]; delete JU.lt[JU.dia]; delete SD_CACHE_DATAS[JU.dia + "_" + JU.dia]; delete LT_CACHE[JU.dia + "_" + JU.dia];
+    juCarregarJust(); loadOtp(true); juAbrirDia(JU.dia);
+  });
+  document.querySelectorAll(".ju-pill[data-juf]").forEach(b => b.addEventListener("click", () => {
+    JU.filtro = b.dataset.juf; document.querySelectorAll(".ju-pill[data-juf]").forEach(x => x.classList.toggle("ativo", x === b)); juRender();
+  }));
+  $("ju-btn-resumo").addEventListener("click", () => { $("ju-modal-tit").textContent = "Resumo do dia · " + fmtDiaBR(JU.dia); $("ju-resumo-txt").textContent = juResumo(); $("ju-modal").hidden = false; });
+  $("ju-modal-fechar").addEventListener("click", () => { $("ju-modal").hidden = true; });
+  $("ju-modal").addEventListener("click", e => { if(e.target === $("ju-modal")) $("ju-modal").hidden = true; });
+  $("ju-copiar").addEventListener("click", async () => {
+    const b = $("ju-copiar");
+    try{ await navigator.clipboard.writeText($("ju-resumo-txt").textContent); b.textContent = "Copiado ✓"; }
+    catch(e){ const r = document.createRange(); r.selectNodeContents($("ju-resumo-txt")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selecionado — Ctrl+C"; }
+    setTimeout(() => { b.textContent = "Copiar texto"; }, 2000);
+  });
+  $("ju-imprimir").addEventListener("click", () => { document.body.classList.add("ju-imprimindo"); window.print(); setTimeout(() => document.body.classList.remove("ju-imprimindo"), 500); });
+})();
