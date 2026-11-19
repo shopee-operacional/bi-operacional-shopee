@@ -7704,6 +7704,7 @@ const JU_SUB = "CO";          // sub-regional desta aba
 const JU_META_SD = 0.80;      // Same Day: target é ACIMA de 80% — 80% ou menos pede justificativa
 const JU_FORA_STATION = /^XPT/i; // não entram como station nas justificativas
 // As bases chamam a sub de jeitos diferentes ("CO" na BASE_TRATADA, "CO/N" no Same Day…)
+const JU_SEM_ROTA = "o Web App não reconheceu a rota justlistar — confira no webapp.gs as rotas justlistar/justsalvar e publique uma NOVA VERSÃO da implantação";
 const juEhSub = v => { const t = String(v || "").toUpperCase().replace(/\s+/g, ""); return t === JU_SUB || t.startsWith(JU_SUB + "/"); };
 const JU_META_LT = 2.0;       // Lead Time (dias) acima disso pede justificativa
 const JU_N_OFENSORES = 5;
@@ -7719,7 +7720,7 @@ const JU_INDS = [
 const JU = {
   pin: "", liberado: false, dia: "", diasDisp: [], filtro: "todas",
   sd: {}, lt: {}, just: {}, justErro: "",
-  editando: {}, rascunho: {}, abertos: {}, novos: {},
+  editando: {}, rascunho: {}, abertos: {}, novos: {}, alin: {},
   subPorStation: {}, nomePorDop: {}, analistas: new Set(), ultimo: null, iniciado: false
 };
 try{ JU.pin = sessionStorage.getItem("ju_pin") || ""; }catch(e){}
@@ -7757,6 +7758,7 @@ async function juEntrar(pin){
   btn.disabled = true; btn.textContent = "Conferindo…"; erro.textContent = "";
   try{
     const json = await juApi({ tipo:"justlistar", sub:JU_SUB, pin });
+    if(!json || !Array.isArray(json.itens)) throw new Error(JU_SEM_ROTA);
     JU.pin = pin; try{ sessionStorage.setItem("ju_pin", pin); }catch(e){}
     juGuardarJust(json);
     JU.liberado = true;
@@ -7827,7 +7829,11 @@ function juGuardarJust(json){
   juAtualizarAnalistas();
 }
 async function juCarregarJust(){
-  try{ juGuardarJust(await juApi({ tipo:"justlistar", sub:JU_SUB, pin:JU.pin })); }
+  try{
+    const json = await juApi({ tipo:"justlistar", sub:JU_SUB, pin:JU.pin });
+    if(!json || !Array.isArray(json.itens)) throw new Error(JU_SEM_ROTA);
+    juGuardarJust(json);
+  }
   catch(err){ if(err.pin){ juMostrarGate("A senha mudou. Digite a nova senha."); return; } JU.justErro = err.message; }
   juRender();
 }
@@ -8035,7 +8041,7 @@ function juRenderEstacoes(ests){
         <span class="ju-tag grande ${pendSt ? "pend" : "ok"}">${pendSt ? pendSt + (pendSt === 1 ? " pendente" : " pendentes") : "Tudo justificado"}</span>
       </div>
       ${inds.map(juRenderInd).join("")}
-      ${filtrar ? "" : juRenderNovo(s.nome)}
+      ${filtrar ? "" : juRenderAlin(s.nome) + juRenderNovo(s.nome)}
     </section>`;
   }).join("");
   document.getElementById("ju-estacoes").innerHTML = html || `<div class="empty-state">${ests.length ? "Tudo justificado neste dia. 🎉" : "Nenhuma station da " + JU_SUB + " com dados em " + fmtDiaBR(JU.dia) + "."}</div>`;
@@ -8077,8 +8083,32 @@ function juRenderInd(i){
       <div class="ju-ind-id"><span class="ju-farol ${est}"></span><span class="ju-ind-nome">${esc(i.nome)}</span><span class="ju-ind-val">${esc(i.valor)}</span></div>
       ${tag ? `<span class="ju-tag ${est}">${tag}</span>` : ""}</div>${c}</div>`;
 }
+// Alinhamentos da station no dia (texto livre + responsável), salvos com indicador = "alinhamentos"
+function juRenderAlin(station){
+  const k = juChave(JU.dia, station, "alinhamentos"), j = JU.just[k];
+  if(!JU.alin[station]){
+    if(!j) return "";
+    return `<div class="ju-ind ju-alin"><div class="ju-ind-topo"><div class="ju-ind-id"><span class="ju-alin-ico" aria-hidden="true">✎</span><span class="ju-ind-nome">Alinhamentos</span></div></div>
+      <div class="ju-alin-box"><div class="ju-feito-txt"><div class="t">${esc(j.texto)}</div>
+        <div class="q">Registrado por ${esc(j.resp)} · ${esc(juQuando(j.em))}${j.temHistorico ? " · editado" : ""}</div></div>
+        <button type="button" class="ju-btn-ed" data-jualin="${esc(station)}">Editar</button></div></div>`;
+  }
+  const r = JU.rascunho[k] || {};
+  const t = r.t != null ? r.t : (j ? j.texto : ""), rp = r.r != null ? r.r : (j ? j.resp : juRespPadrao());
+  return `<div class="ju-ind ju-alin"><div class="ju-ind-topo"><div class="ju-ind-id"><span class="ju-alin-ico" aria-hidden="true">✎</span><span class="ju-ind-nome">Alinhamentos</span></div></div>
+    <form class="ju-form ju-form-alin" data-jualin-form="${esc(station)}" data-juchave="${esc(k)}">
+      <label>O que foi alinhado<textarea name="t" rows="3" maxlength="2000" placeholder="Ex.: alinhado com a transportadora reforço de rota no sábado; seller orientado a separar os pacotes…">${esc(t)}</textarea></label>
+      <div class="ju-form-linha">
+        <label>Responsável<input name="r" list="ju-analistas" placeholder="Seu nome" value="${esc(rp)}" autocomplete="off"></label>
+        <button type="submit" class="theme-btn primary">Salvar alinhamento</button>
+        <button type="button" class="theme-btn" data-jualin-cancelar="${esc(station)}">Cancelar</button>
+        <span class="ju-form-aviso"></span>
+      </div></form></div>`;
+}
 function juRenderNovo(station){
-  if(!JU.novos[station]) return `<div class="ju-ind ju-add"><button type="button" class="ju-btn-add" data-junovo="${esc(station)}">+ Adicionar indicador</button></div>`;
+  const temAlin = !!JU.just[juChave(JU.dia, station, "alinhamentos")] || JU.alin[station];
+  const btnAlin = temAlin ? "" : `<button type="button" class="ju-btn-add ju-btn-alin" data-jualin="${esc(station)}">✎ Alinhamentos</button>`;
+  if(!JU.novos[station]) return `<div class="ju-ind ju-add"><div class="ju-add-botoes">${btnAlin}<button type="button" class="ju-btn-add" data-junovo="${esc(station)}">+ Adicionar indicador</button></div></div>`;
   const r = JU.rascunho["novo|" + station] || {};
   return `<div class="ju-ind"><form class="ju-form" data-junovo-form="${esc(station)}">
     <div class="ju-form-linha">
@@ -8102,6 +8132,11 @@ function juLigar(){
     JU.novos[b.dataset.junovo] = true; juRender();
     const f = [...box.querySelectorAll("form[data-junovo-form]")].find(x => x.dataset.junovoForm === b.dataset.junovo); if(f) f.elements.n.focus();
   });
+  box.querySelectorAll("[data-jualin]").forEach(b => b.onclick = () => {
+    JU.alin[b.dataset.jualin] = true; juRender();
+    const f = [...box.querySelectorAll("form[data-jualin-form]")].find(x => x.dataset.jualinForm === b.dataset.jualin); if(f) f.elements.t.focus();
+  });
+  box.querySelectorAll("[data-jualin-cancelar]").forEach(b => b.onclick = () => { const st = b.dataset.jualinCancelar; delete JU.alin[st]; delete JU.rascunho[juChave(JU.dia, st, "alinhamentos")]; juRender(); });
   box.querySelectorAll("[data-junovo-cancelar]").forEach(b => b.onclick = () => { const s = b.dataset.junovoCancelar; delete JU.novos[s]; delete JU.rascunho["novo|" + s]; juRender(); });
   box.querySelectorAll("form[data-juchave], form[data-junovo-form]").forEach(f => {
     const k = f.dataset.juchave || ("novo|" + f.dataset.junovoForm);
@@ -8131,11 +8166,12 @@ async function juSalvar(f){
   try{
     const data = k.split("|")[0];
     const json = await juApi({ tipo:"justsalvar", pin:JU.pin, data, sub:JU_SUB, station, ind, valor, texto, resp });
-    if(!json || !json.item) throw new Error("o Apps Script não confirmou o salvamento");
+    if(!json || !json.item) throw new Error(JU_SEM_ROTA.replace("justlistar", "justsalvar"));
     JU.just[k] = json.item; JU.analistas.add(resp); juAtualizarAnalistas();
     try{ localStorage.setItem("ju_resp", resp); }catch(e){}
     delete JU.editando[k]; delete JU.rascunho[k];
     if(novo){ delete JU.novos[station]; delete JU.rascunho["novo|" + station]; }
+    if(f.dataset.jualinForm) delete JU.alin[f.dataset.jualinForm];
     juRender();
   } catch(err){
     if(err.pin){ juMostrarGate("A senha mudou. Digite a nova senha."); return; }
@@ -8153,7 +8189,8 @@ function juResumo(){
   if(out) L.push("Same Day: " + juPct(sd / out) + " (meta " + Math.round(JU_META_SD*100) + "%)");
   ests.forEach(s => {
     const prob = s.inds.filter(i => !i.ok && !i.carregando);
-    if(!prob.length) return;
+    const alin = JU.just[juChave(JU.dia, s.nome, "alinhamentos")];
+    if(!prob.length && !alin) return;
     L.push("", s.nome.toUpperCase() + " — " + juNum(s.out) + " pacotes coletados");
     prob.forEach(i => {
       const j = JU.just[i.chave];
@@ -8161,6 +8198,7 @@ function juResumo(){
       if(i.itens.length) L.push("   " + i.itens.slice(0, JU_N_OFENSORES).map(l => l[0] + (l[1] && l[1] !== "—" ? " - " + l[1] : "")).join("; "));
       L.push("   " + (j ? j.texto.replace(/\n+/g, " ") + " — " + j.resp : "PENDENTE de justificativa"));
     });
+    if(alin) L.push("• Alinhamentos: " + alin.texto.replace(/\n+/g, " ") + " — " + alin.resp);
   });
   if(L.length <= 2) L.push("", "Todas as stations dentro da meta.");
   return L.join("\n");
