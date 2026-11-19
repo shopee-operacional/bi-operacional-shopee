@@ -7701,7 +7701,10 @@ setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
 // (Justificativas.gs, propriedade do script JUST_PIN) — não fica no site.
 // Salvo na aba JUSTIFICATIVAS_CO (rotas ?tipo=justlistar e ?tipo=justsalvar).
 const JU_SUB = "CO";          // sub-regional desta aba
-const JU_META_SD = 0.80;      // Same Day abaixo disso pede justificativa
+const JU_META_SD = 0.80;      // Same Day: target é ACIMA de 80% — 80% ou menos pede justificativa
+const JU_FORA_STATION = /^XPT/i; // não entram como station nas justificativas
+// As bases chamam a sub de jeitos diferentes ("CO" na BASE_TRATADA, "CO/N" no Same Day…)
+const juEhSub = v => { const t = String(v || "").toUpperCase().replace(/\s+/g, ""); return t === JU_SUB || t.startsWith(JU_SUB + "/"); };
 const JU_META_LT = 2.0;       // Lead Time (dias) acima disso pede justificativa
 const JU_N_OFENSORES = 5;
 const JU_DIAS_ABAS = 7;
@@ -7798,9 +7801,9 @@ function juGuardarSd(dia, json){
   rs.forEach(r => {
     if(r.station && r.subreg) JU.subPorStation[r.station] = r.subreg;
     if(r.id && r.nome) JU.nomePorDop[juKey(r.id)] = r.nome;
-    if(r.subreg === JU_SUB && r.resp) JU.analistas.add(String(r.resp).trim());
+    if(juEhSub(r.subreg) && r.resp) JU.analistas.add(String(r.resp).trim());
   });
-  JU.sd[dia] = rs.filter(r => r.subreg === JU_SUB);
+  JU.sd[dia] = rs.filter(r => juEhSub(r.subreg));
   juAtualizarAnalistas();
 }
 async function juCarregarSd(dia){
@@ -7812,7 +7815,7 @@ async function juCarregarLt(dia){
   if(JU.lt[dia]) return;
   try{
     const json = LT_CACHE[dia + "_" + dia] || await juApi({ tipo:"leadtime", ini:dia, fim:dia }, 90000);
-    const rs = juLinhas(json).filter(r => (r.subreg || JU.subPorStation[r.station]) === JU_SUB);
+    const rs = juLinhas(json).filter(r => juEhSub(r.subreg || JU.subPorStation[r.station]));
     if(json.periodoIni && json.periodoIni !== dia) rs.aviso = "o Lead Time desse dia ainda não está na base";
     JU.lt[dia] = rs;
   } catch(err){ const rs = []; rs.erro = err.message; JU.lt[dia] = rs; }
@@ -7852,15 +7855,16 @@ function juMontarDia(dia){
   const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[] });
   sd.forEach(r => { const o = pega(r.station || "—"); o.out += +r.outD || 0; o.sd += +r.sdD || 0; o.linhasSd.push(r); });
   lt.forEach(r => pega(r.station || "—").ltRows.push(r));
-  if(otpOk) OTP.rows.forEach(r => { if(r.data === dia && r.falha && juSubDe(r) === JU_SUB) pega(r.station || "—").otp.push(r); });
+  if(otpOk) OTP.rows.forEach(r => { if(r.data === dia && r.falha && juEhSub(juSubDe(r))) pega(r.station || "—").otp.push(r); });
   if(ldOk) LD_DET.forEach(r => {
-    if(r.data !== dia || juSubDe(r) !== JU_SUB) return;
+    if(r.data !== dia || !juEhSub(juSubDe(r))) return;
     if(r.perf === "No Show 3PL") pega(r.station || "—").ns.push(r);
     else if(r.perf === "Partial Pickup") pega(r.station || "—").pp.push(r);
   });
   // todas as stations da sub aparecem, mesmo sem movimento no dia (vão para o fim)
   juStationsDaSub().forEach(nome => pega(nome));
   delete st["—"];
+  Object.keys(st).forEach(k => { if(JU_FORA_STATION.test(k)) delete st[k]; });
   const lista = Object.values(st).sort((a,b) => b.out - a.out || a.nome.localeCompare(b.nome));
   lista.forEach(s => {
     s.inds = JU_INDS.map(def => juMontarInd(def, s, dia, otpOk, ldOk));
@@ -7877,7 +7881,7 @@ function juMontarDia(dia){
 // Guarda a lista no navegador para nenhuma sumir num dia sem dados.
 function juStationsDaSub(){
   const set = new Set();
-  const add = (st, sub) => { st = String(st || "").trim(); if(st && st !== "—" && sub === JU_SUB) set.add(st); };
+  const add = (st, sub) => { st = String(st || "").trim(); if(st && st !== "—" && juEhSub(sub) && !JU_FORA_STATION.test(st)) set.add(st); };
   try{ (DATA || []).forEach(d => add(d.estacao, d.subreg)); }catch(e){}
   Object.keys(JU.subPorStation).forEach(st => add(st, JU.subPorStation[st]));
   Object.values(JU.lt).forEach(rs => (rs || []).forEach(r => add(r.station, r.subreg || JU.subPorStation[r.station])));
@@ -7887,6 +7891,7 @@ function juStationsDaSub(){
   try{ (BL_ROWS || []).forEach(r => add(r.station, r.sub)); }catch(e){}
   let salvas = [];
   try{ salvas = JSON.parse(localStorage.getItem("ju_stations_" + JU_SUB) || "[]"); }catch(e){}
+  salvas = salvas.filter(st => !JU_FORA_STATION.test(st));
   salvas.forEach(st => set.add(st));
   const lista = [...set].sort();
   if(lista.length !== salvas.length){ try{ localStorage.setItem("ju_stations_" + JU_SUB, JSON.stringify(lista)); }catch(e){} }
@@ -7935,8 +7940,8 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
   else if(def.id === "sd"){
     if(!s.out){ o.valor = "sem pickup no dia"; return o; }
     const v = s.sd / s.out;
-    o.ok = v >= JU_META_SD;
-    o.valor = juPct(v) + " · meta " + Math.round(JU_META_SD * 100) + "%";
+    o.ok = v > JU_META_SD;
+    o.valor = juPct(v) + " · target acima de " + Math.round(JU_META_SD * 100) + "%";
     if(!o.ok){
       o.cab = ["DOP", "Agência · Responsável", "Fora do Same Day", "Inbound pós-coleta"];
       o.itens = s.linhasSd.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0)
@@ -7984,8 +7989,9 @@ function juRenderAviso(){
 }
 function juRenderKpis(ests){
   const p = juPendencias(ests);
-  const out = ests.reduce((t,s) => t + s.out, 0), sd = ests.reduce((t,s) => t + s.sd, 0);
-  const abaixo = ests.filter(s => s.out && s.sd / s.out < JU_META_SD).length;
+  const rsSub = JU.sd[JU.dia] || [];
+  const out = rsSub.reduce((t,r) => t + (+r.outD || 0), 0), sd = rsSub.reduce((t,r) => t + (+r.sdD || 0), 0);
+  const abaixo = ests.filter(s => s.out && s.sd / s.out <= JU_META_SD).length;
   const conta = id => { let n = 0, st = 0; ests.forEach(s => { const i = s.inds.find(x => x.id === id); if(i && !i.ok && i.itens.length){ n += new Set(i.itens.map(x => x[0])).size; st++; } }); return { n, st }; };
   const ns = conta("ns"), pp = conta("pp"), ot = conta("otp");
   let ltO = 0, ltT = 0; (JU.lt[JU.dia] || []).forEach(r => { ltO += +r.orders || 0; ltT += +r.tempo || 0; });
@@ -8010,7 +8016,7 @@ function juRenderSdSub(){
   const top = rs.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0).sort((a,b) => b.fora - a.fora).slice(0, JU_N_OFENSORES);
   el.innerHTML = `
     <div class="ju-sdnum"><div class="l">Same Day · ${JU_SUB}</div><div class="v">${juPct(v)}</div>
-      <div class="m ${v >= JU_META_SD ? "ok" : "crit"}">${v >= JU_META_SD ? "Acima" : "Abaixo"} da meta de ${Math.round(JU_META_SD*100)}%</div>
+      <div class="m ${v > JU_META_SD ? "ok" : "crit"}">${v > JU_META_SD ? "Acima" : "Abaixo"} da meta de ${Math.round(JU_META_SD*100)}%</div>
       <div class="ju-trilho"><div class="enc" style="width:${Math.min(100, v*100).toFixed(1)}%"></div><div class="meta" style="left:${JU_META_SD*100}%"></div></div></div>
     <div class="ju-ofens"><div class="ju-ofens-t">${JU_N_OFENSORES} maiores ofensores do dia · <span>${juNum(top.reduce((t,x) => t + x.fora, 0))} pacotes fora do Same Day</span></div>
       <div class="ju-ofens-g">${top.map(x => `<div class="ju-ofens-i"><span><b>${esc(x.r.nome || "—")}</b> <span class="sd-hint">${esc(juDop(x.r.id))}</span></span><span class="p">${juNum(x.fora)} pac.</span></div>`).join("") || '<div class="sd-hint">Nenhum pacote fora do Same Day.</div>'}</div></div>`;
