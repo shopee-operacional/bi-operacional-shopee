@@ -228,6 +228,7 @@ if(!document.querySelector(".app")){
         <div class="filter"><label>Coordenador</label><select id="ls-f-coord"></select></div>
         <div class="filter"><label>Analista</label><select id="ls-f-analista"></select></div>
         <div class="filter"><label>Canal</label><select id="ls-f-canal"></select></div>
+        <div class="filter"><label>DOP</label><input id="ls-f-dop" list="ls-dop-lista" placeholder="Código ou nome da agência" autocomplete="off"><datalist id="ls-dop-lista"></datalist></div>
         <button class="theme-btn" id="ls-limpar">Limpar filtros</button>
         <button class="theme-btn" id="ls-refresh">⟳ Atualizar</button>
       </div>
@@ -5697,7 +5698,7 @@ function renderPlanoSab(){
 // Uma linha por pacote perdido: data, DOP, analista, coordenador, sub-regional,
 // regional (de/para da CRM), canal e valor (COGS).
 let LS = null, LS_PEND = null;
-const LS_F = { per:"d30", ini:"", fim:"", reg:"__default__", sub:"__default__", coord:"", analista:"", canal:"", busca:"" };
+const LS_F = { per:"d30", ini:"", fim:"", reg:"__default__", sub:"__default__", coord:"", analista:"", canal:"", dop:"", busca:"" };
 const LS_EXP = { analista:false, dop:false, tab:false };
 const LS_REFRESH_MS = 30 * 60 * 1000, LS_LIM = 15, LS_LIM_TAB = 100;
 const lsCacheLer = ()=> ldIdb("readonly", st=> st.get("losses")).catch(()=>null);
@@ -5763,7 +5764,15 @@ function lsPassa(r, ignorar){
     && (ignorar==="sub" || !LS_F.sub || r.sub===LS_F.sub)
     && (ignorar==="coord" || !LS_F.coord || r.coord===LS_F.coord)
     && (ignorar==="analista" || !LS_F.analista || r.analista===LS_F.analista)
-    && (ignorar==="canal" || !LS_F.canal || r.canal===LS_F.canal);
+    && (ignorar==="canal" || !LS_F.canal || r.canal===LS_F.canal)
+    && (ignorar==="dop" || lsDopOk(r));
+}
+// busca por DOP: aceita o código (ou parte dele) ou o nome da agência; vários separados por vírgula
+function lsDopOk(r){
+  const q = (LS_F.dop || "").trim().toLowerCase();
+  if(!q) return true;
+  const alvo = (String(r.dop||"") + " " + String(r.nome||"")).toLowerCase();
+  return q.split(/[,;]+/).map(t=>t.trim()).filter(Boolean).some(t=> alvo.includes(t));
 }
 function lsAgrupar(lista, chave){
   const m = new Map();
@@ -5808,6 +5817,9 @@ function renderLosses(){
   opcoes("ls-f-coord", u(LS.rows.filter(r=>lsPassa(r,"coord")),"coord"), LS_F.coord, "Todos");
   opcoes("ls-f-analista", u(LS.rows.filter(r=>lsPassa(r,"analista")),"analista"), LS_F.analista, "Todos");
   opcoes("ls-f-canal", u(LS.rows.filter(r=>lsPassa(r,"canal")),"canal"), LS_F.canal, "Todos");
+  { const m = new Map(); LS.rows.filter(r=>lsPassa(r,"dop")).forEach(r=>{ if(r.dop && !m.has(r.dop)) m.set(r.dop, r.nome||""); });
+    $("ls-dop-lista").innerHTML = [...m].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"pt-BR")).map(([d,n])=>`<option value="${esc(d)}">${esc(n)}</option>`).join("");
+    if(document.activeElement !== $("ls-f-dop")) $("ls-f-dop").value = LS_F.dop; }
   $("ls-f-per").value = LS_F.per; $("ls-f-ini").value = LS_F.ini; $("ls-f-fim").value = LS_F.fim;
   const em = LS.em ? new Date(LS.em) : null;
   $("ls-subtitle").textContent = "— última perda registrada: " + (LS.ult ? fmtDiaBR(LS.ult) + "/" + LS.ult.slice(0,4) : "—")
@@ -5895,12 +5907,13 @@ function lsRe(){ LS_EXP.analista = LS_EXP.dop = LS_EXP.tab = false; renderLosses
   $("ls-f-coord").addEventListener("change", e=>{ LS_F.coord = e.target.value; LS_F.analista = ""; lsRe(); });
   $("ls-f-analista").addEventListener("change", e=>{ LS_F.analista = e.target.value; lsRe(); });
   $("ls-f-canal").addEventListener("change", e=>{ LS_F.canal = e.target.value; lsRe(); });
-  $("ls-limpar").addEventListener("click", ()=>{ Object.assign(LS_F, {per:"d30", reg:"", sub:"", coord:"", analista:"", canal:"", busca:""}); $("ls-busca").value = ""; lsAplicarPeriodo(); lsRe(); });
+  $("ls-limpar").addEventListener("click", ()=>{ Object.assign(LS_F, {per:"d30", reg:"", sub:"", coord:"", analista:"", canal:"", dop:"", busca:""}); $("ls-busca").value = ""; $("ls-f-dop").value = ""; lsAplicarPeriodo(); lsRe(); });
   $("ls-refresh").addEventListener("click", ()=>{ $("ls-subtitle").textContent = "— atualizando…"; loadLosses("forcar"); });
   $("ls-analista-more").addEventListener("click", ()=>{ LS_EXP.analista = !LS_EXP.analista; renderLosses(); });
   $("ls-dop-more").addEventListener("click", ()=>{ LS_EXP.dop = !LS_EXP.dop; renderLosses(); });
   $("ls-more").addEventListener("click", ()=>{ LS_EXP.tab = !LS_EXP.tab; renderLosses(); });
   $("ls-csv").addEventListener("click", lsBaixarCsv);
+  let td; $("ls-f-dop").addEventListener("input", e=>{ clearTimeout(td); td = setTimeout(()=>{ LS_F.dop = e.target.value; lsRe(); }, 300); });
   let t; $("ls-busca").addEventListener("input", e=>{ clearTimeout(t); t = setTimeout(()=>{ LS_F.busca = e.target.value; LS_EXP.tab = false; renderLsLista(lsFiltrados()); }, 200); });
 })();
 // ==================== BACKLOG SELLER & PUDO ====================
