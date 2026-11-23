@@ -7741,6 +7741,25 @@ function juApi(params, timeout){
     return json;
   });
 }
+// Quando o Apps Script está ocupado (outra execução segurando a trava —
+// ex.: gatilho de atualização das bases), o salvamento volta com erro de
+// "lock". Nesse caso tenta de novo sozinho, esperando um pouco mais a cada vez.
+const JU_ERRO_OCUPADO = /lock|trava|ocupado|busy|too many|simultane/i;
+async function juApiComRetentativa(params, aoRetentar, tentativas){
+  const max = tentativas || 4, esperas = [3000, 6000, 10000];
+  for(let n = 1; ; n++){
+    try{
+      return await juApi(params);
+    } catch(err){
+      if(err.pin || n >= max || !JU_ERRO_OCUPADO.test(err.message || "")){
+        if(JU_ERRO_OCUPADO.test(err.message || "")) err.message = "o servidor está ocupado atualizando as bases. Espere 1 minuto e clique em salvar de novo (o texto não se perdeu).";
+        throw err;
+      }
+      if(aoRetentar) aoRetentar(n + 1);
+      await new Promise(r => setTimeout(r, esperas[Math.min(n - 1, esperas.length - 1)]));
+    }
+  }
+}
 const juLinhas = json => (json.rows || []).map(r => { const o = {}; json.cols.forEach((c,i) => o[c] = r[i]); return o; });
 
 // ---- senha ----
@@ -8165,7 +8184,11 @@ async function juSalvar(f){
   btn.disabled = true; btn.textContent = "Salvando…"; aviso.textContent = "";
   try{
     const data = k.split("|")[0];
-    const json = await juApi({ tipo:"justsalvar", pin:JU.pin, data, sub:JU_SUB, station, ind, valor, texto, resp });
+    const json = await juApiComRetentativa(
+      { tipo:"justsalvar", pin:JU.pin, data, sub:JU_SUB, station, ind, valor, texto, resp },
+      n => { btn.textContent = "Salvando… (tentativa " + n + ")"; aviso.textContent = "Servidor ocupado atualizando as bases, tentando de novo…"; }
+    );
+    aviso.textContent = "";
     if(!json || !json.item) throw new Error(JU_SEM_ROTA.replace("justlistar", "justsalvar"));
     JU.just[k] = json.item; JU.analistas.add(resp); juAtualizarAnalistas();
     try{ localStorage.setItem("ju_resp", resp); }catch(e){}
