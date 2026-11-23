@@ -5756,9 +5756,31 @@ const lsBRL = v => (v||0).toLocaleString("pt-BR", {style:"currency", currency:"B
 const lsAdd = (iso, n)=>{ const p = iso.split("-"); return new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+n)).toISOString().slice(0,10); };
 const lsDow = iso => new Date(iso + "T12:00:00Z").getUTCDay();
 
+// A data dos losses pode chegar em formatos diferentes: as linhas antigas vêm
+// como texto "2026-11-09", mas as novas (semana 47 em diante) estavam chegando
+// como data do Sheets convertida em texto ("Wed Nov 18 2026 00:00:00 GMT-0300
+// (Brasilia Standard Time)"). Essas ficavam fora de qualquer filtro de período
+// e quebravam a "última perda registrada". Aqui tudo vira AAAA-MM-DD.
+function lsDataIso(v){
+  if(v == null || v === "") return "";
+  if(v instanceof Date) return isNaN(v) ? "" : v.getFullYear() + "-" + String(v.getMonth()+1).padStart(2,"0") + "-" + String(v.getDate()).padStart(2,"0");
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return m[1] + "-" + m[2].padStart(2,"0") + "-" + m[3].padStart(2,"0");
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);            // 18/11/2026
+  if(m) return m[3] + "-" + m[2].padStart(2,"0") + "-" + m[1].padStart(2,"0");
+  m = s.match(/^[A-Za-z]{3} ([A-Za-z]{3}) (\d{1,2}) (\d{4})/); // Wed Nov 18 2026 ...
+  if(m){
+    const mes = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[1].toLowerCase());
+    if(mes >= 0) return m[3] + "-" + String(mes+1).padStart(2,"0") + "-" + m[2].padStart(2,"0");
+  }
+  const d = new Date(s);
+  return isNaN(d) ? "" : lsDataIso(d);
+}
 function lsAplicar(json){
   const num = new Set(json.num || []);
   const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; })
+    .map(r=>{ r.data = lsDataIso(r.data); return r; })
     .filter(r=>r.data);
   rows.forEach(r=>{ r.regional = r.regional || "Sem regional"; r.sub = r.sub || "—"; r.analista = r.analista || "Sem analista"; });
   LS = { hoje: json.hoje || histHoje(), em: json.atualizadoEm || "", rows,
