@@ -7990,10 +7990,10 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
     o.ok = v > JU_META_SD;
     o.valor = juPct(v) + " · target acima de " + Math.round(JU_META_SD * 100) + "%";
     if(!o.ok){
-      o.cab = ["DOP", "Agência · Responsável", "Fora do Same Day", "Inbound pós-coleta"];
+      o.cab = ["DOP", "Agência · Responsável", "Fora do Same Day", "Inbound pós-coleta", "Next day"];
       o.itens = s.linhasSd.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0)
         .sort((a,b) => b.fora - a.fora).slice(0, JU_N_OFENSORES)
-        .map(x => [juDop(x.r.id), (x.r.nome || "—") + (x.r.resp ? " · " + x.r.resp : ""), juNum(x.fora) + " pacotes", juNum(+x.r.posColD || 0)]);
+        .map(x => [juDop(x.r.id), (x.r.nome || "—") + (x.r.resp ? " · " + x.r.resp : ""), juNum(x.fora) + " pacotes", juNum(+x.r.posColD || 0), juNum(+x.r.nextD || 0)]);
     }
   }
   return o;
