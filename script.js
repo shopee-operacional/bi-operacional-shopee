@@ -7799,7 +7799,7 @@ setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
 // ?tipo=nss (Nss.gs) — planilha "NSS Suspeitos | Centro-Oeste | Painel de
 // Investigação", aba REVERSAO_D0 (bloco REGISTRO / HISTÓRICO). As colunas
 // são achadas pelo nome do cabeçalho. Também alimenta o indicador
-// "NSS fora do raio" das Justificativas.
+// "Tratativas de NSS" das Justificativas.
 let NSS_LOADED = false, NSS_PROMESSA = null, NSS_ERRO = "", NSS_META = {};
 let NSS_ROWS = [], NSS_DIAS = [];
 const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", res:"", busca:"" };
@@ -8019,7 +8019,7 @@ const JU_INDS = [
   { id:"ns",  nome:"No Show 3PL" },
   { id:"pp",  nome:"Partial Pickup" },
   { id:"al",  nome:"Rotas não alocadas" },
-  { id:"nss", nome:"NSS fora do raio" },
+  { id:"nss", nome:"Tratativas de NSS" },
   { id:"otp", nome:"Falha de OTP" },
   { id:"lt",  nome:"Lead Time" },
   { id:"sd",  nome:"Same Day" }
@@ -8119,7 +8119,7 @@ async function juIniciar(){
     if(!LD_LOADED){ const p = loadLoja(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
     // rotas não alocadas: mesma base da aba Alocações & Rotas extras
     if(!AL_LOADED){ const p = loadAlocacoes(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
-    // NSS fora do raio: mesma base da aba NSS Fora do Raio
+    // Tratativas de NSS: mesma base da aba Tratativas de NSS
     if(!NSS_LOADED){ const p = loadNss(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
     await juAbrirDia(ult);
   } catch(err){
@@ -8364,7 +8364,7 @@ function juRenderKpis(ests){
     { l:"No Show 3PL", v: ld ? juNum(ns.n) : "…", s: !ld ? "carregando" : ns.n ? "lojas em " + plural(ns.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Partial Pickup", v: ld ? juNum(pp.n) : "…", s: !ld ? "carregando" : pp.n ? "lojas em " + plural(pp.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Rotas não alocadas", v: AL_LOADED ? juNum(al.n) : "…", s: !AL_LOADED ? "carregando" : al.n ? "em " + plural(al.st, "station", "stations") : "todas alocadas", c: AL_LOADED && al.n ? "crit" : "" },
-    { l:"NSS fora do raio", v: NSS_LOADED ? juNum(ests.reduce((t,s) => t + s.nss.length, 0)) : "…", s: !NSS_LOADED ? (NSS_ERRO ? "não carregou" : "carregando") : (() => { const q = ests.filter(s => s.nss.length).length, e = ests.reduce((t,s) => t + s.nss.reduce((a,r) => a + r.espera, 0), 0); return q ? "em " + plural(q, "station", "stations") + " · " + juNum(e) + " pedidos em espera" : "nenhum caso"; })(), c: NSS_LOADED && ests.some(s => s.nss.length) ? "crit" : "" },
+    { l:"Tratativas de NSS", v: NSS_LOADED ? juNum(ests.reduce((t,s) => t + s.nss.length, 0)) : "…", s: !NSS_LOADED ? (NSS_ERRO ? "não carregou" : "carregando") : (() => { const q = ests.filter(s => s.nss.length).length, e = ests.reduce((t,s) => t + s.nss.reduce((a,r) => a + r.espera, 0), 0); return q ? "em " + plural(q, "station", "stations") + " · " + juNum(e) + " pedidos em espera" : "nenhum caso"; })(), c: NSS_LOADED && ests.some(s => s.nss.length) ? "crit" : "" },
     { l:"Falha de OTP", v: otp ? juNum(ests.reduce((t,s) => t + s.otp.length, 0)) : "…", s: !otp ? "carregando" : ot.st ? "em " + plural(ot.st, "station", "stations") : "nenhuma falha" },
     { l:"Lead Time " + JU_SUB, v: ltO ? juDias(ltT / ltO) : "—", s: ltAcima ? plural(ltAcima, "station acima", "stations acima") + " da meta" : "dentro da meta" }
   ];
