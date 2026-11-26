@@ -2828,6 +2828,7 @@ async function loadBacklogResumo(){
     BR_ERRO = false;
     BR_INFO = { atualizadoEm: json.atualizadoEm, frentes: json.frentes || [], frentesFaltando: json.frentesFaltando || [] };
     if(DATA.length) renderAll();
+    if(DET_ATUAL && document.getElementById("sec-detalhe").classList.contains("active")) renderDetail(DET_ATUAL);
   } catch(err){
     console.error("Backlog ao vivo:", err);
     BR_ERRO = true;
@@ -3523,8 +3524,18 @@ function openDetail(dop){
   document.getElementById("detail-search").value = d ? d.agencia : "";
   renderDetail(d);
 }
+// Backlog AO VIVO de um DOP: soma Forward + RR + BSC Failed (mesma fonte do card
+// "Backlog Total" do Resumo). null = base ao vivo ainda não carregou / falhou.
+function backlogVivoDop(dop){
+  if(!BR_ROWS || HIST_DIA) return null;
+  const k = dopKey(dop), o = { total:0, d0:0, d1:0, porFrente:{}, achou:false };
+  BR_ROWS.forEach(b => { if(dopKey(b.dop) !== k) return; o.achou = true; o.total += +b.total || 0; o.d0 += +b.d0 || 0; o.d1 += +b.d1 || 0; o.porFrente[b.frente] = (o.porFrente[b.frente] || 0) + (+b.total || 0); });
+  return o;
+}
+let DET_ATUAL = null;
 function renderDetail(d){
   const card = document.getElementById("detail-card");
+  DET_ATUAL = d || null;
   if(!d){ card.innerHTML = '<div class="empty-state">Nenhuma agência encontrada.</div>'; return; }
   // Se esse DOP tiver dado na planilha de frente (Forward/RR/BSC Failed),
   // "Backlog Envelhecido" e "% Atrasados" vêm de lá em vez da BASE_TRATADA —
@@ -3556,7 +3567,13 @@ function renderDetail(d){
       </div>
     </div>
     <div class="detail-grid">
-      <div class="detail-item"><div class="l">Backlog Total (OPS)</div><div class="v">${d.backlogOps.toLocaleString("pt-BR")}</div></div>
+      ${(() => {
+        const nota = t => `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">${t}</div>`;
+        const bv = backlogVivoDop(d.dop);
+        if(!bv) return `<div class="detail-item"><div class="l">Backlog Total (OPS)</div><div class="v">${d.backlogOps.toLocaleString("pt-BR")}</div>${nota(HIST_DIA ? "como estava na base salva desse dia" : BR_ERRO ? "fim do último dia · total ao vivo indisponível" : "fim do último dia · carregando o total ao vivo…")}</div>`;
+        const fr = Object.keys(bv.porFrente).map(f => esc(f) + " " + bv.porFrente[f].toLocaleString("pt-BR")).join(" · ");
+        return `<div class="detail-item"><div class="l">Backlog Total (ao vivo)</div><div class="v">${bv.total.toLocaleString("pt-BR")}</div>${nota(bv.achou ? fr + (bv.d0 ? " · " + bv.d0.toLocaleString("pt-BR") + " de hoje (D0)" : "") : "DOP sem pacotes nas abas Forward/RR/BSC")}${nota("fim do último dia (BASE_TRATADA): " + d.backlogOps.toLocaleString("pt-BR"))}</div>`;
+      })()}
       <div class="detail-item"><div class="l">% FIFO Semana</div><div class="v">${pctFifo(d.fifoSemana)}</div></div>
       <div class="detail-item"><div class="l">% FIFO Hoje</div><div class="v">${pct0(d.fifoHojeFlag)}</div></div>
       <div class="detail-item"><div class="l">% Same Day Semana</div><div class="v">${pct0(d.sameDaySemana)}</div></div>
@@ -3576,7 +3593,8 @@ function renderDetail(d){
 document.getElementById("detail-search").addEventListener("input", e=>{
   const q = e.target.value.trim().toLowerCase();
   if(!q){ document.getElementById("detail-card").innerHTML = '<div class="empty-state">Busque uma agência pelo DOP ou nome para ver o detalhe completo.</div>'; return; }
-  const d = DATA.find(x => String(x.dop).toLowerCase()===q || x.agencia.toLowerCase().includes(q) || x.fantasia.toLowerCase().includes(q));
+  const qd = q.replace(/^dop/, "");
+  const d = DATA.find(x => String(x.dop).toLowerCase()===q || (dopKey(qd) && /^\d+$/.test(qd) && dopKey(x.dop)===dopKey(qd))) || DATA.find(x => x.agencia.toLowerCase().includes(q) || x.fantasia.toLowerCase().includes(q));
   renderDetail(d);
 });
 function renderGestaoPills(){
