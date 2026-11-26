@@ -8052,6 +8052,7 @@ setInterval(() => { if(!NSS_PROMESSA) loadNss(true).then(() => { if(typeof juRen
 // Salvo na aba JUSTIFICATIVAS_CO (rotas ?tipo=justlistar e ?tipo=justsalvar).
 const JU_SUB = "CO";          // sub-regional desta aba
 const JU_META_SD = 0.80;      // Same Day: target é ACIMA de 80% — 80% ou menos pede justificativa
+const JU_META_SD_SUB = 0.90;  // meta do Same Day da sub-regional inteira (todas as stations juntas)
 // Target de Same Day específico por station (sobrepõe o JU_META_SD só nelas)
 const JU_META_SD_STATION = { "SOC-GO2": 0.90 };
 const juMetaSd = nome => { const k = String(nome || "").toUpperCase().trim(); return JU_META_SD_STATION[k] != null ? JU_META_SD_STATION[k] : JU_META_SD; };
@@ -8408,7 +8409,7 @@ function juRenderKpis(ests){
   const plural = (n, a, b) => n + " " + (n === 1 ? a : b);
   const k = [
     { l:"Justificativas", v: p.total ? (p.total - p.pend) + " de " + p.total : "—", s: p.pend ? p.pend + " ainda pendentes" : (p.total ? "todas respondidas" : "nada a justificar"), c: p.pend ? "crit" : "ok" },
-    { l:"Same Day " + JU_SUB, v: out ? juPct(sd / out) : "—", s: abaixo ? plural(abaixo, "station abaixo", "stations abaixo") + " de " + Math.round(JU_META_SD*100) + "%" : "todas na meta" },
+    { l:"Same Day " + JU_SUB, v: out ? juPct(sd / out) : "—", s: abaixo ? plural(abaixo, "station abaixo", "stations abaixo") + " da própria meta · meta da " + JU_SUB + ": " + Math.round(JU_META_SD_SUB*100) + "%" : "todas na meta · meta da " + JU_SUB + ": " + Math.round(JU_META_SD_SUB*100) + "%", c: out ? (sd / out > JU_META_SD_SUB ? "ok" : "crit") : "" },
     { l:"No Show 3PL", v: ld ? juNum(ns.n) : "…", s: !ld ? "carregando" : ns.n ? "lojas em " + plural(ns.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Partial Pickup", v: ld ? juNum(pp.n) : "…", s: !ld ? "carregando" : pp.n ? "lojas em " + plural(pp.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Rotas não alocadas", v: AL_LOADED ? juNum(al.n) : "…", s: !AL_LOADED ? "carregando" : al.n ? "em " + plural(al.st, "station", "stations") : "todas alocadas", c: AL_LOADED && al.n ? "crit" : "" },
@@ -8426,8 +8427,8 @@ function juRenderSdSub(){
   const top = rs.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0).sort((a,b) => b.fora - a.fora).slice(0, JU_N_OFENSORES);
   el.innerHTML = `
     <div class="ju-sdnum"><div class="l">Same Day · ${JU_SUB}</div><div class="v">${juPct(v)}</div>
-      <div class="m ${v > JU_META_SD ? "ok" : "crit"}">${v > JU_META_SD ? "Acima" : "Abaixo"} da meta de ${Math.round(JU_META_SD*100)}%</div>
-      <div class="ju-trilho"><div class="enc" style="width:${Math.min(100, v*100).toFixed(1)}%"></div><div class="meta" style="left:${JU_META_SD*100}%"></div></div></div>
+      <div class="m ${v > JU_META_SD_SUB ? "ok" : "crit"}">${v > JU_META_SD_SUB ? "Acima" : "Abaixo"} da meta de ${Math.round(JU_META_SD_SUB*100)}%</div>
+      <div class="ju-trilho"><div class="enc" style="width:${Math.min(100, v*100).toFixed(1)}%"></div><div class="meta" style="left:${JU_META_SD_SUB*100}%"></div></div></div>
     <div class="ju-ofens"><div class="ju-ofens-t">${JU_N_OFENSORES} maiores ofensores do dia · <span>${juNum(top.reduce((t,x) => t + x.fora, 0))} pacotes fora do Same Day</span></div>
       <div class="ju-ofens-g">${top.map(x => `<div class="ju-ofens-i"><span><b>${esc(x.r.nome || "—")}</b> <span class="sd-hint">${esc(juDop(x.r.id))}</span></span><span class="p">${juNum(x.fora)} pac.</span></div>`).join("") || '<div class="sd-hint">Nenhum pacote fora do Same Day.</div>'}</div></div>`;
 }
@@ -8610,13 +8611,13 @@ function juResumo(){
   const dataTxt = fmtDiaBR(JU.dia) + "/" + JU.dia.slice(0,4);
   const p = juPendencias(ests);
   const H = [], T = [];
-  const sdOk = out && sd / out > JU_META_SD;
+  const sdOk = out && sd / out > JU_META_SD_SUB;
   H.push(`<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.45">`);
   H.push(`<div style="font-size:18px;font-weight:bold;color:${LARANJA};margin:0 0 2px">Justificativas · Sub-regional ${e(JU_SUB)} · ${dataTxt}</div>`);
   T.push("JUSTIFICATIVAS · SUB-REGIONAL " + JU_SUB + " · " + dataTxt);
   if(out){
-    H.push(`<div style="margin:0 0 2px">Same Day ${e(JU_SUB)}: <b style="color:${sdOk ? "#0a7a0a" : VERM}">${juPct(sd / out)}</b> <span style="color:${CINZA}">(target acima de ${Math.round(JU_META_SD*100)}%)</span></div>`);
-    T.push("Same Day " + JU_SUB + ": " + juPct(sd / out) + " (target acima de " + Math.round(JU_META_SD*100) + "%)");
+    H.push(`<div style="margin:0 0 2px">Same Day ${e(JU_SUB)}: <b style="color:${sdOk ? "#0a7a0a" : VERM}">${juPct(sd / out)}</b> <span style="color:${CINZA}">(target acima de ${Math.round(JU_META_SD_SUB*100)}%)</span></div>`);
+    T.push("Same Day " + JU_SUB + ": " + juPct(sd / out) + " (target acima de " + Math.round(JU_META_SD_SUB*100) + "%)");
   }
   H.push(`<div style="color:${CINZA};margin:0 0 14px">${p.total ? (p.total - p.pend) + " de " + p.total + " indicadores justificados" + (p.pend ? ` · <b style="color:${VERM}">${p.pend} pendente${p.pend === 1 ? "" : "s"}</b>` : "") : "Nenhum indicador fora da meta"}</div>`);
   if(p.total) T.push((p.total - p.pend) + " de " + p.total + " justificados" + (p.pend ? " · " + p.pend + " pendente(s)" : ""));
