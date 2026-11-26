@@ -716,6 +716,7 @@ if(!document.querySelector(".app")){
         <div class="filter"><label>Station</label><select id="nss-f-station"></select></div>
         <div class="filter"><label>Justificativa</label><select id="nss-f-just"></select></div>
         <div class="filter"><label>Resultado (analista)</label><select id="nss-f-res"></select></div>
+        <div class="filter"><label>Tipo</label><select id="nss-f-tipo"></select></div>
         <button class="theme-btn" id="nss-limpar">Limpar filtros</button>
       </div>
       <div id="nss-loading"></div>
@@ -7801,8 +7802,12 @@ setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
 // são achadas pelo nome do cabeçalho. Também alimenta o indicador
 // "Tratativas de NSS" das Justificativas.
 let NSS_LOADED = false, NSS_PROMESSA = null, NSS_ERRO = "", NSS_META = {};
+// Site onde os analistas registram a tratativa (Shopee SPX · Painel de Tratativa de Ocorrências NSS).
+// Cole aqui o link completo da barra de endereço desse site. Vazio = "Sem tratativa" não vira link.
+const NSS_LINK_TRATATIVA = "https://script.google.com/a/macros/shopee.com/s/AKfycbzGIN1ACuCcpo0QoKbNw0jaSOOKs-xMYXYBmK0v6xVyOS2qlIaOO0QpWzN8jrakrLxT/exec";
+const nssLinkOk = () => /^https:\/\//.test(NSS_LINK_TRATATIVA);
 let NSS_ROWS = [], NSS_DIAS = [];
-const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", res:"", busca:"" };
+const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", res:"", tipo:"", busca:"" };
 const NSS_CAMPOS = {
   dh: /data\s*\/?\s*hora|data e hora/i, tipo: /^tipo$/i, station: /^(hub|station|base|hub_code)$/i,
   driverId: /driver\s*_?id|id\s*(do\s*)?driver/i, driver: /^(driver|motorista|driver_name|nome do driver)$/i,
@@ -7905,6 +7910,7 @@ function nssFiltrar(ignorar){
     && (ignorar === "station" || !NSS_F.station || r.station === NSS_F.station)
     && (ignorar === "just" || !NSS_F.just || r.just === NSS_F.just)
     && (ignorar === "res" || !NSS_F.res || nssStatus(r) === NSS_F.res)
+    && (ignorar === "tipo" || !NSS_F.tipo || (r.tipo || "—") === NSS_F.tipo)
     && (!b || [r.driver, r.driverId, r.seller, r.station, r.transp, r.task].join(" ").toLowerCase().includes(b)));
 }
 function nssGrupos(lista, k){
@@ -7927,6 +7933,7 @@ function renderNss(){
   opcoes("nss-f-station", [...new Set(nssFiltrar("station").map(r => r.station).filter(Boolean))].sort(), NSS_F.station, "Todas");
   opcoes("nss-f-just", [...new Set(NSS_ROWS.map(r => r.just).filter(Boolean))].sort(), NSS_F.just, "Todas");
   opcoes("nss-f-res", [...new Set(NSS_ROWS.map(nssStatus))].sort(), NSS_F.res, "Todos");
+  opcoes("nss-f-tipo", [...new Set(NSS_ROWS.map(r => r.tipo || "—"))].sort(), NSS_F.tipo, "Todos");
   document.getElementById("nss-f-ini").value = NSS_F.ini; document.getElementById("nss-f-fim").value = NSS_F.fim;
   const pa = nssPresetAtual();
   document.querySelectorAll("#nss-periodo button").forEach(b => b.classList.toggle("active", b.dataset.p === pa));
@@ -7946,7 +7953,7 @@ function renderNss(){
   const esp = l.reduce((t,r) => t + r.espera, 0);
   const semPac = l.filter(r => /pacote/i.test(r.just)).length, fech = l.filter(r => /fechad/i.test(r.just)).length;
   renderKpis("nss-kpis", [
-    { label:"Casos fora do raio", value:n(l.length), icon:"📍", cls: l.length ? "crit" : "", sub: "em " + sts.size + (sts.size === 1 ? " station" : " stations") },
+    { label:"Casos de NSS", value:n(l.length), icon:"📍", cls: l.length ? "crit" : "", sub: "em " + sts.size + (sts.size === 1 ? " station" : " stations") },
     { label:"Drivers envolvidos", value:n(porDriver.length), icon:"🧑‍✈️", cls: reinc ? "warn" : "", sub: reinc ? reinc + " com mais de 1 caso" : "nenhum reincidente" },
     (() => { const tr = l.filter(r => r.resultado).length, pend = l.length - tr, col = l.filter(r => /colet/i.test(r.resultado)).length;
       return { label:"Tratadas pelo analista", value: l.length ? n(tr) + " de " + n(l.length) : "0", icon:"🧑‍💼", cls: pend ? "crit" : "",
@@ -7970,14 +7977,48 @@ function renderNss(){
   document.getElementById("nss-total").innerHTML = "<b>" + n(det.length) + "</b> casos";
   const lim = NSS_EXP ? det : det.slice(0, 100);
   const temJa = det.some(r => r.justAnalista);
-  document.getElementById("nss-tab-det").innerHTML = "<thead><tr><th>Data/hora</th><th>Station</th><th>Driver</th><th>Transportadora</th><th>Seller</th><th>Justificativa do motorista</th><th>Pedidos em espera</th><th>Resultado</th>" + (temJa ? "<th>Justificativa do analista</th>" : "") + "</tr></thead><tbody>"
-    + (lim.map(r => `<tr><td>${fmtDiaBR(r.data)} ${esc(r.hora)}</td><td>${esc(r.station)}</td><td><b>${esc(r.driver || "—")}</b> <span class="sd-hint">${esc(r.driverId)}</span></td><td>${esc(typeof coTransp === "function" ? coTransp(r.transp) : r.transp)}</td><td>${esc(r.seller)}</td><td>${esc(r.just)}</td><td>${r.espera >= 30 ? `<b style="color:var(--critical)">${n(r.espera)}</b>` : n(r.espera)}</td><td><span class="badge ${nssStatusCls(nssStatus(r))}">${esc(nssStatus(r))}</span></td>${temJa ? `<td style="max-width:280px;white-space:normal">${esc(r.justAnalista || "—")}</td>` : ""}</tr>`).join("")
-    || '<tr><td colspan="9" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
+  document.getElementById("nss-tab-det").innerHTML = "<thead><tr><th>Data/hora</th><th>Tipo</th><th>Station</th><th>Driver</th><th>Transportadora</th><th>Seller</th><th>Justificativa do motorista</th><th>Pedidos em espera</th><th>Resultado</th>" + (temJa ? "<th>Justificativa do analista</th>" : "") + "</tr></thead><tbody>"
+    + (lim.map(r => `<tr><td>${fmtDiaBR(r.data)} ${esc(r.hora)}</td><td>${esc(r.tipo || "—")}</td><td>${esc(r.station)}</td><td><b>${esc(r.driver || "—")}</b> <span class="sd-hint">${esc(r.driverId)}</span></td><td>${esc(typeof coTransp === "function" ? coTransp(r.transp) : r.transp)}</td><td>${esc(r.seller)}</td><td>${esc(r.just)}</td><td>${r.espera >= 30 ? `<b style="color:var(--critical)">${n(r.espera)}</b>` : n(r.espera)}</td><td>${!r.resultado && nssLinkOk() ? `<a href="${esc(NSS_LINK_TRATATIVA)}" target="_blank" rel="noopener" class="badge critical nss-link" data-i="${lim.indexOf(r)}" data-task="${esc(r.task || r.driverId || "")}" style="text-decoration:none">Sem tratativa ↗</a>` : `<span class="badge ${nssStatusCls(nssStatus(r))}">${esc(nssStatus(r))}</span>`}</td>${temJa ? `<td style="max-width:280px;white-space:normal">${esc(r.justAnalista || "—")}</td>` : ""}</tr>`).join("")
+    || '<tr><td colspan="10" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
+  NSS_DET_VIS = lim;
   const more = document.getElementById("nss-det-more");
   more.style.display = det.length > 100 ? "" : "none";
   more.textContent = NSS_EXP ? "− Mostrar só os 100 mais recentes" : "+ Ver todos os " + det.length + " casos";
 }
-let NSS_EXP = false;
+let NSS_EXP = false, NSS_DET_VIS = [];
+// Popup ao passar o mouse no "Sem tratativa ↗": resumo do caso + o que o clique faz
+function nssPopup(){
+  let el = document.getElementById("nss-popup");
+  if(el) return el;
+  el = document.createElement("div");
+  el.id = "nss-popup";
+  el.style.cssText = "position:fixed;z-index:9999;display:none;max-width:320px;padding:12px 14px;border-radius:10px;"
+    + "background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);border-top:3px solid var(--brand);"
+    + "box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:12px;line-height:1.5;pointer-events:none";
+  document.body.appendChild(el);
+  return el;
+}
+function nssPopupMostrar(a, ev){
+  const r = NSS_DET_VIS[+a.dataset.i]; if(!r) return;
+  const el = nssPopup();
+  const lin = (l, v) => v ? `<div><span style="color:var(--text-muted)">${l}:</span> ${esc(v)}</div>` : "";
+  el.innerHTML = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--critical)">NSS sem tratativa do analista</div>`
+    + lin("Data/hora", fmtDiaBR(r.data) + " " + r.hora) + lin("Station", r.station) + lin("Driver", (r.driver || "—") + (r.driverId ? " (" + r.driverId + ")" : ""))
+    + lin("Seller", r.seller) + lin("Justificativa do motorista", r.just) + lin("Pedidos em espera", r.espera ? r.espera.toLocaleString("pt-BR") : "0")
+    + (r.task ? lin("Task", r.task) : "")
+    + `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--grid);color:var(--brand);font-weight:600">${a.dataset.copiado ? "✓ Código copiado — cole na busca do site (Ctrl+V)" : "👆 Clique para abrir o site de tratativa" + (a.dataset.task ? " (o código " + esc(a.dataset.task) + " será copiado)" : "")}</div>`;
+  el.style.display = "block";
+  nssPopupMover(ev);
+}
+function nssPopupMover(ev){
+  const el = document.getElementById("nss-popup"); if(!el || el.style.display === "none") return;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if(x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+  if(y + h > window.innerHeight - 8) y = ev.clientY - h - 14;
+  el.style.left = Math.max(8, x) + "px"; el.style.top = Math.max(8, y) + "px";
+}
+function nssPopupEsconder(){ const el = document.getElementById("nss-popup"); if(el) el.style.display = "none"; }
 (function(){
   const $ = id => document.getElementById(id);
   const r = () => renderNss();
@@ -7987,9 +8028,16 @@ let NSS_EXP = false;
   $("nss-f-station").addEventListener("change", e => { NSS_F.station = e.target.value; r(); });
   $("nss-f-just").addEventListener("change", e => { NSS_F.just = e.target.value; r(); });
   $("nss-f-res").addEventListener("change", e => { NSS_F.res = e.target.value; r(); });
+  $("nss-f-tipo").addEventListener("change", e => { NSS_F.tipo = e.target.value; r(); });
   document.querySelectorAll("#nss-periodo button").forEach(b => b.addEventListener("click", () => { nssPreset(b.dataset.p); r(); }));
-  $("nss-limpar").addEventListener("click", () => { NSS_F.sub = NSS_F.station = NSS_F.just = NSS_F.res = NSS_F.busca = ""; $("nss-busca").value = ""; nssPreset("hoje"); r(); });
+  $("nss-limpar").addEventListener("click", () => { NSS_F.sub = NSS_F.station = NSS_F.just = NSS_F.res = NSS_F.tipo = NSS_F.busca = ""; $("nss-busca").value = ""; nssPreset("hoje"); r(); });
   $("nss-det-more").addEventListener("click", () => { NSS_EXP = !NSS_EXP; r(); });
+  // ao abrir o site de tratativa, copia a task (ou o ID do driver) pra colar na busca de lá
+  $("nss-tab-det").addEventListener("click", e => { const a = e.target.closest(".nss-link"); if(a && a.dataset.task){ try{ navigator.clipboard.writeText(a.dataset.task); a.dataset.copiado = "1"; nssPopupMostrar(a, e); }catch(err){} } });
+  $("nss-tab-det").addEventListener("mouseover", e => { const a = e.target.closest(".nss-link"); if(a) nssPopupMostrar(a, e); });
+  $("nss-tab-det").addEventListener("mousemove", e => { if(e.target.closest(".nss-link")) nssPopupMover(e); });
+  $("nss-tab-det").addEventListener("mouseout", e => { const a = e.target.closest(".nss-link"); if(a && !a.contains(e.relatedTarget)) nssPopupEsconder(); });
+  window.addEventListener("scroll", nssPopupEsconder, true);
   let t; $("nss-busca").addEventListener("input", e => { clearTimeout(t); t = setTimeout(() => { NSS_F.busca = e.target.value; r(); }, 200); });
 })();
 // em segundo plano: carrega ao abrir o painel e relê a cada 15 min (a planilha atualiza durante o dia)
