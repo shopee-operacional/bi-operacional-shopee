@@ -65,6 +65,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
         <div class="nav-item" data-section="planosab"><span class="nav-txt">Plano Sábado &amp; Feriados</span></div>
         <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
+        <div class="nav-item" data-section="nss"><span class="nav-txt">NSS Fora do Raio</span><span class="nav-badge" id="nav-nss-badge" style="display:none">0</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="dados">
@@ -694,6 +695,49 @@ if(!document.querySelector(".app")){
           </div>
           <div class="table-wrap"><table class="data" id="al-tab-det"></table></div>
           <div class="card-expand-btn" id="al-det-more" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NSS FORA DO RAIO -->
+    <div class="section" id="sec-nss">
+      <div class="section-title">NSS Fora do Raio <span class="sd-sub" id="nss-subtitle"></span></div>
+      <div class="sd-toolbar">
+        <div class="filter sd-data"><label>Data início</label><input type="date" id="nss-f-ini"></div>
+        <div class="filter sd-data"><label>Data fim</label><input type="date" id="nss-f-fim"></div>
+        <div class="sd-seg" id="nss-periodo">
+          <button data-p="hoje">Hoje</button>
+          <button data-p="ontem">Ontem</button>
+          <button data-p="7d">7 dias</button>
+          <button data-p="tudo">Tudo</button>
+        </div>
+        <div class="filter"><label>Sub-regional</label><select id="nss-f-sub"></select></div>
+        <div class="filter"><label>Station</label><select id="nss-f-station"></select></div>
+        <div class="filter"><label>Justificativa</label><select id="nss-f-just"></select></div>
+        <button class="theme-btn" id="nss-limpar">Limpar filtros</button>
+      </div>
+      <div id="nss-loading"></div>
+      <div id="nss-conteudo" style="display:none">
+        <div class="kpi-grid" id="nss-kpis"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head"><div class="card-title">Casos por Station</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="nss-chart-station" class="sd-bars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div class="card-title">Justificativa do motorista</div><div class="sd-hint">clique para filtrar</div></div>
+            <div id="nss-chart-just" class="sd-bars"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Drivers com mais casos</div><div class="sd-hint">no período filtrado</div></div>
+          <div class="table-wrap"><table class="data" id="nss-tab-driver"></table></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head"><div class="card-title">Detalhe dos casos</div><div class="losses-total" id="nss-total"></div></div>
+          <div class="search-box" style="margin:0 0 10px;"><input id="nss-busca" placeholder="Buscar driver, seller, station, task…"></div>
+          <div class="table-wrap"><table class="data" id="nss-tab-det"></table></div>
+          <div class="card-expand-btn" id="nss-det-more" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -3573,7 +3617,7 @@ function renderAll(){
 // Risco) só valem para Resumo Geral, Desempenho, Detalhe, Análise de Backlog,
 // Base de Dados e Histórico Pós-Fechamento. Nas abas com filtro próprio
 // (Same Day, Lead Time, Alocações, Pagamentos, CRM) eles ficam escondidos.
-const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "planosab", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "notasfiscais", "crm", "justificativas"];
+const SECOES_SEM_FILTRO_TOPO = ["coletas", "stuck", "planosab", "otp", "losses", "wbr", "sameday", "leadtime", "volume", "forecast", "backlogloja", "alocacoes", "loja", "nss", "notasfiscais", "crm", "justificativas"];
 function atualizarFiltrosTopo(secao){
   const esconder = SECOES_SEM_FILTRO_TOPO.includes(secao);
   document.querySelectorAll(".topbar > .filter").forEach(f=> f.style.display = esconder ? "none" : "");
@@ -3596,6 +3640,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(item.dataset.section === "crm"){ if(CRM_LOADED) renderCrm(); else if(CRM_LOADING){ const l = document.getElementById("crm-loading"); if(l){ l.innerHTML = loaderHtml("Carregando a CRM…"); l.style.display = ""; } } else loadCrm(); }
     if(item.dataset.section === "alocacoes"){ if(!AL_LOADED) loadAlocacoes(); else renderAlocacoes(); }
     if(item.dataset.section === "loja"){ if(!LD_LOADED) loadLoja(); else renderLoja(); }
+    if(item.dataset.section === "nss"){ if(!NSS_LOADED) loadNss(); else { renderNss(); loadNss(true); } }
     if(item.dataset.section === "coletas"){ if(!CO_LOADED) loadColetas(); else { renderColetas(); if(!CO_PEND && CO_META.em && Date.now() - new Date(CO_META.em).getTime() > CO_REFRESH_MS) loadColetas(true); } }
     if(item.dataset.section === "losses"){ if(!LS) loadLosses(); else { renderLosses(); if(!LS_PEND && lsVelho()) loadLosses(true); } }
     if(item.dataset.section === "planosab"){ if(!PS) loadPlanoSab(); else { renderPlanoSab(); if(!PS_PEND && psVelho()) loadPlanoSab(true); } }
@@ -7715,6 +7760,182 @@ function renderWbr(){
 wbrCacheCarregar();
 setTimeout(()=>{ if(!WBR_PEND) loadWbr(true); }, 8000);
 setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
+// ==================== NSS FORA DO RAIO (FM) ====================
+// ?tipo=nss (Nss.gs) — planilha "NSS Suspeitos | Centro-Oeste | Painel de
+// Investigação", aba REVERSAO_D0 (bloco REGISTRO / HISTÓRICO). As colunas
+// são achadas pelo nome do cabeçalho. Também alimenta o indicador
+// "NSS fora do raio" das Justificativas.
+let NSS_LOADED = false, NSS_PROMESSA = null, NSS_ERRO = "", NSS_META = {};
+let NSS_ROWS = [], NSS_DIAS = [];
+const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", busca:"" };
+const NSS_CAMPOS = {
+  dh: /data\s*\/?\s*hora|data e hora/i, tipo: /^tipo$/i, station: /^(hub|station|base|hub_code)$/i,
+  driverId: /driver\s*_?id|id\s*(do\s*)?driver/i, driver: /^(driver|motorista|driver_name|nome do driver)$/i,
+  transp: /transportadora|agency|3pl/i, seller: /^(seller|loja|shop)/i, just: /justificativa/i,
+  espera: /espera/i, task: /^task/i, sub: /^sub/i, resultado: /resultado|revert|tratativa/i
+};
+const nssNum = v => { const n = parseInt(String(v == null ? "" : v).replace(/\D/g, ""), 10); return isNaN(n) ? 0 : n; };
+function nssMapaSub(){
+  const m = {};
+  try{ (DATA || []).forEach(d => { if(d.estacao && d.subreg) m[d.estacao] = d.subreg; }); }catch(e){}
+  try{ (LD_AGG || []).forEach(r => { if(r.station && r.sub) m[r.station] = r.sub; }); }catch(e){}
+  try{ (AL_ROWS || []).forEach(r => { if(r.station && r.sub) m[r.station] = r.sub; }); }catch(e){}
+  try{ Object.assign(m, JU.subPorStation); }catch(e){}
+  return m;
+}
+function nssMontar(json){
+  const cols = (json.cols || []).map(c => String(c || "").trim());
+  const idx = {};
+  Object.keys(NSS_CAMPOS).forEach(k => { idx[k] = cols.findIndex(c => NSS_CAMPOS[k].test(c)); });
+  // "Driver ID" também casa com /driver/ — garante que o nome não pegue a coluna do ID
+  if(idx.driver < 0) idx.driver = cols.findIndex((c, i) => /driver|motorista/i.test(c) && i !== idx.driverId);
+  const pega = (l, k) => idx[k] >= 0 ? String(l[idx[k]] == null ? "" : l[idx[k]]).trim() : "";
+  const subDe = nssMapaSub();
+  return (json.rows || []).map(l => {
+    const dh = pega(l, "dh");
+    let m = dh.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(\d{1,2}:\d{2})?/), data = "", hora = "";
+    if(m){ data = m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2); hora = m[4] || ""; }
+    else if((m = dh.match(/^(\d{4}-\d{2}-\d{2})[ T]?(\d{2}:\d{2})?/))){ data = m[1]; hora = m[2] || ""; }
+    const station = pega(l, "station");
+    return { data, hora, tipo: pega(l, "tipo"), station, sub: pega(l, "sub") || subDe[station] || "",
+      driverId: pega(l, "driverId"), driver: pega(l, "driver"), transp: pega(l, "transp"), seller: pega(l, "seller"),
+      just: pega(l, "just") || "—", espera: nssNum(pega(l, "espera")), task: pega(l, "task"), resultado: pega(l, "resultado") };
+  }).filter(r => r.data);
+}
+function loadNss(silencioso){
+  const box = document.getElementById("nss-loading");
+  if(!silencioso && !NSS_LOADED){ box.innerHTML = loaderHtml("Carregando os casos de NSS…"); document.getElementById("nss-conteudo").style.display = "none"; }
+  if(NSS_PROMESSA) return NSS_PROMESSA;
+  NSS_PROMESSA = (async () => {
+    try{
+      const sep = API_URL.indexOf("?") >= 0 ? "&" : "?";
+      const json = await fetchViaIframe(API_URL + sep + "tipo=nss", 90000);
+      if(!json || !Array.isArray(json.cols) || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Nss.gs e a rota nss do webapp.gs foram publicados (nova versão da implantação)");
+      if(json.erro) throw new Error(json.erro);
+      NSS_ROWS = nssMontar(json);
+      NSS_META = { em: json.atualizadoEm || "" };
+      const ultAntes = NSS_DIAS[NSS_DIAS.length - 1];
+      NSS_DIAS = [...new Set(NSS_ROWS.map(r => r.data))].sort();
+      if(!NSS_F.ini || (NSS_F.ini === ultAntes && NSS_F.fim === ultAntes)) nssPreset("hoje");
+      NSS_LOADED = true; NSS_ERRO = "";
+      box.innerHTML = ""; document.getElementById("nss-conteudo").style.display = "";
+      nssBadge();
+      if(document.getElementById("sec-nss").classList.contains("active")) renderNss();
+    } catch(err){
+      console.error("NSS:", err);
+      NSS_ERRO = err.message;
+      if(!NSS_LOADED && document.getElementById("sec-nss").classList.contains("active")){
+        box.innerHTML = '<div class="empty-state">⚠ Não foi possível carregar os casos de NSS (' + esc(err.message) + '). <a href="#" id="nss-retry">Tentar de novo</a></div>';
+        const a = document.getElementById("nss-retry"); if(a) a.onclick = ev => { ev.preventDefault(); loadNss(); };
+      }
+    } finally { NSS_PROMESSA = null; }
+  })();
+  return NSS_PROMESSA;
+}
+function nssHoje(){ const d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+function nssPreset(p){
+  const hoje = nssHoje(), ult = NSS_DIAS[NSS_DIAS.length - 1] || hoje;
+  const ontem = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); })();
+  if(p === "hoje"){ NSS_F.ini = NSS_F.fim = hoje; }
+  else if(p === "ontem"){ NSS_F.ini = NSS_F.fim = ontem; }
+  else if(p === "7d"){ const d = new Date(); d.setDate(d.getDate() - 6); NSS_F.ini = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); NSS_F.fim = hoje > ult ? hoje : ult; }
+  else { NSS_F.ini = NSS_DIAS[0] || hoje; NSS_F.fim = hoje > ult ? hoje : ult; }
+}
+function nssPresetAtual(){
+  for(const p of ["hoje", "ontem", "7d", "tudo"]){
+    const s = { ini: NSS_F.ini, fim: NSS_F.fim }; nssPreset(p);
+    const igual = NSS_F.ini === s.ini && NSS_F.fim === s.fim; NSS_F.ini = s.ini; NSS_F.fim = s.fim;
+    if(igual) return p;
+  }
+  return "";
+}
+function nssBadge(){
+  const el = document.getElementById("nav-nss-badge"); if(!el) return;
+  const h = nssHoje(), q = NSS_ROWS.filter(r => r.data === h).length;
+  el.textContent = q; el.style.display = q ? "" : "none";
+}
+function nssFiltrar(ignorar){
+  const b = (NSS_F.busca || "").toLowerCase();
+  return NSS_ROWS.filter(r => (!NSS_F.ini || r.data >= NSS_F.ini) && (!NSS_F.fim || r.data <= NSS_F.fim)
+    && (ignorar === "sub" || !NSS_F.sub || r.sub === NSS_F.sub)
+    && (ignorar === "station" || !NSS_F.station || r.station === NSS_F.station)
+    && (ignorar === "just" || !NSS_F.just || r.just === NSS_F.just)
+    && (!b || [r.driver, r.driverId, r.seller, r.station, r.transp, r.task].join(" ").toLowerCase().includes(b)));
+}
+function nssGrupos(lista, k){
+  const m = {}; lista.forEach(r => { const key = r[k] || "—"; const g = m[key] || (m[key] = { label:key, casos:0, espera:0 }); g.casos++; g.espera += r.espera; });
+  return Object.values(m).sort((a,b) => b.casos - a.casos || b.espera - a.espera);
+}
+function nssBarras(id, gs, ativo, click){
+  const el = document.getElementById(id), max = Math.max(1, ...gs.map(g => g.casos));
+  el.innerHTML = gs.map((g,i) => `<div class="sd-bar-row${ativo === g.label ? " active" : ""}" data-i="${i}" style="cursor:pointer" title="${esc(g.label)}: ${g.casos} casos · ${g.espera.toLocaleString("pt-BR")} pedidos em espera">
+      <div class="sd-bar-label">${esc(g.label)}</div>
+      <div class="sd-bar-track"><div class="sd-bar-fill" style="width:${(g.casos / max * 100).toFixed(1)}%"></div></div>
+      <div class="sd-bar-val">${g.casos.toLocaleString("pt-BR")}</div></div>`).join("") || '<div class="sd-hint">Nenhum caso no período.</div>';
+  el.querySelectorAll(".sd-bar-row").forEach(row => row.addEventListener("click", () => click(gs[+row.dataset.i].label)));
+}
+function renderNss(){
+  if(!NSS_LOADED) return;
+  const n = v => (v || 0).toLocaleString("pt-BR"), pct = (a,b) => b ? (a / b * 100).toFixed(1).replace(".", ",") + "%" : "—";
+  const opcoes = (id, vals, atual, vazio) => { document.getElementById(id).innerHTML = `<option value="">${vazio}</option>` + vals.map(v => `<option value="${esc(v)}"${v === atual ? " selected" : ""}>${esc(v)}</option>`).join(""); };
+  opcoes("nss-f-sub", [...new Set(NSS_ROWS.map(r => r.sub).filter(Boolean))].sort(), NSS_F.sub, "Todas");
+  opcoes("nss-f-station", [...new Set(nssFiltrar("station").map(r => r.station).filter(Boolean))].sort(), NSS_F.station, "Todas");
+  opcoes("nss-f-just", [...new Set(NSS_ROWS.map(r => r.just).filter(Boolean))].sort(), NSS_F.just, "Todas");
+  document.getElementById("nss-f-ini").value = NSS_F.ini; document.getElementById("nss-f-fim").value = NSS_F.fim;
+  const pa = nssPresetAtual();
+  document.querySelectorAll("#nss-periodo button").forEach(b => b.classList.toggle("active", b.dataset.p === pa));
+  document.getElementById("nss-subtitle").textContent = "— " + (NSS_F.ini === NSS_F.fim ? histRotuloDia(NSS_F.ini) : fmtDiaBR(NSS_F.ini) + " a " + fmtDiaBR(NSS_F.fim))
+    + (NSS_META.em ? " · planilha lida às " + NSS_META.em.slice(11) : "");
+  const l = nssFiltrar();
+  const sts = new Set(l.map(r => r.station)), sellers = new Set(l.map(r => r.seller));
+  const porDriver = nssGrupos(l, "driverId"), reinc = porDriver.filter(g => g.casos > 1).length;
+  const esp = l.reduce((t,r) => t + r.espera, 0);
+  const semPac = l.filter(r => /pacote/i.test(r.just)).length, fech = l.filter(r => /fechad/i.test(r.just)).length;
+  renderKpis("nss-kpis", [
+    { label:"Casos fora do raio", value:n(l.length), icon:"📍", cls: l.length ? "crit" : "", sub: "em " + sts.size + (sts.size === 1 ? " station" : " stations") },
+    { label:"Drivers envolvidos", value:n(porDriver.length), icon:"🧑‍✈️", cls: reinc ? "warn" : "", sub: reinc ? reinc + " com mais de 1 caso" : "nenhum reincidente" },
+    { label:"Sellers afetados", value:n(sellers.size), icon:"🏪" },
+    { label:"Pedidos em espera", value:n(esp), icon:"📦", cls: esp ? "warn" : "", sub:"pedidos que ficaram sem coleta" },
+    { label:"\"Não havia pacotes\"", value:pct(semPac, l.length), icon:"🚫", sub:n(semPac) + " casos" },
+    { label:"\"Local fechado\"", value:pct(fech, l.length), icon:"🔒", sub:n(fech) + " casos" }
+  ]);
+  nssBarras("nss-chart-station", nssGrupos(nssFiltrar("station"), "station"), NSS_F.station, lab => { NSS_F.station = NSS_F.station === lab ? "" : lab; renderNss(); });
+  nssBarras("nss-chart-just", nssGrupos(nssFiltrar("just"), "just"), NSS_F.just, lab => { NSS_F.just = NSS_F.just === lab ? "" : lab; renderNss(); });
+  // drivers com mais casos
+  const dr = {};
+  l.forEach(r => { const k = r.driverId || r.driver; const g = dr[k] || (dr[k] = { id:r.driverId, nome:r.driver, st:r.station, tr:r.transp, casos:0, esp:0, sellers:new Set(), dias:new Set() }); g.casos++; g.esp += r.espera; g.sellers.add(r.seller); g.dias.add(r.data); });
+  const drl = Object.values(dr).sort((a,b) => b.casos - a.casos || b.esp - a.esp).slice(0, 15);
+  document.getElementById("nss-tab-driver").innerHTML = "<thead><tr><th>Driver</th><th>Station</th><th>Transportadora</th><th>Casos</th><th>Dias</th><th>Sellers</th><th>Pedidos em espera</th></tr></thead><tbody>"
+    + (drl.map(g => `<tr><td><b>${esc(g.nome || "—")}</b> <span class="sd-hint">${esc(g.id)}</span></td><td>${esc(g.st)}</td><td>${esc(typeof coTransp === "function" ? coTransp(g.tr) : g.tr)}</td><td>${g.casos > 1 ? `<span class="badge critical">${g.casos}</span>` : g.casos}</td><td>${g.dias.size}</td><td>${g.sellers.size}</td><td>${n(g.esp)}</td></tr>`).join("")
+    || '<tr><td colspan="7" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
+  // detalhe
+  const det = l.slice().sort((a,b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+  document.getElementById("nss-total").innerHTML = "<b>" + n(det.length) + "</b> casos";
+  const lim = NSS_EXP ? det : det.slice(0, 100);
+  document.getElementById("nss-tab-det").innerHTML = "<thead><tr><th>Data/hora</th><th>Station</th><th>Driver</th><th>Transportadora</th><th>Seller</th><th>Justificativa</th><th>Pedidos em espera</th>" + (det.some(r => r.resultado) ? "<th>Resultado</th>" : "") + "</tr></thead><tbody>"
+    + (lim.map(r => `<tr><td>${fmtDiaBR(r.data)} ${esc(r.hora)}</td><td>${esc(r.station)}</td><td><b>${esc(r.driver || "—")}</b> <span class="sd-hint">${esc(r.driverId)}</span></td><td>${esc(typeof coTransp === "function" ? coTransp(r.transp) : r.transp)}</td><td>${esc(r.seller)}</td><td><span class="badge ${/fechad/i.test(r.just) ? "warning" : "critical"}">${esc(r.just)}</span></td><td>${r.espera >= 30 ? `<b style="color:var(--critical)">${n(r.espera)}</b>` : n(r.espera)}</td>${det.some(x => x.resultado) ? `<td>${esc(r.resultado || "—")}</td>` : ""}</tr>`).join("")
+    || '<tr><td colspan="8" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
+  const more = document.getElementById("nss-det-more");
+  more.style.display = det.length > 100 ? "" : "none";
+  more.textContent = NSS_EXP ? "− Mostrar só os 100 mais recentes" : "+ Ver todos os " + det.length + " casos";
+}
+let NSS_EXP = false;
+(function(){
+  const $ = id => document.getElementById(id);
+  const r = () => renderNss();
+  $("nss-f-ini").addEventListener("change", e => { NSS_F.ini = e.target.value; if(NSS_F.fim && NSS_F.fim < NSS_F.ini) NSS_F.fim = NSS_F.ini; r(); });
+  $("nss-f-fim").addEventListener("change", e => { NSS_F.fim = e.target.value; if(NSS_F.ini && NSS_F.fim < NSS_F.ini) NSS_F.ini = NSS_F.fim; r(); });
+  $("nss-f-sub").addEventListener("change", e => { NSS_F.sub = e.target.value; NSS_F.station = ""; r(); });
+  $("nss-f-station").addEventListener("change", e => { NSS_F.station = e.target.value; r(); });
+  $("nss-f-just").addEventListener("change", e => { NSS_F.just = e.target.value; r(); });
+  document.querySelectorAll("#nss-periodo button").forEach(b => b.addEventListener("click", () => { nssPreset(b.dataset.p); r(); }));
+  $("nss-limpar").addEventListener("click", () => { NSS_F.sub = NSS_F.station = NSS_F.just = NSS_F.busca = ""; $("nss-busca").value = ""; nssPreset("hoje"); r(); });
+  $("nss-det-more").addEventListener("click", () => { NSS_EXP = !NSS_EXP; r(); });
+  let t; $("nss-busca").addEventListener("input", e => { clearTimeout(t); t = setTimeout(() => { NSS_F.busca = e.target.value; r(); }, 200); });
+})();
+// em segundo plano: carrega ao abrir o painel e relê a cada 15 min (a planilha atualiza durante o dia)
+setTimeout(() => { if(!NSS_LOADED) loadNss(true); }, 5000);
+setInterval(() => { if(!NSS_PROMESSA) loadNss(true).then(() => { if(typeof juRender === "function") juRender(); }).catch(() => {}); }, 15 * 60 * 1000);
 // ==================== JUSTIFICATIVAS (grupo Dados) ====================
 // Justificativas diárias da sub-regional CO, por station (da maior para a
 // menor em volume), para No Show 3PL, Partial Pickup, OTP, Lead Time e Same Day,
@@ -7739,6 +7960,7 @@ const JU_INDS = [
   { id:"ns",  nome:"No Show 3PL" },
   { id:"pp",  nome:"Partial Pickup" },
   { id:"al",  nome:"Rotas não alocadas" },
+  { id:"nss", nome:"NSS fora do raio" },
   { id:"otp", nome:"Falha de OTP" },
   { id:"lt",  nome:"Lead Time" },
   { id:"sd",  nome:"Same Day" }
@@ -7838,6 +8060,8 @@ async function juIniciar(){
     if(!LD_LOADED){ const p = loadLoja(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
     // rotas não alocadas: mesma base da aba Alocações & Rotas extras
     if(!AL_LOADED){ const p = loadAlocacoes(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
+    // NSS fora do raio: mesma base da aba NSS Fora do Raio
+    if(!NSS_LOADED){ const p = loadNss(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
     await juAbrirDia(ult);
   } catch(err){
     JU.iniciado = false;
@@ -7905,7 +8129,7 @@ function juMontarDia(dia){
   const sd = JU.sd[dia] || [], lt = JU.lt[dia] || [];
   const otpOk = OTP && OTP.rows, ldOk = LD_LOADED;
   const st = {};
-  const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[], al:[] });
+  const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[], al:[], nss:[] });
   sd.forEach(r => { const o = pega(r.station || "—"); o.out += +r.outD || 0; o.sd += +r.sdD || 0; o.linhasSd.push(r); });
   lt.forEach(r => pega(r.station || "—").ltRows.push(r));
   if(otpOk) OTP.rows.forEach(r => { if(r.data === dia && r.falha && juEhSub(juSubDe(r))) pega(r.station || "—").otp.push(r); });
@@ -7915,6 +8139,7 @@ function juMontarDia(dia){
     else if(r.perf === "Partial Pickup") pega(r.station || "—").pp.push(r);
   });
   if(AL_LOADED) AL_ROWS.forEach(r => { if(r.data === dia && !r.alocada && juEhSub(r.sub || JU.subPorStation[r.station])) pega(r.station || "—").al.push(r); });
+  if(NSS_LOADED){ const daSub = new Set(juStationsDaSub()); NSS_ROWS.forEach(r => { if(r.data === dia && (juEhSub(r.sub) || daSub.has(r.station))) pega(r.station || "—").nss.push(r); }); }
   // todas as stations da sub aparecem, mesmo sem movimento no dia (vão para o fim)
   juStationsDaSub().forEach(nome => pega(nome));
   delete st["—"];
@@ -7977,6 +8202,18 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
     o.valor = o.ok ? "todas as rotas alocadas" : s.al.length + (s.al.length === 1 ? " rota não alocada" : " rotas não alocadas");
     o.cab = ["Rota", "Tipo", "Veículo (plano → real)", "Status", "Transportadora"];
     o.itens = s.al.map(r => [r.rota || "—", alTipo(r.tipo), (r.vPlan || "—") + " → " + (r.vReal || "—"), r.status || "—", r.transp || "—"]);
+  }
+  else if(def.id === "nss"){
+    if(!NSS_LOADED){
+      if(NSS_ERRO){ o.valor = "—"; o.nota = "não carregou: " + NSS_ERRO; return o; }
+      o.carregando = true; o.valor = "carregando…"; return o;
+    }
+    const esp = s.nss.reduce((t,r) => t + r.espera, 0);
+    o.ok = !s.nss.length;
+    o.valor = o.ok ? "nenhum caso" : s.nss.length + (s.nss.length === 1 ? " caso" : " casos") + " · " + juNum(esp) + " pedidos em espera";
+    o.cab = ["Hora", "Driver · Transportadora", "Seller", "Justificativa do motorista", "Pedidos em espera"];
+    o.itens = s.nss.slice().sort((a,b) => b.hora.localeCompare(a.hora)).map(r => [r.hora || "—",
+      [r.driver, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", r.seller || "—", r.just || "—", juNum(r.espera)]);
   }
   else if(def.id === "lt"){
     const ltDia = JU.lt[dia] || [];
@@ -8067,6 +8304,7 @@ function juRenderKpis(ests){
     { l:"No Show 3PL", v: ld ? juNum(ns.n) : "…", s: !ld ? "carregando" : ns.n ? "lojas em " + plural(ns.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Partial Pickup", v: ld ? juNum(pp.n) : "…", s: !ld ? "carregando" : pp.n ? "lojas em " + plural(pp.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Rotas não alocadas", v: AL_LOADED ? juNum(al.n) : "…", s: !AL_LOADED ? "carregando" : al.n ? "em " + plural(al.st, "station", "stations") : "todas alocadas", c: AL_LOADED && al.n ? "crit" : "" },
+    { l:"NSS fora do raio", v: NSS_LOADED ? juNum(ests.reduce((t,s) => t + s.nss.length, 0)) : "…", s: !NSS_LOADED ? (NSS_ERRO ? "não carregou" : "carregando") : (() => { const q = ests.filter(s => s.nss.length).length, e = ests.reduce((t,s) => t + s.nss.reduce((a,r) => a + r.espera, 0), 0); return q ? "em " + plural(q, "station", "stations") + " · " + juNum(e) + " pedidos em espera" : "nenhum caso"; })(), c: NSS_LOADED && ests.some(s => s.nss.length) ? "crit" : "" },
     { l:"Falha de OTP", v: otp ? juNum(ests.reduce((t,s) => t + s.otp.length, 0)) : "…", s: !otp ? "carregando" : ot.st ? "em " + plural(ot.st, "station", "stations") : "nenhuma falha" },
     { l:"Lead Time " + JU_SUB, v: ltO ? juDias(ltT / ltO) : "—", s: ltAcima ? plural(ltAcima, "station acima", "stations acima") + " da meta" : "dentro da meta" }
   ];
