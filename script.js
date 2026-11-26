@@ -235,10 +235,11 @@ if(!document.querySelector(".app")){
       <div id="ju-app" style="display:none">
         <div class="ju-barra-topo">
           <nav class="ju-dias" id="ju-dias" aria-label="Dias"></nav>
-          <div class="ju-acoes">
+          <div class="ju-acoes" style="align-items:center">
             <button type="button" class="theme-btn" id="ju-refresh">⟳ Atualizar</button>
             <button type="button" class="theme-btn primary" id="ju-btn-resumo">Gerar resumo do dia</button>
             <button type="button" class="theme-btn" id="ju-sair" title="Bloquear de novo">🔒 Sair</button>
+            <div class="filter" style="min-width:220px; margin:0"><label>Station</label><select id="ju-f-station"><option value="">Todas</option></select></div>
           </div>
         </div>
         <div id="ju-aviso"></div>
@@ -714,6 +715,7 @@ if(!document.querySelector(".app")){
         <div class="filter"><label>Sub-regional</label><select id="nss-f-sub"></select></div>
         <div class="filter"><label>Station</label><select id="nss-f-station"></select></div>
         <div class="filter"><label>Justificativa</label><select id="nss-f-just"></select></div>
+        <div class="filter"><label>Resultado (analista)</label><select id="nss-f-res"></select></div>
         <button class="theme-btn" id="nss-limpar">Limpar filtros</button>
       </div>
       <div id="nss-loading"></div>
@@ -7768,13 +7770,16 @@ setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
 // "NSS fora do raio" das Justificativas.
 let NSS_LOADED = false, NSS_PROMESSA = null, NSS_ERRO = "", NSS_META = {};
 let NSS_ROWS = [], NSS_DIAS = [];
-const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", busca:"" };
+const NSS_F = { ini:"", fim:"", sub:"", station:"", just:"", res:"", busca:"" };
 const NSS_CAMPOS = {
   dh: /data\s*\/?\s*hora|data e hora/i, tipo: /^tipo$/i, station: /^(hub|station|base|hub_code)$/i,
   driverId: /driver\s*_?id|id\s*(do\s*)?driver/i, driver: /^(driver|motorista|driver_name|nome do driver)$/i,
   transp: /transportadora|agency|3pl/i, seller: /^(seller|loja|shop)/i, just: /justificativa/i,
-  espera: /espera/i, task: /^task/i, sub: /^sub/i, resultado: /resultado|revert|tratativa/i
+  espera: /espera/i, task: /^task/i, sub: /^sub/i, resultado: /^resultado/i
 };
+// Resultado da tratativa do analista (coluna "Resultado" da planilha): vazio = ainda não tratada
+const nssStatus = r => r.resultado || "Sem tratativa";
+const nssStatusCls = st => /colet/i.test(st) ? "good" : /sem tratativa/i.test(st) ? "critical" : "warning";
 const nssNum = v => { const n = parseInt(String(v == null ? "" : v).replace(/\D/g, ""), 10); return isNaN(n) ? 0 : n; };
 function nssMapaSub(){
   const m = {};
@@ -7790,6 +7795,9 @@ function nssMontar(json){
   Object.keys(NSS_CAMPOS).forEach(k => { idx[k] = cols.findIndex(c => NSS_CAMPOS[k].test(c)); });
   // "Driver ID" também casa com /driver/ — garante que o nome não pegue a coluna do ID
   if(idx.driver < 0) idx.driver = cols.findIndex((c, i) => /driver|motorista/i.test(c) && i !== idx.driverId);
+  if(idx.resultado < 0) idx.resultado = cols.findIndex(c => /resultado|revertid|tratativa/i.test(c));
+  // a 1ª "Justificativa" é a do motorista; a que vem depois do "Resultado" é a do analista
+  idx.justAnalista = cols.findIndex((c, i) => /justificativa/i.test(c) && i !== idx.just && (idx.resultado < 0 || i > idx.resultado));
   const pega = (l, k) => idx[k] >= 0 ? String(l[idx[k]] == null ? "" : l[idx[k]]).trim() : "";
   const subDe = nssMapaSub();
   return (json.rows || []).map(l => {
@@ -7800,7 +7808,7 @@ function nssMontar(json){
     const station = pega(l, "station");
     return { data, hora, tipo: pega(l, "tipo"), station, sub: pega(l, "sub") || subDe[station] || "",
       driverId: pega(l, "driverId"), driver: pega(l, "driver"), transp: pega(l, "transp"), seller: pega(l, "seller"),
-      just: pega(l, "just") || "—", espera: nssNum(pega(l, "espera")), task: pega(l, "task"), resultado: pega(l, "resultado") };
+      just: pega(l, "just") || "—", espera: nssNum(pega(l, "espera")), task: pega(l, "task"), resultado: pega(l, "resultado"), justAnalista: pega(l, "justAnalista") };
   }).filter(r => r.data);
 }
 function loadNss(silencioso){
@@ -7862,6 +7870,7 @@ function nssFiltrar(ignorar){
     && (ignorar === "sub" || !NSS_F.sub || r.sub === NSS_F.sub)
     && (ignorar === "station" || !NSS_F.station || r.station === NSS_F.station)
     && (ignorar === "just" || !NSS_F.just || r.just === NSS_F.just)
+    && (ignorar === "res" || !NSS_F.res || nssStatus(r) === NSS_F.res)
     && (!b || [r.driver, r.driverId, r.seller, r.station, r.transp, r.task].join(" ").toLowerCase().includes(b)));
 }
 function nssGrupos(lista, k){
@@ -7883,6 +7892,7 @@ function renderNss(){
   opcoes("nss-f-sub", [...new Set(NSS_ROWS.map(r => r.sub).filter(Boolean))].sort(), NSS_F.sub, "Todas");
   opcoes("nss-f-station", [...new Set(nssFiltrar("station").map(r => r.station).filter(Boolean))].sort(), NSS_F.station, "Todas");
   opcoes("nss-f-just", [...new Set(NSS_ROWS.map(r => r.just).filter(Boolean))].sort(), NSS_F.just, "Todas");
+  opcoes("nss-f-res", [...new Set(NSS_ROWS.map(nssStatus))].sort(), NSS_F.res, "Todos");
   document.getElementById("nss-f-ini").value = NSS_F.ini; document.getElementById("nss-f-fim").value = NSS_F.fim;
   const pa = nssPresetAtual();
   document.querySelectorAll("#nss-periodo button").forEach(b => b.classList.toggle("active", b.dataset.p === pa));
@@ -7904,6 +7914,9 @@ function renderNss(){
   renderKpis("nss-kpis", [
     { label:"Casos fora do raio", value:n(l.length), icon:"📍", cls: l.length ? "crit" : "", sub: "em " + sts.size + (sts.size === 1 ? " station" : " stations") },
     { label:"Drivers envolvidos", value:n(porDriver.length), icon:"🧑‍✈️", cls: reinc ? "warn" : "", sub: reinc ? reinc + " com mais de 1 caso" : "nenhum reincidente" },
+    (() => { const tr = l.filter(r => r.resultado).length, pend = l.length - tr, col = l.filter(r => /colet/i.test(r.resultado)).length;
+      return { label:"Tratadas pelo analista", value: l.length ? n(tr) + " de " + n(l.length) : "0", icon:"🧑‍💼", cls: pend ? "crit" : "",
+        sub: l.length ? (pend ? n(pend) + " sem tratativa" : "todas tratadas") + " · " + n(col) + " coletadas" : "nenhum caso" }; })(),
     { label:"Sellers afetados", value:n(sellers.size), icon:"🏪" },
     { label:"Pedidos em espera", value:n(esp), icon:"📦", cls: esp ? "warn" : "", sub:"pedidos que ficaram sem coleta" },
     { label:"\"Não havia pacotes\"", value:pct(semPac, l.length), icon:"🚫", sub:n(semPac) + " casos" },
@@ -7922,9 +7935,10 @@ function renderNss(){
   const det = l.slice().sort((a,b) => (b.data + b.hora).localeCompare(a.data + a.hora));
   document.getElementById("nss-total").innerHTML = "<b>" + n(det.length) + "</b> casos";
   const lim = NSS_EXP ? det : det.slice(0, 100);
-  document.getElementById("nss-tab-det").innerHTML = "<thead><tr><th>Data/hora</th><th>Station</th><th>Driver</th><th>Transportadora</th><th>Seller</th><th>Justificativa</th><th>Pedidos em espera</th>" + (det.some(r => r.resultado) ? "<th>Resultado</th>" : "") + "</tr></thead><tbody>"
-    + (lim.map(r => `<tr><td>${fmtDiaBR(r.data)} ${esc(r.hora)}</td><td>${esc(r.station)}</td><td><b>${esc(r.driver || "—")}</b> <span class="sd-hint">${esc(r.driverId)}</span></td><td>${esc(typeof coTransp === "function" ? coTransp(r.transp) : r.transp)}</td><td>${esc(r.seller)}</td><td><span class="badge ${/fechad/i.test(r.just) ? "warning" : "critical"}">${esc(r.just)}</span></td><td>${r.espera >= 30 ? `<b style="color:var(--critical)">${n(r.espera)}</b>` : n(r.espera)}</td>${det.some(x => x.resultado) ? `<td>${esc(r.resultado || "—")}</td>` : ""}</tr>`).join("")
-    || '<tr><td colspan="8" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
+  const temJa = det.some(r => r.justAnalista);
+  document.getElementById("nss-tab-det").innerHTML = "<thead><tr><th>Data/hora</th><th>Station</th><th>Driver</th><th>Transportadora</th><th>Seller</th><th>Justificativa do motorista</th><th>Pedidos em espera</th><th>Resultado</th>" + (temJa ? "<th>Justificativa do analista</th>" : "") + "</tr></thead><tbody>"
+    + (lim.map(r => `<tr><td>${fmtDiaBR(r.data)} ${esc(r.hora)}</td><td>${esc(r.station)}</td><td><b>${esc(r.driver || "—")}</b> <span class="sd-hint">${esc(r.driverId)}</span></td><td>${esc(typeof coTransp === "function" ? coTransp(r.transp) : r.transp)}</td><td>${esc(r.seller)}</td><td>${esc(r.just)}</td><td>${r.espera >= 30 ? `<b style="color:var(--critical)">${n(r.espera)}</b>` : n(r.espera)}</td><td><span class="badge ${nssStatusCls(nssStatus(r))}">${esc(nssStatus(r))}</span></td>${temJa ? `<td style="max-width:280px;white-space:normal">${esc(r.justAnalista || "—")}</td>` : ""}</tr>`).join("")
+    || '<tr><td colspan="9" class="sd-hint">Nenhum caso no período.</td></tr>') + "</tbody>";
   const more = document.getElementById("nss-det-more");
   more.style.display = det.length > 100 ? "" : "none";
   more.textContent = NSS_EXP ? "− Mostrar só os 100 mais recentes" : "+ Ver todos os " + det.length + " casos";
@@ -7938,8 +7952,9 @@ let NSS_EXP = false;
   $("nss-f-sub").addEventListener("change", e => { NSS_F.sub = e.target.value; NSS_F.station = ""; r(); });
   $("nss-f-station").addEventListener("change", e => { NSS_F.station = e.target.value; r(); });
   $("nss-f-just").addEventListener("change", e => { NSS_F.just = e.target.value; r(); });
+  $("nss-f-res").addEventListener("change", e => { NSS_F.res = e.target.value; r(); });
   document.querySelectorAll("#nss-periodo button").forEach(b => b.addEventListener("click", () => { nssPreset(b.dataset.p); r(); }));
-  $("nss-limpar").addEventListener("click", () => { NSS_F.sub = NSS_F.station = NSS_F.just = NSS_F.busca = ""; $("nss-busca").value = ""; nssPreset("hoje"); r(); });
+  $("nss-limpar").addEventListener("click", () => { NSS_F.sub = NSS_F.station = NSS_F.just = NSS_F.res = NSS_F.busca = ""; $("nss-busca").value = ""; nssPreset("hoje"); r(); });
   $("nss-det-more").addEventListener("click", () => { NSS_EXP = !NSS_EXP; r(); });
   let t; $("nss-busca").addEventListener("input", e => { clearTimeout(t); t = setTimeout(() => { NSS_F.busca = e.target.value; r(); }, 200); });
 })();
@@ -7981,7 +7996,7 @@ const JU = {
   editando: {}, rascunho: {}, abertos: {}, novos: {}, alin: {},
   subPorStation: {}, nomePorDop: {}, analistas: new Set(), ultimo: null, iniciado: false
 };
-try{ JU.pin = sessionStorage.getItem("ju_pin") || ""; }catch(e){}
+try{ JU.pin = sessionStorage.getItem("ju_pin") || ""; JU.station = sessionStorage.getItem("ju_station") || ""; }catch(e){}
 const juPct = v => (v * 100).toFixed(2).replace(".", ",") + "%";
 const juDias = v => v.toFixed(2).replace(".", ",") + (v < 1.995 ? " dia" : " dias");
 const juNum = n => (n || 0).toLocaleString("pt-BR");
@@ -8220,10 +8235,11 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
     }
     const esp = s.nss.reduce((t,r) => t + r.espera, 0);
     o.ok = !s.nss.length;
-    o.valor = o.ok ? "nenhum caso" : s.nss.length + (s.nss.length === 1 ? " caso" : " casos") + " · " + juNum(esp) + " pedidos em espera";
-    o.cab = ["Hora", "Driver · Transportadora", "Seller", "Justificativa do motorista", "Pedidos em espera"];
+    const semTrat = s.nss.filter(r => !r.resultado).length;
+    o.valor = o.ok ? "nenhum caso" : s.nss.length + (s.nss.length === 1 ? " caso" : " casos") + " · " + juNum(esp) + " pedidos em espera · " + (semTrat ? semTrat + " sem tratativa do analista" : "todos tratados");
+    o.cab = ["Hora", "Driver · Transportadora", "Seller", "Justificativa do motorista", "Pedidos em espera", "Resultado (analista)"];
     o.itens = s.nss.slice().sort((a,b) => b.hora.localeCompare(a.hora)).map(r => [r.hora || "—",
-      [r.driver, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", r.seller || "—", r.just || "—", juNum(r.espera)]);
+      [r.driver, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", r.seller || "—", r.just || "—", juNum(r.espera), nssStatus(r) + (r.justAnalista ? " — " + r.justAnalista : "")]);
   }
   else if(def.id === "lt"){
     const ltDia = JU.lt[dia] || [];
@@ -8335,7 +8351,17 @@ function juRenderSdSub(){
 }
 function juRenderEstacoes(ests){
   const filtrar = JU.filtro === "pendentes";
+  // filtro de Station (lista na ordem de volume, com as pendências de cada uma)
+  const selSt = document.getElementById("ju-f-station");
+  if(selSt){
+    if(JU.station && !ests.some(s => s.nome === JU.station)) JU.station = "";
+    selSt.innerHTML = '<option value="">Todas</option>' + ests.map(s => {
+      const p = s.inds.filter(x => !x.ok && !x.carregando && !JU.just[x.chave]).length;
+      return `<option value="${esc(s.nome)}"${s.nome === JU.station ? " selected" : ""}>${esc(s.nome)}${p ? " · " + p + (p === 1 ? " pendente" : " pendentes") : " · ok"}</option>`;
+    }).join("");
+  }
   const html = ests.map((s, i) => {
+    if(JU.station && s.nome !== JU.station) return "";
     const pendSt = s.inds.filter(x => !x.ok && !x.carregando && !JU.just[x.chave]).length;
     const inds = filtrar ? s.inds.filter(x => !x.ok && !x.carregando && (!JU.just[x.chave] || JU.editando[x.chave])) : s.inds;
     if(filtrar && !inds.length) return "";
@@ -8350,7 +8376,7 @@ function juRenderEstacoes(ests){
       ${filtrar ? "" : juRenderAlin(s.nome) + juRenderNovo(s.nome)}
     </section>`;
   }).join("");
-  document.getElementById("ju-estacoes").innerHTML = html || `<div class="empty-state">${ests.length ? "Tudo justificado neste dia. 🎉" : "Nenhuma station da " + JU_SUB + " com dados em " + fmtDiaBR(JU.dia) + "."}</div>`;
+  document.getElementById("ju-estacoes").innerHTML = html || `<div class="empty-state">${ests.length ? (JU.station ? "Tudo justificado no " + esc(JU.station) + " neste dia. 🎉" : "Tudo justificado neste dia. 🎉") : "Nenhuma station da " + JU_SUB + " com dados em " + fmtDiaBR(JU.dia) + "."}</div>`;
   juLigar();
 }
 function juQuando(s){ const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})/); return m ? m[3] + "/" + m[2] + " às " + m[4] : (s || ""); }
@@ -8558,6 +8584,7 @@ function juResumo(){
   if(!$("sec-justificativas")) return;
   $("ju-gate-form").addEventListener("submit", ev => { ev.preventDefault(); juEntrar($("ju-pin").value.trim()); });
   $("ju-pin").addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4); if(e.target.value.length === 4) juEntrar(e.target.value); });
+  $("ju-f-station").addEventListener("change", e => { JU.station = e.target.value; try{ sessionStorage.setItem("ju_station", JU.station); }catch(err){} juRender(); });
   $("ju-sair").addEventListener("click", () => { JU.pin = ""; try{ sessionStorage.removeItem("ju_pin"); }catch(e){} juMostrarGate(""); });
   $("ju-refresh").addEventListener("click", () => {
     if(!JU.dia) return;
