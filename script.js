@@ -1029,7 +1029,7 @@ if(!document.querySelector(".app")){
       </div>
       <div class="card" id="historico-chart-card" style="margin-top:14px; display:none;">
         <div class="card-head">
-          <div class="card-title" id="historico-chart-title">Evolução diária (últimos 3 meses)</div>
+          <div class="card-title" id="historico-chart-title">Evolução diária da semana</div>
         </div>
         <svg id="historico-chart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
       </div>
@@ -1836,7 +1836,21 @@ if(histDopInput){
 function selecionarHistoricoDop(dop){
   HIST_SELECTED_DOP = dop;
   const porDop = historicoPorDop();
-  const serie = porDop[dop] || [];
+  // gráfico só da SEMANA do período escolhido (semana selecionada, ou a semana do dia selecionado)
+  const todos = porDop[dop] || [];
+  let semana = HIST_MODE === "semana" ? HIST_SELECTED_PERIOD : null;
+  if(!semana && HIST_SELECTED_PERIOD){
+    const h = HIST_DATA.find(x => dateKey(x.data) === HIST_SELECTED_PERIOD && x.semana);
+    if(h) semana = h.semana;
+  }
+  let serie;
+  if(semana) serie = todos.filter(h => String(h.semana) === String(semana));
+  else {
+    // sem número de semana na base: os 7 dias até o dia escolhido
+    const fim = HIST_SELECTED_PERIOD || (todos.length ? dateKey(todos[todos.length-1].data) : "");
+    const ini = fim ? new Date(new Date(fim + "T00:00:00Z").getTime() - 6*864e5).toISOString().slice(0,10) : "";
+    serie = todos.filter(h => { const k = dateKey(h.data); return k >= ini && k <= fim; });
+  }
   const info = DATA.find(d=>String(d.dop)===String(dop));
   document.querySelectorAll("#table-historico .hist-rank-row").forEach(row=> row.classList.remove("row-selected"));
   const rowEl = [...document.querySelectorAll("#table-historico .hist-rank-row")].find(row=>row.dataset.dop===String(dop));
@@ -1844,7 +1858,7 @@ function selecionarHistoricoDop(dop){
   const card = document.getElementById("historico-chart-card");
   const title = document.getElementById("historico-chart-title");
   if(card) card.style.display = "block";
-  if(title) title.textContent = "Evolução diária (últimos 3 meses) — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
+  if(title) title.textContent = "Evolução diária da semana" + (semana ? " " + semana : "") + " — " + (info ? info.agencia : ("DOP " + dop)) + " (DOP " + dop + ")";
   drawLineChart("historico-chart", serie.map(h=>({label: fmtDateShort(h.data), value: num(h.valor)})));
 }
 // Gráfico de linha simples em SVG puro (sem lib externa), no mesmo estilo
