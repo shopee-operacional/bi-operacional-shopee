@@ -8056,7 +8056,7 @@ const JU_META_SD_SUB = 0.90;  // meta do Same Day da sub-regional inteira (todas
 // Target de Same Day específico por station (sobrepõe o JU_META_SD só nelas)
 const JU_META_SD_STATION = { "SOC-GO2": 0.90 };
 const juMetaSd = nome => { const k = String(nome || "").toUpperCase().trim(); return JU_META_SD_STATION[k] != null ? JU_META_SD_STATION[k] : JU_META_SD; };
-const JU_FORA_STATION = /^XPT/i; // não entram como station nas justificativas
+const JU_FORA_STATION = /^XPT|^n[aã]o informad[oa]$|^-+$|^—$/i; // não entram como station nas justificativas (XPT e station "Não informado")
 // As bases chamam a sub de jeitos diferentes ("CO" na BASE_TRATADA, "CO/N" no Same Day…)
 const JU_SEM_ROTA = "o Web App não reconheceu a rota justlistar — confira no webapp.gs as rotas justlistar/justsalvar e publique uma NOVA VERSÃO da implantação";
 const juEhSub = v => { const t = String(v || "").toUpperCase().replace(/\s+/g, ""); return t === JU_SUB || t.startsWith(JU_SUB + "/"); };
