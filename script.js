@@ -718,6 +718,7 @@ if(!document.querySelector(".app")){
       </div>
       <div id="nss-loading"></div>
       <div id="nss-conteudo" style="display:none">
+        <div class="empty-state" id="nss-diag" style="display:none; margin-bottom:12px"></div>
         <div class="kpi-grid" id="nss-kpis"></div>
         <div class="grid2">
           <div class="card">
@@ -7813,7 +7814,8 @@ function loadNss(silencioso){
       if(!json || !Array.isArray(json.cols) || !Array.isArray(json.rows)) throw new Error("resposta sem dados — confira se o Nss.gs e a rota nss do webapp.gs foram publicados (nova versão da implantação)");
       if(json.erro) throw new Error(json.erro);
       NSS_ROWS = nssMontar(json);
-      NSS_META = { em: json.atualizadoEm || "" };
+      if(json.rows.length && !NSS_ROWS.length) throw new Error("a planilha devolveu " + json.rows.length + " linhas, mas não reconheci as datas (ex.: \"" + String(json.rows[0][0] || "") + "\"). Colunas lidas: " + json.cols.join(", "));
+      NSS_META = { em: json.atualizadoEm || "", diag: json.diag || "", total: json.rows.length, cols: json.cols };
       const ultAntes = NSS_DIAS[NSS_DIAS.length - 1];
       NSS_DIAS = [...new Set(NSS_ROWS.map(r => r.data))].sort();
       if(!NSS_F.ini || (NSS_F.ini === ultAntes && NSS_F.fim === ultAntes)) nssPreset("hoje");
@@ -7885,7 +7887,15 @@ function renderNss(){
   const pa = nssPresetAtual();
   document.querySelectorAll("#nss-periodo button").forEach(b => b.classList.toggle("active", b.dataset.p === pa));
   document.getElementById("nss-subtitle").textContent = "— " + (NSS_F.ini === NSS_F.fim ? histRotuloDia(NSS_F.ini) : fmtDiaBR(NSS_F.ini) + " a " + fmtDiaBR(NSS_F.fim))
-    + (NSS_META.em ? " · planilha lida às " + NSS_META.em.slice(11) : "");
+    + (NSS_META.em ? " · planilha lida às " + NSS_META.em.slice(11) : "")
+    + " · " + NSS_ROWS.length + " casos na base";
+  // base vazia: mostra o que o Apps Script achou na planilha (ajuda a achar o problema)
+  const diagEl = document.getElementById("nss-diag");
+  if(diagEl){
+    diagEl.style.display = NSS_ROWS.length ? "none" : "";
+    diagEl.innerHTML = NSS_ROWS.length ? "" : "⚠ A planilha de NSS foi lida, mas nenhum caso veio. " + esc(NSS_META.diag || "Publique o Nss.gs novo (nova versão da implantação).")
+      + (NSS_META.cols && NSS_META.cols.length ? "<br><small>Colunas lidas: " + esc(NSS_META.cols.join(" · ")) + "</small>" : "");
+  }
   const l = nssFiltrar();
   const sts = new Set(l.map(r => r.station)), sellers = new Set(l.map(r => r.seller));
   const porDriver = nssGrupos(l, "driverId"), reinc = porDriver.filter(g => g.casos > 1).length;
