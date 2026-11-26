@@ -7738,6 +7738,7 @@ const JU_LIM_LINHAS = 15;
 const JU_INDS = [
   { id:"ns",  nome:"No Show 3PL" },
   { id:"pp",  nome:"Partial Pickup" },
+  { id:"al",  nome:"Rotas não alocadas" },
   { id:"otp", nome:"Falha de OTP" },
   { id:"lt",  nome:"Lead Time" },
   { id:"sd",  nome:"Same Day" }
@@ -7835,6 +7836,8 @@ async function juIniciar(){
     if(!OTP && !OTP_PEND) loadOtp(true);
     if(OTP_PEND) OTP_PEND.then(()=> juRender()).catch(()=> juRender());
     if(!LD_LOADED){ const p = loadLoja(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
+    // rotas não alocadas: mesma base da aba Alocações & Rotas extras
+    if(!AL_LOADED){ const p = loadAlocacoes(true); if(p) p.then(()=> juRender()).catch(()=> juRender()); }
     await juAbrirDia(ult);
   } catch(err){
     JU.iniciado = false;
@@ -7902,7 +7905,7 @@ function juMontarDia(dia){
   const sd = JU.sd[dia] || [], lt = JU.lt[dia] || [];
   const otpOk = OTP && OTP.rows, ldOk = LD_LOADED;
   const st = {};
-  const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[] });
+  const pega = nome => st[nome] || (st[nome] = { nome, out:0, sd:0, linhasSd:[], ltRows:[], otp:[], ns:[], pp:[], al:[] });
   sd.forEach(r => { const o = pega(r.station || "—"); o.out += +r.outD || 0; o.sd += +r.sdD || 0; o.linhasSd.push(r); });
   lt.forEach(r => pega(r.station || "—").ltRows.push(r));
   if(otpOk) OTP.rows.forEach(r => { if(r.data === dia && r.falha && juEhSub(juSubDe(r))) pega(r.station || "—").otp.push(r); });
@@ -7911,6 +7914,7 @@ function juMontarDia(dia){
     if(r.perf === "No Show 3PL") pega(r.station || "—").ns.push(r);
     else if(r.perf === "Partial Pickup") pega(r.station || "—").pp.push(r);
   });
+  if(AL_LOADED) AL_ROWS.forEach(r => { if(r.data === dia && !r.alocada && juEhSub(r.sub || JU.subPorStation[r.station])) pega(r.station || "—").al.push(r); });
   // todas as stations da sub aparecem, mesmo sem movimento no dia (vão para o fim)
   juStationsDaSub().forEach(nome => pega(nome));
   delete st["—"];
@@ -7965,6 +7969,14 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
     o.cab = ["DOP", "Shop", "Motorista · Transportadora", "Ocorrência"];
     o.itens = s.otp.map(r => [juDop(r.dop || r.pup), r.shop || JU.nomePorDop[juKey(r.dop)] || "—",
       [r.driver, typeof coTransp === "function" ? coTransp(r.transp) : r.transp].filter(Boolean).join(" · ") || "—", [r.occ, r.just].filter(Boolean).join(" · ") || "—"]);
+  }
+  else if(def.id === "al"){
+    if(!AL_LOADED){ o.carregando = true; o.valor = "carregando…"; return o; }
+    if(AL_DIAS.indexOf(dia) < 0){ o.valor = "—"; o.nota = "as alocações desse dia ainda não estão na base"; return o; }
+    o.ok = !s.al.length;
+    o.valor = o.ok ? "todas as rotas alocadas" : s.al.length + (s.al.length === 1 ? " rota não alocada" : " rotas não alocadas");
+    o.cab = ["Rota", "Tipo", "Veículo (plano → real)", "Status", "Transportadora"];
+    o.itens = s.al.map(r => [r.rota || "—", alTipo(r.tipo), (r.vPlan || "—") + " → " + (r.vReal || "—"), r.status || "—", r.transp || "—"]);
   }
   else if(def.id === "lt"){
     const ltDia = JU.lt[dia] || [];
@@ -8044,7 +8056,7 @@ function juRenderKpis(ests){
   const out = rsSub.reduce((t,r) => t + (+r.outD || 0), 0), sd = rsSub.reduce((t,r) => t + (+r.sdD || 0), 0);
   const abaixo = ests.filter(s => s.out && s.sd / s.out <= juMetaSd(s.nome)).length;
   const conta = id => { let n = 0, st = 0; ests.forEach(s => { const i = s.inds.find(x => x.id === id); if(i && !i.ok && i.itens.length){ n += new Set(i.itens.map(x => x[0])).size; st++; } }); return { n, st }; };
-  const ns = conta("ns"), pp = conta("pp"), ot = conta("otp");
+  const ns = conta("ns"), pp = conta("pp"), ot = conta("otp"), al = conta("al");
   let ltO = 0, ltT = 0; (JU.lt[JU.dia] || []).forEach(r => { ltO += +r.orders || 0; ltT += +r.tempo || 0; });
   const ltAcima = ests.filter(s => { const i = s.inds.find(x => x.id === "lt"); return i && !i.ok; }).length;
   const ld = LD_LOADED, otp = OTP && OTP.rows;
@@ -8054,6 +8066,7 @@ function juRenderKpis(ests){
     { l:"Same Day " + JU_SUB, v: out ? juPct(sd / out) : "—", s: abaixo ? plural(abaixo, "station abaixo", "stations abaixo") + " de " + Math.round(JU_META_SD*100) + "%" : "todas na meta" },
     { l:"No Show 3PL", v: ld ? juNum(ns.n) : "…", s: !ld ? "carregando" : ns.n ? "lojas em " + plural(ns.st, "station", "stations") : "nenhuma ocorrência" },
     { l:"Partial Pickup", v: ld ? juNum(pp.n) : "…", s: !ld ? "carregando" : pp.n ? "lojas em " + plural(pp.st, "station", "stations") : "nenhuma ocorrência" },
+    { l:"Rotas não alocadas", v: AL_LOADED ? juNum(al.n) : "…", s: !AL_LOADED ? "carregando" : al.n ? "em " + plural(al.st, "station", "stations") : "todas alocadas", c: AL_LOADED && al.n ? "crit" : "" },
     { l:"Falha de OTP", v: otp ? juNum(ests.reduce((t,s) => t + s.otp.length, 0)) : "…", s: !otp ? "carregando" : ot.st ? "em " + plural(ot.st, "station", "stations") : "nenhuma falha" },
     { l:"Lead Time " + JU_SUB, v: ltO ? juDias(ltT / ltO) : "—", s: ltAcima ? plural(ltAcima, "station acima", "stations acima") + " da meta" : "dentro da meta" }
   ];
