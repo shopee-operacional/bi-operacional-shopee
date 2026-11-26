@@ -5863,7 +5863,10 @@ function lsAplicar(json){
   const rows = json.rows.map(l=>{ const o = {}; json.cols.forEach((c,j)=>{ o[c] = num.has(c) ? (+l[j]||0) : json.dic[j][l[j]]; }); return o; })
     .map(r=>{ r.data = lsDataIso(r.data); return r; })
     .filter(r=>r.data);
-  rows.forEach(r=>{ r.regional = r.regional || "Sem regional"; r.sub = r.sub || "—"; r.analista = r.analista || "Sem analista"; });
+  // só existem Regional 1 a 4: "4" / "regional 4" / "REG 4" viram "Regional 4"; qualquer outro valor
+  // da coluna (ex.: 910, BIGs, Maturação) fica como "Outros" e não aparece no filtro de Regional
+  const regNorm = v => { const t = String(v == null ? "" : v).trim(), m = t.match(/^(?:reg(?:ional)?\s*)?([1-4])$/i); return m ? "Regional " + m[1] : (t ? "Outros" : "Sem regional"); };
+  rows.forEach(r=>{ r.regional = regNorm(r.regional); r.sub = r.sub || "—"; r.analista = r.analista || "Sem analista"; });
   LS = { hoje: json.hoje || histHoje(), em: json.atualizadoEm || "", rows,
          ult: rows.reduce((m,r)=> r.data > m ? r.data : m, "") };
   if(LS_F.reg === "__default__") LS_F.reg = rows.some(r=>r.regional==="Regional 4") ? "Regional 4" : "";
@@ -5963,7 +5966,7 @@ function renderLosses(){
   const $ = id => document.getElementById(id);
   const u = (lista, k) => [...new Set(lista.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const opcoes = (id, valores, atual, vazio) => { $(id).innerHTML = `<option value="">${vazio}</option>` + valores.map(v=>`<option value="${esc(v)}"${v===atual?" selected":""}>${esc(v)}</option>`).join(""); };
-  opcoes("ls-f-reg", u(LS.rows,"regional"), LS_F.reg, "Todas");
+  opcoes("ls-f-reg", u(LS.rows,"regional").filter(v => /^Regional [1-4]$/.test(v)), LS_F.reg, "Todas");
   opcoes("ls-f-sub", u(LS.rows.filter(r=>lsPassa(r,"sub")),"sub"), LS_F.sub, "Todas");
   opcoes("ls-f-coord", u(LS.rows.filter(r=>lsPassa(r,"coord")),"coord"), LS_F.coord, "Todos");
   opcoes("ls-f-analista", u(LS.rows.filter(r=>lsPassa(r,"analista")),"analista"), LS_F.analista, "Todos");
