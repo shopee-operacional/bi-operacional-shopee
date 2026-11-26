@@ -65,7 +65,7 @@ if(!document.querySelector(".app")){
         <div class="nav-item" data-section="alocacoes"><span class="nav-txt">Alocações &amp; Rotas extras</span></div>
         <div class="nav-item" data-section="planosab"><span class="nav-txt">Plano Sábado &amp; Feriados</span></div>
         <div class="nav-item" data-section="loja"><span class="nav-txt">Desempenho por Loja</span></div>
-        <div class="nav-item" data-section="nss"><span class="nav-txt">NSS Fora do Raio</span><span class="nav-badge" id="nav-nss-badge" style="display:none">0</span></div>
+        <div class="nav-item" data-section="nss"><span class="nav-txt">Tratativas de NSS</span><span class="nav-badge" id="nav-nss-badge" style="display:none">0</span></div>
       </div>
     </div>
     <div class="nav-group" data-group="dados">
@@ -702,7 +702,7 @@ if(!document.querySelector(".app")){
 
     <!-- NSS FORA DO RAIO -->
     <div class="section" id="sec-nss">
-      <div class="section-title">NSS Fora do Raio <span class="sd-sub" id="nss-subtitle"></span></div>
+      <div class="section-title">Tratativas de NSS <span class="sd-sub" id="nss-subtitle"></span></div>
       <div class="sd-toolbar">
         <div class="filter sd-data"><label>Data início</label><input type="date" id="nss-f-ini"></div>
         <div class="filter sd-data"><label>Data fim</label><input type="date" id="nss-f-fim"></div>
@@ -7879,8 +7879,10 @@ function nssPresetAtual(){
 }
 function nssBadge(){
   const el = document.getElementById("nav-nss-badge"); if(!el) return;
-  const h = nssHoje(), q = NSS_ROWS.filter(r => r.data === h).length;
+  // número no menu = NSS de hoje ainda sem tratativa do analista
+  const h = nssHoje(), q = NSS_ROWS.filter(r => r.data === h && !r.resultado).length;
   el.textContent = q; el.style.display = q ? "" : "none";
+  el.title = q + (q === 1 ? " NSS de hoje sem tratativa" : " NSS de hoje sem tratativa");
 }
 function nssFiltrar(ignorar){
   const b = (NSS_F.busca || "").toLowerCase();
