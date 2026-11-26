@@ -7724,6 +7724,9 @@ setInterval(()=>{ if(!WBR_PEND) loadWbr(true); }, 30 * 60 * 1000);
 // Salvo na aba JUSTIFICATIVAS_CO (rotas ?tipo=justlistar e ?tipo=justsalvar).
 const JU_SUB = "CO";          // sub-regional desta aba
 const JU_META_SD = 0.80;      // Same Day: target é ACIMA de 80% — 80% ou menos pede justificativa
+// Target de Same Day específico por station (sobrepõe o JU_META_SD só nelas)
+const JU_META_SD_STATION = { "SOC-GO2": 0.90 };
+const juMetaSd = nome => { const k = String(nome || "").toUpperCase().trim(); return JU_META_SD_STATION[k] != null ? JU_META_SD_STATION[k] : JU_META_SD; };
 const JU_FORA_STATION = /^XPT/i; // não entram como station nas justificativas
 // As bases chamam a sub de jeitos diferentes ("CO" na BASE_TRATADA, "CO/N" no Same Day…)
 const JU_SEM_ROTA = "o Web App não reconheceu a rota justlistar — confira no webapp.gs as rotas justlistar/justsalvar e publique uma NOVA VERSÃO da implantação";
@@ -7987,8 +7990,9 @@ function juMontarInd(def, s, dia, otpOk, ldOk){
   else if(def.id === "sd"){
     if(!s.out){ o.valor = "sem pickup no dia"; return o; }
     const v = s.sd / s.out;
-    o.ok = v > JU_META_SD;
-    o.valor = juPct(v) + " · target acima de " + Math.round(JU_META_SD * 100) + "%";
+    const metaSd = juMetaSd(s.nome);
+    o.ok = v > metaSd;
+    o.valor = juPct(v) + " · target acima de " + Math.round(metaSd * 100) + "%";
     if(!o.ok){
       o.cab = ["DOP", "Agência · Responsável", "Fora do Same Day", "Inbound pós-coleta", "Next day"];
       o.itens = s.linhasSd.map(r => ({ r, fora: (+r.outD || 0) - (+r.sdD || 0) })).filter(x => x.fora > 0)
@@ -8038,7 +8042,7 @@ function juRenderKpis(ests){
   const p = juPendencias(ests);
   const rsSub = JU.sd[JU.dia] || [];
   const out = rsSub.reduce((t,r) => t + (+r.outD || 0), 0), sd = rsSub.reduce((t,r) => t + (+r.sdD || 0), 0);
-  const abaixo = ests.filter(s => s.out && s.sd / s.out <= JU_META_SD).length;
+  const abaixo = ests.filter(s => s.out && s.sd / s.out <= juMetaSd(s.nome)).length;
   const conta = id => { let n = 0, st = 0; ests.forEach(s => { const i = s.inds.find(x => x.id === id); if(i && !i.ok && i.itens.length){ n += new Set(i.itens.map(x => x[0])).size; st++; } }); return { n, st }; };
   const ns = conta("ns"), pp = conta("pp"), ot = conta("otp");
   let ltO = 0, ltT = 0; (JU.lt[JU.dia] || []).forEach(r => { ltO += +r.orders || 0; ltT += +r.tempo || 0; });
